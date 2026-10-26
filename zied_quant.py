@@ -511,12 +511,30 @@ class GBM:
         return self.m.predict_proba(X)[:, 1]
 
 def auc_score(y, p):
-    y = np.asarray(y); p = np.asarray(p)
-    o = np.argsort(p, kind="stable"); r = np.empty(len(p)); r[o] = np.arange(1, len(p) + 1)
-    npos = (y == 1).sum(); nneg = len(y) - npos
+    """Tie-correct ROC AUC using average ranks (Mann-Whitney definition)."""
+    y = np.asarray(y).reshape(-1)
+    p = np.asarray(p, dtype=np.float64).reshape(-1)
+    if len(y) != len(p):
+        raise ValueError(f"AUC length mismatch: {len(y)} labels vs {len(p)} scores")
+    if not len(y) or not np.isfinite(p).all() or not np.isin(y, [0, 1]).all():
+        raise ValueError("AUC requires non-empty binary labels and finite scores")
+    npos = int((y == 1).sum()); nneg = len(y) - npos
     if npos == 0 or nneg == 0:
         return 0.5
-    return float((r[y == 1].sum() - npos * (npos + 1) / 2) / (npos * nneg))
+    order = np.argsort(p, kind="stable")
+    sorted_p = p[order]
+    sorted_ranks = np.empty(len(p), dtype=np.float64)
+    i = 0
+    while i < len(p):
+        j = i + 1
+        while j < len(p) and sorted_p[j] == sorted_p[i]:
+            j += 1
+        # One-based ranks; equal scores receive their average rank.
+        sorted_ranks[i:j] = ((i + 1) + j) / 2.0
+        i = j
+    ranks = np.empty(len(p), dtype=np.float64)
+    ranks[order] = sorted_ranks
+    return float((ranks[y == 1].sum() - npos * (npos + 1) / 2) / (npos * nneg))
 
 class Brain:
     def __init__(self, persist=True):
