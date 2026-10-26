@@ -602,8 +602,15 @@ class Brain:
 
     def load(self):
         if not os.path.exists(CFG["META"]):
-            if os.path.exists(CFG["MODEL"]) or os.path.exists(CFG["GBM"]):
-                log.warning("orphan model artifact found without meta.json; ignoring incomplete model files")
+            # Without metadata there is no trustworthy normalization, selected mode, or validation score.
+            # These model files are stale/orphaned and must not survive another state save.
+            for path in (CFG["MODEL"], CFG["GBM"]):
+                if os.path.exists(path):
+                    log.warning("removing orphan model artifact without meta.json: %s", path)
+                    try:
+                        os.remove(path)
+                    except OSError as exc:
+                        log.error("could not remove orphan model artifact %s: %s", path, exc)
             return
         try:
             meta = json.load(open(CFG["META"]))
@@ -705,6 +712,11 @@ class Brain:
             info["val_top_net"] = float(np.nanmean(rv[m])) if m.any() else None
         accepted = force or (aucs[mode] >= 0.52 and (self.auc is None or aucs[mode] >= self.auc - 0.03))
         info["accepted"] = bool(accepted)
+        log.info("model validation: n=%d val=%d selected=%s AUC=%.4f threshold=%.4f accepted=%s previous_auc=%s",
+                 n, nv, mode, aucs[mode], thrs[mode], bool(accepted),
+                 "none" if self.auc is None else f"{self.auc:.4f}")
+        if not accepted:
+            log.warning("candidate model rejected by quality gate; no model artifacts will be written")
         if accepted:
             self.nn, self.gbm = models.get("nn"), models.get("gbm")
             self.mu, self.sd, self.thrs, self.mode, self.auc, self.info = mu, sd, thrs, mode, aucs[mode], info
