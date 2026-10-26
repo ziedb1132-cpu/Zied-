@@ -22,11 +22,11 @@ OKX Spot (USDT, no stablecoins) scanner with a self-learning pipeline.
 ```bash
 pip install -r requirements.txt
 export TELEGRAM_TOKEN=... TELEGRAM_CHAT_ID=...      # optional
-python zied_quant.py train          # build dataset (30 days, cached) + train
-python zied_quant.py backtest 5     # walk-forward out-of-sample report
-python zied_quant.py run            # endless loop (VPS / Docker)
-python zied_quant.py once           # one cycle (used by the hourly GitHub workflow)
-python zied_quant.py scan | stats | label | refresh
+python evolved_runner.py train     # guarded train/tune/holdout + model promotion
+python evolved_runner.py backtest 5 # walk-forward out-of-sample report
+python evolved_runner.py run       # endless loop with guarded model promotion
+python evolved_runner.py once      # one guarded cycle
+python evolved_runner.py scan | stats | label | refresh
 python -m pytest -q                 # offline tests
 ```
 
