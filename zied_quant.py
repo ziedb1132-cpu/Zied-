@@ -13,6 +13,7 @@ Usage:
     python zied_quant.py train     # download history + train the 20-layer net
     python zied_quant.py scan      # one scan (ranking + signals), no loop
     python zied_quant.py run       # full loop: scan + paper trades + monitor + learn
+    python zied_quant.py once      # one full cycle (for schedulers / GitHub Actions)
     python zied_quant.py stats     # paper-trading statistics
 
 Env (optional, for Telegram):
@@ -38,7 +39,7 @@ log = logging.getLogger("zied")
 # CONFIG
 # =====================================================================
 CFG = dict(
-    OKX="https://www.okx.com",
+    OKX=os.getenv("OKX_BASE", "https://www.okx.com"),
     TFS=["5m", "15m", "1H", "4H", "1D"],
     TF_SEC={"5m": 300, "15m": 900, "1H": 3600, "4H": 14400, "1D": 86400},
     BASE_TF="1H",                      # timeframe used to build training rows
@@ -486,6 +487,27 @@ class Paper:
                     self._close(t, px, "انتهاء المدة"); closed += 1
         return closed
 
+    def check_candles(self):
+        """Hourly mode: scan 5m candles since entry for SL/TP hits (SL first if both in one candle)."""
+        closed = 0
+        with self.lock:
+            trades = self.open_trades()
+            prices = get_prices() if trades else {}
+            for t in trades:
+                px = reason = None
+                d = get_candles(t["inst"], "5m", 300)
+                if d is not None:
+                    for _, k in d[d["ts"] >= t["open_ts"] * 1000].iterrows():
+                        if k["l"] <= t["sl"]:
+                            px, reason = t["sl"], "وقف الخسارة"; break
+                        if k["h"] >= t["tp"]:
+                            px, reason = t["tp"], "جني الأرباح"; break
+                if px is None and time.time() - t["open_ts"] > CFG["MAX_HOLD_H"] * 3600 and t["inst"] in prices:
+                    px, reason = prices[t["inst"]], "انتهاء المدة"
+                if px is not None:
+                    self._close(t, px, reason); closed += 1
+        return closed
+
     def experience(self):
         rows = self.db.execute("SELECT ts,feats,label FROM experience ORDER BY ts").fetchall()
         if not rows:
@@ -584,6 +606,22 @@ def stats_msg(paper):
             f"صفقات مغلقة: {s['trades']} | مفتوحة: {s['open']}\n"
             f"نسبة النجاح: {s['winrate'] * 100:.1f}% | Profit factor: {s['profit_factor']:.2f}")
 
+def once():
+    """One full cycle, for schedulers (GitHub Actions): check trades, scan, learn, report."""
+    brain, paper = Brain(), Paper()
+    uni = get_universe()
+    if not brain.ready:
+        retrain(brain, paper, uni, "أول تدريب")
+    paper.check_candles()
+    cycle = int(paper._get("cycle") or 0)
+    scan(brain, paper, uni, cycle)
+    paper._set("cycle", cycle + 1)
+    done = paper.db.execute("SELECT COUNT(*) c FROM experience").fetchone()["c"]
+    if done - int(paper._get("last_train_n") or 0) >= CFG["RETRAIN_EVERY"]:
+        retrain(brain, paper, uni, f"تعلّم ذاتي بعد {done} صفقة")
+    if time.time() - float(paper._get("last_daily") or 0) > 86400:
+        tg(stats_msg(paper)); paper._set("last_daily", time.time())
+
 def run():
     brain, paper = Brain(), Paper()
     stop, flag = threading.Event(), threading.Event()
@@ -617,12 +655,14 @@ def run():
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
-    if cmd in ("train", "scan", "run") and torch is None:
+    if cmd in ("train", "scan", "run", "once") and torch is None:
         sys.exit("pip install torch  (required)")
     if cmd == "train":
         b, p = Brain(), Paper(); print(retrain(b, p, get_universe(), "يدوي"))
     elif cmd == "scan":
         b, p = Brain(), Paper(); print(scan(b, p, trade=False).head(30))
+    elif cmd == "once":
+        once()
     elif cmd == "stats":
         print(stats_msg(Paper()))
     else:
