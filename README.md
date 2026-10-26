@@ -27,7 +27,7 @@ python evolved_runner.py backtest 5 # walk-forward out-of-sample report
 python evolved_runner.py run       # endless loop with guarded model promotion
 python evolved_runner.py once      # one guarded cycle
 python evolved_runner.py scan | stats | label | refresh
-python -m pytest -q                 # offline tests
+python -m unittest discover -s tests -v # offline tests
 ```
 
 ## Deploy
