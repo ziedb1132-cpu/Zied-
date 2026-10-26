@@ -18,6 +18,10 @@ OKX Spot (USDT, no stablecoins) scanner with a self-learning pipeline.
 8. **Walk-forward backtest** (`backtest`) to check the edge out-of-sample before trusting anything.
 9. **Strategy discovery**: daily candidate generation across trend-pullback, breakout and RSI-reversal rule families; parameter mutations are evaluated chronologically with a 24-hour embargo, a 20 bps round-trip cost reserve, and an untouched holdout. A candidate is recorded as champion only with at least 30 holdout trades, positive average net return and PF > 1.05. Discovery is research-only and never changes live entries automatically.
 10. **Telegram**: alerts and commands `/stats /positions /top /model /signals /pause /resume`.
+11. **Paper LIMIT entries**: signals place discounted limit orders based on volatility and spread; cash is reserved while pending, only a later closed 5m candle can fill an order, and unfilled orders expire after 6 hours with the reserve returned. No real exchange orders are sent.
+12. **Portfolio-level risk**: pending orders count toward the five-position limit, correlated assets are filtered against open and pending positions, and aggregate stop-loss risk is capped at 2% of equity with notional exposure capped at 75%.
+13. **Leakage control**: feature normalization is fitted only on the model-fit segment, with chronological validation and an embargo before future outcome windows. Walk-forward simulation applies the aggregate stop-risk budget; pairwise correlation still uses live return histories because the stored backtest dataset does not contain synchronized raw return series for every coin.
+
 
 ## Commands
 ```bash
