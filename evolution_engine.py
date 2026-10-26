@@ -80,6 +80,7 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     mode = max(eligible, key=lambda k: tune_stats[k]["avg"]) if eligible else max(tune_auc, key=tune_auc.get)
     hold_auc = {k: zq.auc_score(ytest, p) for k, p in test_p.items()}
     final = trade_metrics(rtest, test_p[mode] >= thresholds[mode])
+    base_test = trade_metrics(rtest, np.ones(len(rtest), dtype=bool))
     info = {"n": int(n), "n_train": int(train_mask.sum()), "n_tune": int(tune_mask.sum()),
             "n_test": int(test_mask.sum()), "tune_aucs": tune_auc, "aucs": hold_auc,
             "mode": mode, "auc": hold_auc[mode], "thr": thresholds[mode],
@@ -87,9 +88,23 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
             "tune_pf": float(tune_stats[mode]["pf"]), "test_n": int(final["n"]),
             "test_avg_net": float(final["avg"]), "test_pf": float(final["pf"]),
             "test_win_rate": float(final["win"]), "win_rate": float(y.mean()),
+            "train_positive_rate": float(ytr.mean()), "tune_positive_rate": float(ytune.mean()),
+            "test_positive_rate": float(ytest.mean()),
+            "baseline_test_avg_net": float(base_test["avg"]) if np.isfinite(base_test["avg"]) else None,
             "gbm_kind": gbm.kind if "gbm" in models else None}
     info["val_all_net"] = float(np.nanmean(rtest)) if np.isfinite(rtest).any() else None
     info["val_top_net"] = float(final["avg"]) if np.isfinite(final["avg"]) else None
+    zq.log.info(
+        "training diagnostics: split(train/tune/holdout)=%d/%d/%d positive_rate=%.3f/%.3f/%.3f "
+        "AUC(tune)=%s AUC(holdout)=%s baseline_holdout_net=%s selected_holdout_net=%s "
+        "selected_trades=%d PF=%.3f threshold=%.5f",
+        int(train_mask.sum()), int(tune_mask.sum()), int(test_mask.sum()),
+        float(ytr.mean()), float(ytune.mean()), float(ytest.mean()),
+        {k: round(float(v), 4) for k, v in tune_auc.items()},
+        {k: round(float(v), 4) for k, v in hold_auc.items()},
+        None if not np.isfinite(base_test["avg"]) else round(float(base_test["avg"]), 6),
+        None if not np.isfinite(final["avg"]) else round(float(final["avg"]), 6),
+        int(final["n"]), float(final["pf"]), float(thresholds[mode]))
     accepted = force or (hold_auc[mode] >= 0.52 and final["n"] >= 30
         and np.isfinite(final["avg"]) and final["avg"] > 0 and final["pf"] > 1.05
         and (self.auc is None or hold_auc[mode] >= self.auc - 0.03))
