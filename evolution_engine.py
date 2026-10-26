@@ -10,7 +10,7 @@ def trade_metrics(returns, selected):
         return {"n": 0, "avg": float("nan"), "pf": 0.0, "win": 0.0}
     gains = float(x[x > 0].sum())
     losses = float(-x[x < 0].sum())
-    pf = gains / losses if losses > 0 else (float("inf") if gains > 0 else 0.0)
+    pf = gains / losses if losses > 0 else (999.0 if gains > 0 else 0.0)
     return {"n": int(len(x)), "avg": float(x.mean()), "pf": float(pf),
             "win": float((x > 0).mean())}
 
