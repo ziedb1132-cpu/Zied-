@@ -605,7 +605,22 @@ class Brain:
         return out
 
     def predict(self, X):
-        return self.predict_all(X)[self.mode]
+        """Return validated probabilities; invalid model output must never reach trade selection."""
+        if not self.ready:
+            raise RuntimeError("AI model is not ready")
+        X = np.asarray(X, dtype=np.float32)
+        if X.ndim != 2 or X.shape[1] != N_FEATURES:
+            raise ValueError(f"AI input shape invalid: {X.shape}; expected (*, {N_FEATURES})")
+        if not np.isfinite(X).all():
+            raise ValueError("AI input contains NaN or infinite values")
+        out = np.asarray(self.predict_all(X)[self.mode], dtype=np.float64).reshape(-1)
+        if len(out) != len(X):
+            raise ValueError(f"AI returned {len(out)} probabilities for {len(X)} rows")
+        if not np.isfinite(out).all():
+            raise ValueError("AI returned NaN or infinite probabilities")
+        if ((out < 0.0) | (out > 1.0)).any():
+            raise ValueError("AI probabilities fall outside [0, 1]")
+        return out
 
     # ---------- training ----------
     def fit(self, X, y, ts, ret=None, epochs=80, force=False):
@@ -1297,9 +1312,14 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         log.warning("no data"); return None
     score = rank_universe(X, uni["vol"])
     R = pd.DataFrame({"score": score}); R["rank"] = np.arange(1, len(R) + 1); R["prob"] = np.nan
+    ai_prediction_error = None
     if brain.ready:
         top = list(R.index[:CFG["TOP_AI"]])
-        R.loc[top, "prob"] = brain.predict(X.loc[top, FEATURE_COLS].values)
+        try:
+            R.loc[top, "prob"] = brain.predict(X.loc[top, FEATURE_COLS].values)
+        except Exception as e:
+            ai_prediction_error = str(e)
+            log.exception("AI prediction invalid; all new entries will be blocked")
     R.to_csv(os.path.join(CFG["DIR"], "ranking.csv"))
     log.info("top 5:\n%s", R.head(5))
     if cycle % CFG["RANK_MSG_EVERY"] == 0:
@@ -1311,6 +1331,13 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                             feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]))
                        for i in R.index[:CFG["LOG_TOP"]]])
     if not brain.ready:
+        log.error("AI model unavailable; scan is ranking-only and no entries are allowed")
+        tg("⚠️ Zied Quant: نموذج AI غير جاهز أو لم يجتز شروط الاعتماد. تم إيقاف الدخول في صفقات جديدة؛ الترتيب الظاهر ليس توصية شراء. راجع سجل التدريب.")
+        return R
+    if ai_prediction_error is not None or not np.isfinite(R["prob"].dropna().to_numpy(dtype=float)).all():
+        log.error("AI probabilities invalid (%s); scan is ranking-only and no entries are allowed",
+                  ai_prediction_error or "non-finite values")
+        tg("⚠️ Zied Quant: خرجت احتمالات AI بقيم غير صالحة (NaN/Inf). تم منع جميع أوامر الدخول في هذه الدورة.")
         return R
     gate = paper.risk_gate(paper.equity(uni["last"].to_dict()))
     if gate:
