@@ -32,8 +32,8 @@ python -m unittest discover -s tests -v # offline tests
 
 ## Deploy
 * **GitHub Actions** (hourly): `.github/workflows/zied-quant.yml`. Add repo secrets `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`.
-  State is kept in the Actions cache (+ DB backup artifact). Telegram commands are read once per hour.
-* **Docker / VPS** (recommended, always on, instant commands, durable state):
+  State is kept in the Actions cache (+ DB backup artifact). Durable state is only overwritten after a successful cycle. The workflow runs offline tests before trading, and Telegram commands are read once per hour.
+* **Docker / VPS** (recommended, always on, instant commands, durable state; uses the guarded evolution runner):
   `cp .env.example .env`, fill it, then `docker compose up -d --build`.
 * If `www.okx.com` is blocked from your host, set `OKX_BASE=https://aws.okx.com`.
 
