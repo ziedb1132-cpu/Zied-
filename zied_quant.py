@@ -1012,6 +1012,41 @@ def positions_msg(paper):
         lines.append(f"{t['inst']}: {(p / t['entry'] - 1) * 100:+.2f}% | SL {t['sl']:.6g} | TP {t['tp']:.6g}")
     return "📌 الصفقات المفتوحة\n" + "\n".join(lines)
 
+def portfolio_msg(paper):
+    """Full virtual-portfolio snapshot for Telegram; paper trading only."""
+    prices = get_prices()
+    s = paper.stats(prices)
+    cash = paper.cash()
+    open_trades = paper.open_trades()
+    unrealized = 0.0
+    lines = [
+        "💼 المحفظة الافتراضية — Zied Quant",
+        "⚠️ تداول ورقي فقط؛ لا توجد أوامر حقيقية.",
+        f"💵 النقد المتاح: {cash:.2f} USDT",
+        f"📊 قيمة المحفظة: {s['equity']:.2f} USDT ({s['ret_pct']:+.2f}%)",
+        f"📈 الربح/الخسارة الكلي مقابل رأس المال الأولي: {s['equity'] - CFG['START_BALANCE']:+.2f} USDT",
+        f"✅ الربح/الخسارة المحقق للصفقات المغلقة: {s['pnl']:+.2f} USDT",
+        f"🔓 صفقات مفتوحة: {len(open_trades)} | مغلقة: {s['trades']}",
+        f"🎯 نسبة النجاح: {s['winrate'] * 100:.1f}% | Profit Factor: {s['profit_factor']:.2f}",
+        "",
+        "📌 تفاصيل الصفقات المفتوحة:"
+    ]
+    if not open_trades:
+        lines.append("لا توجد صفقات مفتوحة حالياً.")
+    else:
+        for t in open_trades:
+            px = prices.get(t["inst"], t["entry"])
+            upnl = t["qty"] * px - t["usdt_in"]
+            unrealized += upnl
+            pct = (px / t["entry"] - 1) * 100
+            lines.append(
+                f"• {t['inst']} | دخول {t['entry']:.6g} | الآن {px:.6g}\n"
+                f"  عائم {upnl:+.2f} USDT ({pct:+.2f}%) | SL {t['sl']:.6g} | TP {t['tp']:.6g}"
+            )
+    lines.insert(7, f"🌊 الربح/الخسارة غير المحقق للصفقات المفتوحة: {unrealized:+.2f} USDT")
+    # Telegram limits messages to 4096 characters; current open-position cap is five.
+    return "\n".join(lines)[:3900]
+
 def top_msg():
     p = os.path.join(CFG["DIR"], "ranking.csv")
     if not os.path.exists(p):
@@ -1027,6 +1062,8 @@ def handle_command(text, paper, brain):
         return stats_msg(paper)
     if cmd == "/positions":
         return positions_msg(paper)
+    if cmd in ("/portfolio", "/محفظتي"):
+        return portfolio_msg(paper)
     if cmd == "/top":
         return top_msg()
     if cmd == "/pause":
@@ -1038,7 +1075,7 @@ def handle_command(text, paper, brain):
     if cmd == "/signals":
         return (f"سجل الإشارات: {paper.count('signals')} | موسومة: {paper.count('signals', 'labeled=1')} | "
                 f"صفقات مغلقة: {paper.count('experience')}")
-    return ("الأوامر: /stats /positions /top /model /signals /pause /resume")
+    return ("الأوامر: /stats /positions /portfolio /top /model /signals /pause /resume")
 
 def poll_commands(paper, brain, timeout=0):
     tok, chat = os.getenv("TELEGRAM_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
@@ -1195,6 +1232,8 @@ def once():
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
     paper._set("cycle", cycle + 1)
+    # Send a complete portfolio snapshot to Telegram after every hourly GitHub Actions cycle.
+    tg(portfolio_msg(paper))
     if need_retrain(paper):
         try:
             retrain(brain, paper, uni, "تعلّم ذاتي")
