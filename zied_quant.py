@@ -70,6 +70,9 @@ CFG = dict(
     POS_FRAC=0.15,                     # max fraction of equity per trade
     RISK_PER_TRADE=0.005,              # equity risked per trade -> smaller size when volatility is high
     MAX_OPEN=5,
+    MAX_PORTFOLIO_RISK=0.02,           # aggregate stop-loss risk across open + pending positions
+    MAX_PORTFOLIO_EXPOSURE=0.75,       # maximum portfolio notional exposure / equity
+    LIMIT_TTL_H=6,                     # cancel unfilled paper LIMIT orders after six hours
     CORR_MAX=0.85,                     # skip a coin too correlated with an open position
     DAILY_LOSS=0.03,                   # stop new entries after -3% realised today (UTC)
     LOSS_STREAK=4, COOLDOWN_H=6,       # kill-switch: N losses in a row -> pause
@@ -619,11 +622,13 @@ class Brain:
         ntr = int(np.searchsorted(ts, ts[n - nv] - CFG["BARRIER_H"] * 3600))
         if ntr < 400:
             raise ValueError("training part too small after embargo")
-        mu = X[:ntr].mean(0); sd = X[:ntr].std(0) + 1e-8
+        # Fit preprocessing only on the actual model-fit segment; do not use early-stop
+        # validation rows to estimate feature means/standard deviations.
+        nf = int(ntr * 0.85)
+        mu = X[:nf].mean(0); sd = X[:nf].std(0) + 1e-8
         tmp = Brain.__new__(Brain); tmp.mu, tmp.sd = mu, sd
         Xtr, Xv = tmp._norm(X[:ntr]), tmp._norm(X[n - nv:])
         ytr, yv = y[:ntr], y[n - nv:]
-        nf = int(ntr * 0.85)
         models, pv = {}, {}
         g = GBM()
         if g.fit(Xtr[:nf], ytr[:nf], Xtr[nf:], ytr[nf:]):
@@ -669,6 +674,10 @@ CREATE TABLE IF NOT EXISTS experience(
 CREATE TABLE IF NOT EXISTS signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, price REAL, atr REAL, feats TEXT,
   prob REAL, rank INTEGER, labeled INTEGER DEFAULT 0, label INTEGER, ret REAL, hold REAL);
+CREATE TABLE IF NOT EXISTS pending_orders(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, created_ts REAL, expires_ts REAL,
+  limit_px REAL, qty REAL, reserved_usdt REAL, sl REAL, tp REAL, prob REAL, rank INTEGER,
+  feats TEXT, spread REAL, vol24 REAL, status TEXT DEFAULT 'PENDING');
 """
 
 def locked(f):
@@ -737,11 +746,30 @@ class Paper:
         return [dict(r) for r in self.db.execute("SELECT * FROM trades WHERE status='OPEN'")]
 
     @locked
+    def pending_orders(self):
+        return [dict(r) for r in self.db.execute(
+            "SELECT * FROM pending_orders WHERE status='PENDING' ORDER BY created_ts")]
+
+    @locked
     def equity(self, prices=None):
+        # Reserved cash remains an asset: pending LIMIT orders must not make equity disappear.
         eq = self.cash()
+        eq += sum(float(o["reserved_usdt"]) for o in self.pending_orders())
         for t in self.open_trades():
             px = (prices or {}).get(t["inst"], t["entry"]); eq += t["qty"] * px
         return eq
+
+    @locked
+    def portfolio_risk_used(self):
+        """Estimated USDT at risk to stop-loss across open positions and pending LIMIT orders."""
+        risk = 0.0
+        for t in self.open_trades():
+            if t["entry"] > 0:
+                risk += float(t["usdt_in"]) * max(0.0, (t["entry"] - t["sl"]) / t["entry"])
+        for o in self.pending_orders():
+            if o["limit_px"] > 0:
+                risk += float(o["reserved_usdt"]) * max(0.0, (o["limit_px"] - o["sl"]) / o["limit_px"])
+        return risk
 
     # ---------- risk management ----------
     @locked
@@ -759,6 +787,85 @@ class Paper:
         return None
 
     # ---------- trading ----------
+    @locked
+    def place_limit(self, inst, limit_px, atr_pct, prob, rank, feats, vol24, spread):
+        """Reserve paper cash for a buy LIMIT order; create a trade only after a later candle fills it."""
+        open_trades = self.open_trades()
+        pending = self.pending_orders()
+        if any(t["inst"] == inst for t in open_trades) or any(o["inst"] == inst for o in pending):
+            return None
+        if len(open_trades) + len(pending) >= CFG["MAX_OPEN"]:
+            return None
+        if not np.isfinite(limit_px) or limit_px <= 0:
+            return None
+        eq = self.equity()
+        a = float(np.clip(atr_pct, 0.004, 0.06))
+        usdt = min(self.cash(), CFG["POS_FRAC"] * eq,
+                   CFG["RISK_PER_TRADE"] * eq / (CFG["SL_ATR"] * a))
+        if usdt < 10:
+            return None
+        sl = float(limit_px) * (1 - CFG["SL_ATR"] * a)
+        tp = float(limit_px) * (1 + CFG["TP_ATR"] * a)
+        used_risk = self.portfolio_risk_used()
+        new_risk = usdt * (limit_px - sl) / limit_px
+        if used_risk + new_risk > CFG["MAX_PORTFOLIO_RISK"] * eq + 1e-9:
+            log.info("%s skipped: portfolio stop-risk budget %.2f + %.2f > %.2f USDT",
+                     inst, used_risk, new_risk, CFG["MAX_PORTFOLIO_RISK"] * eq)
+            return None
+        exposure = sum(float(t["usdt_in"]) for t in open_trades) + sum(float(o["reserved_usdt"]) for o in pending)
+        if exposure + usdt > CFG["MAX_PORTFOLIO_EXPOSURE"] * eq + 1e-9:
+            log.info("%s skipped: portfolio exposure limit", inst)
+            return None
+        now = time.time()
+        feats_json = json.dumps([float(x) for x in feats])
+        qty = usdt * (1 - CFG["FEE"]) / float(limit_px)
+        cur = self.db.execute(
+            "INSERT INTO pending_orders(inst,created_ts,expires_ts,limit_px,qty,reserved_usdt,sl,tp,prob,rank,feats,spread,vol24,status) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'PENDING')",
+            (inst, now, now + CFG["LIMIT_TTL_H"] * 3600, float(limit_px), qty, usdt, sl, tp,
+             prob, rank, feats_json, spread, vol24))
+        self._set("cash", self.cash() - usdt)
+        self.db.commit()
+        return dict(id=cur.lastrowid, inst=inst, limit_px=float(limit_px), sl=sl, tp=tp,
+                    usdt=usdt, qty=qty, expires_ts=now + CFG["LIMIT_TTL_H"] * 3600)
+
+    @locked
+    def check_limit_orders(self):
+        """Fill only from a closed 5m candle that starts after order creation; otherwise expire/refund."""
+        now = time.time()
+        filled = expired = 0
+        for o in self.pending_orders():
+            d = get_candles(o["inst"], "5m", 300)
+            hit = None
+            if d is not None and len(d):
+                # Strict start-time filter avoids filling from a candle that began before the order existed.
+                path = d[(d["ts"] >= int(o["created_ts"] * 1000)) &
+                         (d["ts"] < int(o["expires_ts"] * 1000))]
+                for _, candle in path.iterrows():
+                    if float(candle["l"]) <= float(o["limit_px"]):
+                        hit = candle
+                        break
+            if hit is not None:
+                fill_ts = float(hit["ts"]) / 1000.0 + CFG["TF_SEC"]["5m"]
+                self.db.execute(
+                    "INSERT INTO trades(inst,open_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats,spread,vol24) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (o["inst"], fill_ts, o["limit_px"], o["qty"], o["reserved_usdt"], o["sl"], o["tp"],
+                     o["prob"], o["rank"], o["feats"], o["spread"], o["vol24"]))
+                self.db.execute("UPDATE pending_orders SET status='FILLED' WHERE id=?", (o["id"],))
+                self.db.commit()
+                tg(f"✅ تنفيذ LIMIT افتراضي {o['inst']}\nالسعر: {o['limit_px']:.8g}\n"
+                   f"SL: {o['sl']:.8g} | TP: {o['tp']:.8g}\nالمبلغ المحجوز: {o['reserved_usdt']:.2f} USDT")
+                filled += 1
+            elif now >= float(o["expires_ts"]):
+                self._set("cash", self.cash() + float(o["reserved_usdt"]))
+                self.db.execute("UPDATE pending_orders SET status='EXPIRED' WHERE id=?", (o["id"],))
+                self.db.commit()
+                tg(f"⌛ انتهت صلاحية أمر LIMIT الافتراضي {o['inst']} دون تنفيذ. "
+                   f"أُعيد {o['reserved_usdt']:.2f} USDT إلى النقد المتاح.")
+                expired += 1
+        return dict(filled=filled, expired=expired)
+
     @locked
     def open(self, inst, ask, atr_pct, prob, rank, feats, vol24, spread):
         if any(t["inst"] == inst for t in self.open_trades()):
@@ -927,19 +1034,25 @@ def rank_universe(X, vol24):
 # WALK-FORWARD BACKTEST
 # =====================================================================
 def simulate(idx, ds):
-    """Replay signals with the live rules: max concurrent trades, one per coin, fixed-fraction sizing."""
+    """Replay time-ordered signals with max positions, one per coin and aggregate stop-risk budget."""
     ts, ret, hold, coin = ds["ts"][idx], ds["ret"][idx], ds["hold"][idx], ds["coin"][idx]
+    atr = ds["X"][idx, FEATURE_COLS.index("1H_atr_pct")]
     open_, taken, events = [], [], []
     for i in np.argsort(ts, kind="stable"):
         t = ts[i]
-        open_ = [(e, c) for e, c in open_ if e > t]
-        if len(open_) >= CFG["MAX_OPEN"] or any(c == coin[i] for _, c in open_):
+        open_ = [p for p in open_ if p[0] > t]
+        if len(open_) >= CFG["MAX_OPEN"] or any(p[1] == coin[i] for p in open_):
+            continue
+        a = float(np.clip(atr[i], 0.004, 0.06))
+        size_frac = min(CFG["POS_FRAC"], CFG["RISK_PER_TRADE"] / (CFG["SL_ATR"] * a))
+        risk_frac = size_frac * CFG["SL_ATR"] * a
+        if sum(p[2] for p in open_) + risk_frac > CFG["MAX_PORTFOLIO_RISK"] + 1e-12:
             continue
         end = t + (hold[i] if not np.isnan(hold[i]) else CFG["BARRIER_H"]) * 3600
-        open_.append((end, coin[i])); taken.append(ret[i]); events.append((end, ret[i]))
+        open_.append((end, coin[i], risk_frac)); taken.append(ret[i]); events.append((end, ret[i], size_frac))
     eq = peak = 1.0; mdd = 0.0
-    for _, r in sorted(events):
-        eq *= 1 + CFG["POS_FRAC"] * r; peak = max(peak, eq); mdd = max(mdd, 1 - eq / peak)
+    for _, r, size_frac in sorted(events):
+        eq *= 1 + size_frac * r; peak = max(peak, eq); mdd = max(mdd, 1 - eq / peak)
     r = np.array(taken)
     if not len(r):
         return dict(n=0, win=0.0, avg=0.0, pf=0.0, total=0.0, mdd=0.0)
@@ -1023,6 +1136,8 @@ def portfolio_msg(paper):
         "💼 المحفظة الافتراضية — Zied Quant",
         "⚠️ تداول ورقي فقط؛ لا توجد أوامر حقيقية.",
         f"💵 النقد المتاح: {cash:.2f} USDT",
+        f"⏳ أوامر LIMIT المعلّقة: {len(paper.pending_orders())} | المحجوز: {sum(float(o['reserved_usdt']) for o in paper.pending_orders()):.2f} USDT",
+        f"🛡️ المخاطر المقدّرة عند SL: {paper.portfolio_risk_used():.2f} USDT / {CFG['MAX_PORTFOLIO_RISK'] * 100:.1f}% كحد أقصى من حقوق المحفظة",
         f"📊 قيمة المحفظة: {s['equity']:.2f} USDT ({s['ret_pct']:+.2f}%)",
         f"📈 الربح/الخسارة الكلي مقابل رأس المال الأولي: {s['equity'] - CFG['START_BALANCE']:+.2f} USDT",
         f"✅ الربح/الخسارة المحقق للصفقات المغلقة: {s['pnl']:+.2f} USDT",
@@ -1157,6 +1272,11 @@ def max_corr_with_open(inst, open_insts, cache):
     return best
 
 def scan(brain, paper, universe=None, cycle=0, trade=True):
+    if trade:
+        try:
+            paper.check_limit_orders()
+        except Exception as e:
+            log.warning("LIMIT order check failed: %s", e)
     uni = universe if universe is not None else get_universe()
     log.info("universe: %d coins", len(uni))
     if uni.empty:
@@ -1199,20 +1319,31 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     sig = R[R["prob"] >= thr].sort_values("prob", ascending=False)
     cache = {}
     for inst, r in sig.iterrows():
-        opened = [t["inst"] for t in paper.open_trades()]
-        if inst in opened or len(opened) >= CFG["MAX_OPEN"]:
+        open_inst = [t["inst"] for t in paper.open_trades()]
+        pending_inst = [o["inst"] for o in paper.pending_orders()]
+        active = open_inst + pending_inst
+        if inst in active or len(active) >= CFG["MAX_OPEN"]:
             continue
-        corr = max_corr_with_open(inst, opened, cache)
+        corr = max_corr_with_open(inst, active, cache)
         if corr > CFG["CORR_MAX"]:
-            log.info("%s skipped: corr %.2f with an open position", inst, corr); continue
-        px = float(uni.loc[inst, "ask"])
-        tg(f"🟢 إشارة شراء {inst}\nاحتمال AI: {r['prob'] * 100:.1f}% (العتبة {thr * 100:.1f}%)\n"
-           f"الترتيب: #{int(r['rank'])} | السعر: {px:.6g}")
-        t = paper.open(inst, px, float(X.loc[inst, "1H_atr_pct"]), float(r["prob"]), int(r["rank"]),
-                       X.loc[inst, FEATURE_COLS].values, float(uni.loc[inst, "vol"]), float(uni.loc[inst, "spread"]))
+            log.info("%s skipped: corr %.2f with an open/pending position", inst, corr); continue
+        last = float(uni.loc[inst, "last"])
+        ask = float(uni.loc[inst, "ask"])
+        spread = float(uni.loc[inst, "spread"])
+        atr_pct = float(X.loc[inst, "1H_atr_pct"])
+        # Place a modestly discounted limit: no more than 0.30% below last, but account for spread.
+        discount = max(spread / 2.0, min(0.25 * float(np.clip(atr_pct, 0.004, 0.06)), 0.003))
+        limit_px = min(ask, last * (1.0 - discount))
+        tg(f"🟡 إشارة شراء LIMIT {inst}\nاحتمال AI: {r['prob'] * 100:.1f}% (العتبة {thr * 100:.1f}%)\n"
+           f"الترتيب: #{int(r['rank'])} | السعر الحالي: {last:.8g} | سعر LIMIT: {limit_px:.8g}")
+        t = paper.place_limit(inst, limit_px, atr_pct, float(r["prob"]), int(r["rank"]),
+                              X.loc[inst, FEATURE_COLS].values, float(uni.loc[inst, "vol"]), spread)
         if t:
-            tg(f"📥 فتح صفقة ورقية {inst}\nدخول {t['entry']:.6g} | SL {t['sl']:.6g} | TP {t['tp']:.6g}\n"
-               f"الحجم: {t['usdt']:.2f} USDT")
+            tg(f"📋 أمر LIMIT افتراضي معلّق {inst}\nالسعر المحدد: {t['limit_px']:.8g}\n"
+               f"SL: {t['sl']:.8g} | TP: {t['tp']:.8g}\n"
+               f"المحجوز: {t['usdt']:.2f} USDT | الصلاحية: {CFG['LIMIT_TTL_H']} ساعات")
+        else:
+            log.info("%s LIMIT skipped by cash, slot, exposure or aggregate-risk controls", inst)
     return R
 
 def once():
