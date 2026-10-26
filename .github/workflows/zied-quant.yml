@@ -41,17 +41,22 @@ jobs:
           key: zied-state-${{ github.run_id }}
           restore-keys: zied-state-
 
-      # Durable source of truth: the private state-data branch, independent of cache expiry.
+      # Durable source of truth. New state is chunked; old state-data branches remain readable.
       - name: Restore durable state
         shell: bash
         run: |
           set -euo pipefail
           if git fetch origin state-data:refs/remotes/origin/state-data 2>/dev/null; then
-            if git ls-tree -r --name-only origin/state-data | grep -q '^zied_data/'; then
+            if git ls-tree -r --name-only origin/state-data | grep -qx 'zied_data_store/manifest.json'; then
+              git checkout origin/state-data -- zied_data_store
+              rm -rf zied_data
+              python state_chunks.py unpack zied_data_store zied_data
+              echo "DURABLE_STATE=restored_from_chunks"
+            elif git ls-tree -r --name-only origin/state-data | grep -q '^zied_data/'; then
               git checkout origin/state-data -- zied_data
-              echo "DURABLE_STATE=restored"
+              echo "DURABLE_STATE=restored_legacy"
             else
-              echo "DURABLE_STATE=branch_empty"
+              echo "DURABLE_STATE=branch_has_no_state"
             fi
           else
             echo "DURABLE_STATE=first_run_no_branch"
@@ -63,8 +68,8 @@ jobs:
           set -euo pipefail
           echo "=== Persistent state files ==="
           if [ ! -d zied_data ]; then
-            echo "zied_data directory is missing"
-            exit 1
+            echo "No durable state found yet; cache or first-run initialization will be used."
+            mkdir -p zied_data
           fi
           find zied_data -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
           for f in paper.db model.pt gbm.pkl meta.json train.npz; do
@@ -90,8 +95,9 @@ jobs:
           path: zied_data
           key: zied-state-${{ github.run_id }}
 
-      # Save the complete state to a dedicated branch. This does not change main's source code.
-      - name: Save durable state
+      # Store all state files as 45 MiB chunks and verify SHA-256 when restoring.
+      # The helper is copied aside because the temporary orphan branch contains state only.
+      - name: Save durable state (chunked)
         if: always()
         shell: bash
         run: |
@@ -103,21 +109,24 @@ jobs:
           mkdir -p "$RUNNER_TEMP/zied-state-backup"
           rm -rf "$RUNNER_TEMP/zied-state-backup/zied_data"
           cp -a zied_data "$RUNNER_TEMP/zied-state-backup/zied_data"
+          cp state_chunks.py "$RUNNER_TEMP/state_chunks.py"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout --orphan state-data-tmp
           git rm -rf . >/dev/null 2>&1 || true
-          rm -rf zied_data
-          cp -a "$RUNNER_TEMP/zied-state-backup/zied_data" ./zied_data
-          git add -f zied_data
+          rm -rf zied_data zied_data_store
+          python "$RUNNER_TEMP/state_chunks.py" pack "$RUNNER_TEMP/zied-state-backup/zied_data" zied_data_store
+          git add -f zied_data_store
           if git diff --cached --quiet; then
-            echo "No persistent state files to commit."
+            echo "No persistent state chunks to commit."
             exit 1
           fi
-          git commit -m "Persist quant learning state [skip ci]"
+          git commit -m "Persist quant learning state as verified chunks [skip ci]"
           git push --force origin HEAD:state-data
-          echo "Durable learning state saved to state-data."
+          # Keep the original database available for the artifact backup below.
+          cp -a "$RUNNER_TEMP/zied-state-backup/zied_data" ./zied_data
+          echo "Durable learning state saved as chunks to state-data."
 
       # Convenient downloadable backup of the SQLite paper-trading DB.
       - name: Backup DB
