@@ -548,23 +548,62 @@ class Brain:
 
     # ---------- persistence ----------
     def save(self, n_in):
-        if self.nn is not None:
-            torch.save({"state": self.nn.state_dict(), "n_in": n_in}, CFG["MODEL"])
-        elif os.path.exists(CFG["MODEL"]):
-            os.remove(CFG["MODEL"])
-        if self.gbm is not None:
-            with open(CFG["GBM"], "wb") as fh:
-                pickle.dump(self.gbm, fh)
-        elif os.path.exists(CFG["GBM"]):
-            os.remove(CFG["GBM"])
-        meta = dict(mu=self.mu.tolist(), sd=self.sd.tolist(), thrs=self.thrs, mode=self.mode,
-                    auc=self.auc, has_nn=self.nn is not None, has_gbm=self.gbm is not None,
-                    n_in=n_in, info=self.info)
-        with open(CFG["META"], "w") as fh:
-            json.dump(meta, fh)
+        """Persist only the model selected for inference; write metadata last as commit marker."""
+        need_nn = self.mode in ("nn", "ens")
+        need_gbm = self.mode in ("gbm", "ens")
+        if self.mode not in ("nn", "gbm", "ens"):
+            raise RuntimeError(f"cannot save unknown model mode: {self.mode!r}")
+        if need_nn and (self.nn is None or torch is None):
+            raise RuntimeError("selected AI mode requires a neural network, but it is unavailable")
+        if need_gbm and self.gbm is None:
+            raise RuntimeError("selected AI mode requires GBM, but it is unavailable")
+        if self.mu is None or self.sd is None or len(self.mu) != n_in or len(self.sd) != n_in:
+            raise RuntimeError("refusing to save model with invalid normalization vectors")
+
+        os.makedirs(CFG["DIR"], exist_ok=True)
+        model_tmp, gbm_tmp, meta_tmp = CFG["MODEL"] + ".tmp", CFG["GBM"] + ".tmp", CFG["META"] + ".tmp"
+        for path in (model_tmp, gbm_tmp, meta_tmp):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+        try:
+            if need_nn:
+                torch.save({"state": self.nn.state_dict(), "n_in": n_in}, model_tmp)
+            if need_gbm:
+                with open(gbm_tmp, "wb") as fh:
+                    pickle.dump(self.gbm, fh, protocol=pickle.HIGHEST_PROTOCOL)
+            meta = dict(mu=np.asarray(self.mu, dtype=float).tolist(),
+                        sd=np.asarray(self.sd, dtype=float).tolist(), thrs=self.thrs, mode=self.mode,
+                        auc=self.auc, has_nn=need_nn, has_gbm=need_gbm,
+                        n_in=n_in, info=self.info)
+            with open(meta_tmp, "w", encoding="utf-8") as fh:
+                json.dump(meta, fh, allow_nan=False)
+                fh.flush()
+                os.fsync(fh.fileno())
+            # Metadata is replaced last, so incomplete temporary files are never treated as a model.
+            if need_nn:
+                os.replace(model_tmp, CFG["MODEL"])
+            if need_gbm:
+                os.replace(gbm_tmp, CFG["GBM"])
+            os.replace(meta_tmp, CFG["META"])
+            # Remove obsolete components only after the new metadata is safely committed.
+            if not need_nn:
+                try: os.remove(CFG["MODEL"])
+                except FileNotFoundError: pass
+            if not need_gbm:
+                try: os.remove(CFG["GBM"])
+                except FileNotFoundError: pass
+            log.info("model artifacts saved: mode=%s nn=%s gbm=%s", self.mode, need_nn, need_gbm)
+        finally:
+            for path in (model_tmp, gbm_tmp, meta_tmp):
+                try: os.remove(path)
+                except FileNotFoundError: pass
 
     def load(self):
         if not os.path.exists(CFG["META"]):
+            if os.path.exists(CFG["MODEL"]) or os.path.exists(CFG["GBM"]):
+                log.warning("orphan model artifact found without meta.json; ignoring incomplete model files")
             return
         try:
             meta = json.load(open(CFG["META"]))
