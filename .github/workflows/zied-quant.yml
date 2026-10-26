@@ -85,7 +85,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           # OKX_BASE: https://aws.okx.com   # uncomment if www.okx.com is blocked from the runner
-        run: python zied_quant.py once
+        run: python evolved_runner.py once
 
       # Keep cache for fast recovery, even if the Python cycle fails.
       - name: Save state cache
