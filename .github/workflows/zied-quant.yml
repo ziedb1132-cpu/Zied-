@@ -98,7 +98,8 @@ jobs:
       # Store all state files as 45 MiB chunks and verify SHA-256 when restoring.
       # The helper is copied aside because the temporary orphan branch contains state only.
       - name: Save durable state (chunked)
-        if: always()
+        # Never overwrite the last good state if restore or the trading cycle failed.
+        if: success()
         shell: bash
         run: |
           set -euo pipefail
