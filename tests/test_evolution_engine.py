@@ -23,5 +23,17 @@ class TradeMetricsTests(unittest.TestCase):
         self.assertEqual(m["pf"], 999.0)
 
 
+
+    def test_auc_uses_average_ranks_for_tied_scores(self):
+        from zied_quant import auc_score
+        self.assertAlmostEqual(auc_score(np.array([1, 0]), np.array([0.5, 0.5])), 0.5)
+        # Positive beats one negative and ties the other: (1 + 0.5) / 2 = 0.75.
+        self.assertAlmostEqual(auc_score(np.array([1, 0, 0]), np.array([0.9, 0.5, 0.9])), 0.75)
+
+    def test_auc_rejects_nonfinite_scores(self):
+        from zied_quant import auc_score
+        with self.assertRaises(ValueError):
+            auc_score(np.array([0, 1]), np.array([0.2, np.nan]))
+
 if __name__ == "__main__":
     unittest.main()
