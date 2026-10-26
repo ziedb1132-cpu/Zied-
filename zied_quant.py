@@ -1,30 +1,39 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Zied Quant
-==========
-OKX Spot (USDT, no stablecoins) -> 150 features (30 x 5 timeframes)
--> cross-sectional ranking -> 20-layer deep net -> BUY signal
--> paper trading (SQLite) + self-learning + Telegram alerts.
+Zied Quant v2
+=============
+OKX Spot (USDT, no stablecoins)
+  -> 150 features = 5 timeframes x 28 technical + 10 market-context features
+  -> cross-sectional ranking (best -> worst)
+  -> models: 20-layer deep net + gradient boosting + ensemble (best chosen on a time-split validation)
+  -> BUY signal -> paper trading with risk management and realistic costs
+  -> every signal is logged and labelled later with triple-barrier outcomes (self-learning)
+  -> walk-forward backtest, Telegram alerts + Telegram commands.
 
 PAPER ONLY. No real order is ever sent. Public OKX endpoints only (no API key).
 
-Usage:
-    python zied_quant.py train     # download history + train the 20-layer net
-    python zied_quant.py scan      # one scan (ranking + signals), no loop
-    python zied_quant.py run       # full loop: scan + paper trades + monitor + learn
-    python zied_quant.py once      # one full cycle (for schedulers / GitHub Actions)
-    python zied_quant.py stats     # paper-trading statistics
+Commands:
+    python zied_quant.py train        # build dataset (cached) + train models
+    python zied_quant.py refresh      # re-download history, then train
+    python zied_quant.py backtest [folds]   # walk-forward out-of-sample backtest
+    python zied_quant.py scan         # one scan, no trading
+    python zied_quant.py once         # one full cycle (schedulers / GitHub Actions)
+    python zied_quant.py run          # endless loop (VPS / Docker)
+    python zied_quant.py label        # label matured logged signals
+    python zied_quant.py stats        # paper-trading statistics
 
-Env (optional, for Telegram):
-    TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+Env (optional):
+    TELEGRAM_TOKEN, TELEGRAM_CHAT_ID   alerts + remote commands
+    OKX_BASE                           e.g. https://aws.okx.com if www.okx.com is blocked
 """
-import os, sys, time, json, sqlite3, logging, threading
+import os, sys, time, json, math, pickle, sqlite3, logging, threading, functools
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
 import requests
+from numpy.lib.stride_tricks import sliding_window_view
 
 try:
     import torch
@@ -42,37 +51,45 @@ CFG = dict(
     OKX=os.getenv("OKX_BASE", "https://www.okx.com"),
     TFS=["5m", "15m", "1H", "4H", "1D"],
     TF_SEC={"5m": 300, "15m": 900, "1H": 3600, "4H": 14400, "1D": 86400},
-    BASE_TF="1H",                      # timeframe used to build training rows
-    SCAN_DEPTH=300,                    # candles per TF for live scan
-    TRAIN_DEPTH={"5m": 1400, "15m": 1400, "1H": 1400, "4H": 900, "1D": 400},
-    TRAIN_TOP=40,                      # coins (by volume) used for bootstrap training
+    BASE_TF="1H",
+    SCAN_DEPTH=300,                    # candles per TF for the live scan
+    HIST_DAYS=30,                      # history used for the bootstrap dataset
+    TRAIN_TOP=40,                      # coins (by volume) in the bootstrap dataset
     MIN_VOL_USDT=300_000,              # min 24h quote volume to be in the universe
-    LABEL_H=4,                         # forward horizon in BASE_TF bars
-    LABEL_THR=0.010,                   # +1.0% forward return = positive label
-    TOP_AI=30,                         # coins analysed by the deep net each scan
-    SCAN_EVERY_SEC=900,                # 15 min
-    MONITOR_EVERY_SEC=30,
-    RANK_MSG_EVERY=4,                  # send ranking to Telegram every N scans
-    # paper trading
-    START_BALANCE=1000.0,
-    POS_FRAC=0.15,                     # fraction of equity per trade
-    MAX_OPEN=5,
-    FEE=0.001,                         # OKX spot taker ~0.1% per side
-    SLIP=0.0005,
+    # labels = triple barrier on 1H candles (same SL/TP as paper trading)
+    BARRIER_H=24,                      # max holding, in 1H bars
     SL_ATR=1.5, TP_ATR=3.0,
-    MAX_HOLD_H=24,
+    BT_COST=0.0035,                    # assumed round-trip cost (fees+slippage+spread) for labels/backtest
+    # scanning / signals
+    TOP_AI=30, LOG_TOP=20,
+    SCAN_EVERY_SEC=900, MONITOR_EVERY_SEC=30, RANK_MSG_EVERY=4,
     BTC_FILTER=-0.04,                  # no new entries if BTC 4H dist to EMA50 < this
-    RETRAIN_EVERY=20,                  # retrain after N newly closed trades
     PROB_MIN=None,                     # None = auto threshold from validation
+    # paper trading + risk
+    START_BALANCE=1000.0,
+    POS_FRAC=0.15,                     # max fraction of equity per trade
+    RISK_PER_TRADE=0.005,              # equity risked per trade -> smaller size when volatility is high
+    MAX_OPEN=5,
+    CORR_MAX=0.85,                     # skip a coin too correlated with an open position
+    DAILY_LOSS=0.03,                   # stop new entries after -3% realised today (UTC)
+    LOSS_STREAK=4, COOLDOWN_H=6,       # kill-switch: N losses in a row -> pause
+    MAX_HOLD_H=24,
+    FEE=0.001, SLIP=0.0005, IMPACT_K=0.1,
+    # self-learning
+    RETRAIN_EVERY=20,                  # closed paper trades
+    RETRAIN_SIGNALS=300,               # newly labelled logged signals
     DIR="zied_data",
 )
 os.makedirs(CFG["DIR"], exist_ok=True)
 CFG["DB"] = os.path.join(CFG["DIR"], "paper.db")
 CFG["MODEL"] = os.path.join(CFG["DIR"], "model.pt")
+CFG["GBM"] = os.path.join(CFG["DIR"], "gbm.pkl")
+CFG["META"] = os.path.join(CFG["DIR"], "meta.json")
 CFG["TRAINSET"] = os.path.join(CFG["DIR"], "train.npz")
 
 TFS, BASE = CFG["TFS"], CFG["BASE_TF"]
 EPS = 1e-12
+DATA_VER = 2
 
 # =====================================================================
 # TELEGRAM
@@ -84,7 +101,7 @@ def tg(msg):
         return
     try:
         requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                      json={"chat_id": chat, "text": msg}, timeout=10)
+                      json={"chat_id": chat, "text": msg[:4000]}, timeout=10)
     except Exception as e:
         log.warning("telegram failed: %s", e)
 
@@ -93,12 +110,12 @@ def tg(msg):
 # =====================================================================
 _thr_lock, _last_call = threading.Lock(), [0.0]
 
-def okx_get(path, params=None, tries=4):
+def okx_get(path, params=None, tries=4, gap=0.07):
     for i in range(tries):
-        with _thr_lock:                               # global throttle ~14 req/s
+        with _thr_lock:                               # global throttle
             dt = time.time() - _last_call[0]
-            if dt < 0.07:
-                time.sleep(0.07 - dt)
+            if dt < gap:
+                time.sleep(gap - dt)
             _last_call[0] = time.time()
         try:
             j = requests.get(CFG["OKX"] + path, params=params, timeout=15).json()
@@ -119,7 +136,7 @@ def is_stable(base):
     return "USD" in b or b in STABLE_EXTRA          # USDC, FDUSD, TUSD, PYUSD, RLUSD...
 
 def get_universe():
-    """All live SPOT *-USDT pairs, no stablecoins, with 24h volume + last/ask."""
+    """All live SPOT *-USDT pairs, no stablecoins, with 24h volume, ask and spread."""
     ins = okx_get("/api/v5/public/instruments", {"instType": "SPOT"})
     ok = {i["instId"] for i in ins
           if i["quoteCcy"] == "USDT" and i["state"] == "live" and not is_stable(i["baseCcy"])}
@@ -128,8 +145,12 @@ def get_universe():
         if t["instId"] in ok:
             vol = float(t.get("volCcy24h") or 0)
             if vol >= CFG["MIN_VOL_USDT"]:
-                rows.append(dict(inst=t["instId"], vol=vol, last=float(t["last"]),
-                                 ask=float(t.get("askPx") or t["last"])))
+                last = float(t["last"])
+                ask = float(t.get("askPx") or last); bid = float(t.get("bidPx") or 0)
+                spread = (ask - bid) / last if bid > 0 and last > 0 else 0.002
+                rows.append(dict(inst=t["instId"], vol=vol, last=last, ask=ask, spread=spread))
+    if not rows:
+        return pd.DataFrame(columns=["vol", "last", "ask", "spread"])
     return pd.DataFrame(rows).set_index("inst").sort_values("vol", ascending=False)
 
 def get_prices():
@@ -137,20 +158,25 @@ def get_prices():
             okx_get("/api/v5/market/tickers", {"instType": "SPOT"})}
 
 def get_candles(inst, bar, depth):
+    """Closed candles, oldest first. depth > 1400 switches to the history endpoint."""
+    hist = depth > 1400
+    path = "/api/v5/market/history-candles" if hist else "/api/v5/market/candles"
+    lim, gap = (100, 0.11) if hist else (300, 0.07)
     out, after = [], None
     while len(out) < depth:
-        p = {"instId": inst, "bar": bar, "limit": 300}
+        p = {"instId": inst, "bar": bar, "limit": lim}
         if after:
             p["after"] = after
-        r = okx_get("/api/v5/market/candles", p)
+        r = okx_get(path, p, gap=gap)
         if not r:
             break
         out += r
         after = r[-1][0]
-        if len(r) < 300:
+        if len(r) < lim:
             break
     if not out:
         return None
+    out = [(list(r) + ["1"])[:9] for r in out]
     df = pd.DataFrame(out, columns=["ts", "o", "h", "l", "c", "vol", "volccy", "volq", "confirm"])
     df = df[df["confirm"] == "1"].copy()                  # closed candles only
     for k in ("o", "h", "l", "c", "vol"):
@@ -160,16 +186,45 @@ def get_candles(inst, bar, depth):
     df["avail"] = pd.to_datetime(df["ts"] + CFG["TF_SEC"][bar] * 1000, unit="ms")
     return df.iloc[-depth:].reset_index(drop=True)
 
+def hist_depth():
+    d = CFG["HIST_DAYS"]
+    return {"5m": d * 288 + 100, "15m": d * 96 + 100, "1H": d * 24 + 400,
+            "4H": d * 6 + 300, "1D": d + 120}
+
+def fetch_frames(inst, depth):
+    fr = {}
+    for tf in TFS:
+        d = get_candles(inst, tf, depth if isinstance(depth, int) else depth[tf])
+        if d is None or len(d) < 60:
+            return None
+        fr[tf] = d
+    return fr
+
+def fetch_btc(h1, h4):
+    b1, b4 = get_candles("BTC-USDT", "1H", h1), get_candles("BTC-USDT", "4H", h4)
+    if b1 is None or b4 is None:
+        raise RuntimeError("BTC data unavailable")
+    return {"1H": b1, "4H": b4}
+
+def to_sec(idx):
+    return np.asarray((pd.DatetimeIndex(idx) - pd.Timestamp("1970-01-01")) // pd.Timedelta(seconds=1),
+                      dtype=np.float64)
+
 # =====================================================================
-# FEATURES : 30 per timeframe x 5 timeframes = 150
+# FEATURES : 28 technical x 5 timeframes + 10 market-context = 150
 # =====================================================================
-NAMES = ["ret1", "ret3", "ret5", "ret10", "ret20", "vol10", "vol20", "rsi7", "rsi14",
+NAMES = ["ret1", "ret3", "ret5", "ret10", "ret20", "vol20", "rsi7", "rsi14",
          "macd", "macd_hist", "stoch_k", "bb_pos", "bb_width", "atr_pct", "adx14", "cci20",
-         "mfi14", "obv_slope", "vol_ratio", "ema_dist9", "ema_dist21", "ema_dist50",
+         "mfi14", "obv_slope", "vol_ratio", "ema_dist21", "ema_dist50",
          "ema_slope21", "dist_high20", "dist_low20", "range_pct", "body_ratio",
          "upper_wick", "lower_wick"]
-FEATURE_COLS = [f"{tf}_{n}" for tf in TFS for n in NAMES]
-assert len(FEATURE_COLS) == 150
+CTX_NAMES = ["beta48", "corr48", "rel_ret24", "btc_ret24", "btc_vol24", "btc_regime",
+             "hour_sin", "hour_cos", "dow_sin", "log_dvol24"]
+TF_COLS = [f"{tf}_{n}" for tf in TFS for n in NAMES]
+CTX_COLS = [f"ctx_{n}" for n in CTX_NAMES]
+FEATURE_COLS = TF_COLS + CTX_COLS
+N_FEATURES = len(FEATURE_COLS)
+assert N_FEATURES == 150
 
 def _rsi(c, n):
     d = c.diff()
@@ -183,8 +238,7 @@ def tf_features(df):
     f = {}
     for n in (1, 3, 5, 10, 20):
         f[f"ret{n}"] = lc.diff(n)
-    r = lc.diff()
-    f["vol10"], f["vol20"] = r.rolling(10).std(), r.rolling(20).std()
+    f["vol20"] = lc.diff().rolling(20).std()
     f["rsi7"], f["rsi14"] = _rsi(c, 7), _rsi(c, 14)
     macd = c.ewm(span=12, adjust=False).mean() - c.ewm(span=26, adjust=False).mean()
     sig = macd.ewm(span=9, adjust=False).mean()
@@ -214,8 +268,8 @@ def tf_features(df):
     obv = (np.sign(c.diff()).fillna(0) * v).cumsum()
     f["obv_slope"] = (obv - obv.shift(10)) / (v.rolling(10).sum() + EPS)
     f["vol_ratio"] = v / (v.rolling(20).mean() + EPS)
-    e9, e21, e50 = (c.ewm(span=s, adjust=False).mean() for s in (9, 21, 50))
-    f["ema_dist9"], f["ema_dist21"], f["ema_dist50"] = c / e9 - 1, c / e21 - 1, c / e50 - 1
+    e21, e50 = c.ewm(span=21, adjust=False).mean(), c.ewm(span=50, adjust=False).mean()
+    f["ema_dist21"], f["ema_dist50"] = c / e21 - 1, c / e50 - 1
     f["ema_slope21"] = e21.pct_change(5)
     f["dist_high20"] = c / h.rolling(20).max() - 1
     f["dist_low20"] = c / l.rolling(20).min() - 1
@@ -225,8 +279,33 @@ def tf_features(df):
     f["upper_wick"] = (h - np.maximum(o, c)) / rng
     f["lower_wick"] = (np.minimum(o, c) - l) / rng
     out = pd.DataFrame(f)[NAMES].replace([np.inf, -np.inf], np.nan)
-    out.index = df["avail"].values
+    out.index = pd.DatetimeIndex(df["avail"].values)
     return out
+
+def ctx_features(coin, btc):
+    """10 market-context features on the coin's 1H index (relation to BTC, regime, time, liquidity)."""
+    idx = pd.DatetimeIndex(coin["avail"].values)
+    c = pd.Series(coin["c"].values, index=idx)
+    v = pd.Series(coin["vol"].values, index=idx)
+    b1 = pd.Series(btc["1H"]["c"].values, index=pd.DatetimeIndex(btc["1H"]["avail"].values))
+    b = b1[~b1.index.duplicated()].reindex(idx)
+    rc, rb = np.log(c).diff(), np.log(b).diff()
+    out = pd.DataFrame(index=idx)
+    out["beta48"] = rc.rolling(48).cov(rb) / (rb.rolling(48).var() + EPS)
+    out["corr48"] = rc.rolling(48).corr(rb)
+    out["rel_ret24"] = np.log(c).diff(24) - np.log(b).diff(24)
+    out["btc_ret24"] = np.log(b).diff(24)
+    out["btc_vol24"] = rb.rolling(24).std()
+    b4 = btc["4H"]
+    reg = pd.Series((b4["c"] / b4["c"].ewm(span=50, adjust=False).mean() - 1).values,
+                    index=pd.DatetimeIndex(b4["avail"].values))
+    out["btc_regime"] = reg[~reg.index.duplicated()].reindex(idx, method="ffill")
+    out["hour_sin"] = np.sin(2 * np.pi * np.asarray(idx.hour) / 24)
+    out["hour_cos"] = np.cos(2 * np.pi * np.asarray(idx.hour) / 24)
+    out["dow_sin"] = np.sin(2 * np.pi * np.asarray(idx.dayofweek) / 7)
+    out["log_dvol24"] = np.log((c * v).rolling(24).sum() + 1)
+    out.columns = CTX_COLS
+    return out.replace([np.inf, -np.inf], np.nan)[CTX_COLS]
 
 def all_tf_features(frames):
     F = {}
@@ -234,26 +313,601 @@ def all_tf_features(frames):
         x = tf_features(frames[tf]); x.columns = [f"{tf}_{n}" for n in NAMES]; F[tf] = x
     return F
 
-def live_vector(frames):
-    """Latest closed-candle features of every timeframe -> 150 values."""
+def live_vector(frames, btc):
+    """Latest closed-candle features of every timeframe + context -> 150 values."""
     F = all_tf_features(frames)
-    return pd.concat([F[tf].iloc[-1] for tf in TFS])[FEATURE_COLS]
+    parts = [F[tf].iloc[-1] for tf in TFS] + [ctx_features(frames[BASE], btc).iloc[-1]]
+    return pd.concat(parts)[FEATURE_COLS]
 
-def aligned_matrix(frames):
+def aligned_matrix(frames, btc):
     """Historical rows on BASE_TF; other TFs use the last candle already closed (no look-ahead)."""
     F = all_tf_features(frames)
     idx = F[BASE].index
     parts = [F[BASE]] + [F[tf].reindex(idx, method="ffill") for tf in TFS if tf != BASE]
+    parts.append(ctx_features(frames[BASE], btc))
     return pd.concat(parts, axis=1)[FEATURE_COLS]
 
-def fetch_frames(inst, depth):
-    fr = {}
-    for tf in TFS:
-        d = get_candles(inst, tf, depth if isinstance(depth, int) else depth[tf])
-        if d is None or len(d) < 60:
+# =====================================================================
+# TRIPLE-BARRIER LABELS (same SL/TP logic as paper trading)
+# =====================================================================
+def barrier_batch(c, h, l, atr):
+    """Row i enters at c[i]; path = candles i+1 .. i+H. Returns (net_return, hold_bars).
+    SL is assumed first when SL and TP hit inside the same candle (conservative)."""
+    H = CFG["BARRIER_H"]
+    n = len(c)
+    ret = np.full(n, np.nan); hold = np.full(n, np.nan)
+    if n <= H:
+        return ret, hold
+    c, h, l, atr = (np.asarray(x, dtype=np.float64) for x in (c, h, l, atr))
+    m = n - H
+    Hw = sliding_window_view(h[1:], H)
+    Lw = sliding_window_view(l[1:], H)
+    Cw = sliding_window_view(c[1:], H)
+    a = np.clip(atr[:m], 0.004, 0.06)
+    entry = c[:m]
+    sl = entry * (1 - CFG["SL_ATR"] * a); tp = entry * (1 + CFG["TP_ATR"] * a)
+    hit_sl, hit_tp = Lw <= sl[:, None], Hw >= tp[:, None]
+    i_sl = np.where(hit_sl.any(1), hit_sl.argmax(1), H)
+    i_tp = np.where(hit_tp.any(1), hit_tp.argmax(1), H)
+    sl_first = (i_sl < H) & (i_sl <= i_tp)
+    tp_first = (i_tp < H) & (i_tp < i_sl)
+    gross = np.where(sl_first, -CFG["SL_ATR"] * a,
+                     np.where(tp_first, CFG["TP_ATR"] * a, Cw[:, -1] / entry - 1))
+    ret[:m] = gross - CFG["BT_COST"]
+    hold[:m] = np.where(sl_first, i_sl + 1, np.where(tp_first, i_tp + 1, H))
+    ret[:m] = np.where(np.isnan(atr[:m]), np.nan, ret[:m])
+    return ret, hold
+
+def barrier_single(entry, atr, hi, lo, cl):
+    H = CFG["BARRIER_H"]
+    c = np.r_[entry, cl[:H]]; h = np.r_[entry, hi[:H]]; l = np.r_[entry, lo[:H]]
+    r, hd = barrier_batch(c, h, l, np.full(len(c), atr))
+    return float(r[0]), int(r[0] > 0), float(hd[0])
+
+# =====================================================================
+# DATASETS
+# =====================================================================
+DS_KEYS = ("X", "y", "ts", "ret", "hold", "coin")
+
+def empty_ds():
+    return dict(X=np.zeros((0, N_FEATURES), np.float32), y=np.zeros(0), ts=np.zeros(0),
+                ret=np.zeros(0), hold=np.zeros(0), coin=np.array([], dtype="<U16"))
+
+def ds_concat(parts):
+    parts = [p for p in parts if p is not None and len(p["y"])]
+    if not parts:
+        return empty_ds()
+    return {k: np.concatenate([p[k] for p in parts]) for k in DS_KEYS}
+
+def build_trainset(universe):
+    insts = list(universe.index[:CFG["TRAIN_TOP"]])
+    depth = hist_depth()
+    log.info("downloading %d days of history for %d coins ...", CFG["HIST_DAYS"], len(insts))
+    btc = fetch_btc(depth["1H"], depth["4H"])
+    def one(inst):
+        try:
+            fr = fetch_frames(inst, depth)
+            if fr is None:
+                return None
+            M = aligned_matrix(fr, btc)
+            b = fr[BASE]
+            ret, hold = barrier_batch(b["c"].values, b["h"].values, b["l"].values, M["1H_atr_pct"].values)
+            D = M.assign(_ret=ret, _hold=hold).dropna()
+            if D.empty:
+                return None
+            return dict(X=D[FEATURE_COLS].values.astype(np.float32), y=(D["_ret"] > 0).values.astype(np.float32),
+                        ts=to_sec(D.index), ret=D["_ret"].values, hold=D["_hold"].values,
+                        coin=np.array([inst] * len(D), dtype="<U16"))
+        except Exception as e:
+            log.warning("history %s failed: %s", inst, e); return None
+    with ThreadPoolExecutor(4) as ex:
+        ds = ds_concat(list(ex.map(one, insts)))
+    if not len(ds["y"]):
+        raise RuntimeError("empty training set (OKX unreachable?)")
+    np.savez_compressed(CFG["TRAINSET"], ver=DATA_VER, **ds)
+    log.info("trainset: %d rows, win rate %.1f%%", len(ds["y"]), 100 * ds["y"].mean())
+    return ds
+
+def load_trainset():
+    if not os.path.exists(CFG["TRAINSET"]):
+        return None
+    try:
+        z = np.load(CFG["TRAINSET"])
+        if int(z["ver"]) != DATA_VER or z["X"].shape[1] != N_FEATURES:
             return None
-        fr[tf] = d
-    return fr
+        return {k: z[k] for k in DS_KEYS}
+    except Exception:
+        return None
+
+# =====================================================================
+# MODELS : 20-layer net + gradient boosting + ensemble
+# =====================================================================
+if torch is not None:
+    class Block(nn.Module):
+        def __init__(self, d, p):
+            super().__init__()
+            self.net = nn.Sequential(nn.Linear(d, d), nn.LayerNorm(d), nn.GELU(), nn.Dropout(p),
+                                     nn.Linear(d, d), nn.LayerNorm(d))
+            self.act = nn.GELU()
+        def forward(self, x):
+            return self.act(x + self.net(x))
+
+    class ZiedNet(nn.Module):             # 1 input + 18 hidden (9 residual blocks) + 1 output = 20 Linear layers
+        def __init__(self, n_in, d=192, p=0.15):
+            super().__init__()
+            self.inp = nn.Sequential(nn.Linear(n_in, d), nn.LayerNorm(d), nn.GELU())
+            self.blocks = nn.Sequential(*[Block(d, p) for _ in range(9)])
+            self.out = nn.Linear(d, 1)
+        def forward(self, x):
+            return self.out(self.blocks(self.inp(x)))
+
+    def n_linear(m):
+        return sum(isinstance(x, nn.Linear) for x in m.modules())
+
+    def _train_net(Xf, yf, Xe, ye, epochs):
+        torch.manual_seed(0)
+        Xt, yt = torch.tensor(Xf), torch.tensor(yf, dtype=torch.float32)
+        Xv, yv = torch.tensor(Xe), torch.tensor(ye, dtype=torch.float32)
+        net = ZiedNet(Xf.shape[1])
+        assert n_linear(net) == 20, n_linear(net)
+        opt = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-3)
+        sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, epochs)
+        lossf = nn.BCEWithLogitsLoss()
+        best, state, bad = 1e9, None, 0
+        for ep in range(epochs):
+            net.train(); perm = torch.randperm(len(Xt))
+            for i in range(0, len(perm), 256):
+                b = perm[i:i + 256]
+                if len(b) < 2:
+                    continue
+                opt.zero_grad(); loss = lossf(net(Xt[b]).squeeze(1), yt[b]); loss.backward()
+                nn.utils.clip_grad_norm_(net.parameters(), 1.0); opt.step()
+            sch.step(); net.eval()
+            with torch.no_grad():
+                vl = lossf(net(Xv).squeeze(1), yv).item()
+            if vl < best - 1e-4:
+                best, bad = vl, 0; state = {k: v.clone() for k, v in net.state_dict().items()}
+            else:
+                bad += 1
+                if bad >= 10:
+                    break
+        if state is None:
+            raise RuntimeError("net training diverged")
+        net.load_state_dict(state); net.eval()
+        return net
+
+    def _nn_predict(net, X):
+        with torch.no_grad():
+            return torch.sigmoid(net(torch.tensor(np.asarray(X, dtype=np.float32))).squeeze(1)).numpy()
+
+class GBM:
+    """LightGBM if installed, otherwise scikit-learn HistGradientBoosting."""
+    def __init__(self):
+        self.m = None; self.kind = None
+
+    def fit(self, Xf, yf, Xe, ye):
+        try:
+            import lightgbm as lgb
+            self.m = lgb.LGBMClassifier(n_estimators=800, learning_rate=0.03, num_leaves=31,
+                                        min_child_samples=50, subsample=0.8, subsample_freq=1,
+                                        colsample_bytree=0.7, reg_lambda=1.0, verbose=-1)
+            self.m.fit(Xf, yf, eval_set=[(Xe, ye)], callbacks=[lgb.early_stopping(50, verbose=False)])
+            self.kind = "lightgbm"; return True
+        except ImportError:
+            pass
+        try:
+            from sklearn.ensemble import HistGradientBoostingClassifier
+            self.m = HistGradientBoostingClassifier(max_iter=400, learning_rate=0.05, max_leaf_nodes=31,
+                                                    min_samples_leaf=50, early_stopping=True,
+                                                    validation_fraction=0.15, random_state=0)
+            self.m.fit(Xf, yf); self.kind = "sklearn"; return True
+        except ImportError:
+            return False
+
+    def predict(self, X):
+        return self.m.predict_proba(X)[:, 1]
+
+def auc_score(y, p):
+    y = np.asarray(y); p = np.asarray(p)
+    o = np.argsort(p, kind="stable"); r = np.empty(len(p)); r[o] = np.arange(1, len(p) + 1)
+    npos = (y == 1).sum(); nneg = len(y) - npos
+    if npos == 0 or nneg == 0:
+        return 0.5
+    return float((r[y == 1].sum() - npos * (npos + 1) / 2) / (npos * nneg))
+
+class Brain:
+    def __init__(self, persist=True):
+        self.nn = self.gbm = None
+        self.mu = self.sd = None
+        self.thrs, self.mode, self.auc, self.info = {}, None, None, {}
+        self.persist = persist
+        if persist:
+            self.load()
+
+    @property
+    def ready(self):
+        return self.mode is not None and (self.nn is not None or self.gbm is not None)
+
+    @property
+    def thr(self):
+        return self.thrs.get(self.mode, 0.5)
+
+    def _norm(self, X):
+        return np.clip((np.asarray(X, dtype=np.float64) - self.mu) / self.sd, -5, 5).astype(np.float32)
+
+    def describe(self):
+        if not self.ready:
+            return "لا يوجد نموذج بعد"
+        return (f"النمط: {self.mode} | AUC={self.auc:.3f} | العتبة={self.thr:.3f}\n"
+                f"شبكة 20 طبقة: {'نعم' if self.nn is not None else 'لا'} | "
+                f"GBM: {'نعم' if self.gbm is not None else 'لا'}\n"
+                f"عيّنات التدريب: {self.info.get('n', '?')}")
+
+    # ---------- persistence ----------
+    def save(self, n_in):
+        if self.nn is not None:
+            torch.save({"state": self.nn.state_dict(), "n_in": n_in}, CFG["MODEL"])
+        elif os.path.exists(CFG["MODEL"]):
+            os.remove(CFG["MODEL"])
+        if self.gbm is not None:
+            with open(CFG["GBM"], "wb") as fh:
+                pickle.dump(self.gbm, fh)
+        elif os.path.exists(CFG["GBM"]):
+            os.remove(CFG["GBM"])
+        meta = dict(mu=self.mu.tolist(), sd=self.sd.tolist(), thrs=self.thrs, mode=self.mode,
+                    auc=self.auc, has_nn=self.nn is not None, has_gbm=self.gbm is not None,
+                    n_in=n_in, info=self.info)
+        with open(CFG["META"], "w") as fh:
+            json.dump(meta, fh)
+
+    def load(self):
+        if not os.path.exists(CFG["META"]):
+            return
+        try:
+            meta = json.load(open(CFG["META"]))
+            if meta["n_in"] != N_FEATURES:
+                log.info("saved model has %s features, expected %s -> ignored", meta["n_in"], N_FEATURES)
+                return
+            self.mu, self.sd = np.array(meta["mu"]), np.array(meta["sd"])
+            self.thrs, self.auc, self.info = meta["thrs"], meta["auc"], meta.get("info", {})
+            if meta["has_nn"] and torch is not None and os.path.exists(CFG["MODEL"]):
+                ck = torch.load(CFG["MODEL"], weights_only=True)
+                self.nn = ZiedNet(ck["n_in"]); self.nn.load_state_dict(ck["state"]); self.nn.eval()
+            if meta["has_gbm"] and os.path.exists(CFG["GBM"]):
+                with open(CFG["GBM"], "rb") as fh:
+                    self.gbm = pickle.load(fh)
+            mode = meta["mode"]
+            if mode in ("nn", "ens") and self.nn is None:        # torch missing here -> degrade gracefully
+                mode = "gbm" if self.gbm is not None else None
+            if mode == "ens" and self.gbm is None:
+                mode = "nn"
+            if mode == "gbm" and self.gbm is None:
+                mode = "nn" if self.nn is not None else None
+            self.mode = mode
+            if self.ready:
+                log.info("model loaded: mode=%s auc=%.3f thr=%.3f", self.mode, self.auc, self.thr)
+        except Exception as e:
+            log.warning("could not load model: %s", e)
+            self.nn = self.gbm = self.mode = None
+
+    # ---------- inference ----------
+    def predict_all(self, X):
+        Xn = self._norm(X); out = {}
+        if self.nn is not None:
+            out["nn"] = _nn_predict(self.nn, Xn)
+        if self.gbm is not None:
+            out["gbm"] = self.gbm.predict(Xn)
+        if len(out) == 2:
+            out["ens"] = (out["nn"] + out["gbm"]) / 2
+        return out
+
+    def predict(self, X):
+        return self.predict_all(X)[self.mode]
+
+    # ---------- training ----------
+    def fit(self, X, y, ts, ret=None, epochs=80, force=False):
+        """Time-ordered split with an embargo; early stopping uses the tail of the training part only,
+        so the validation block (last 20%) stays untouched for model choice and the threshold."""
+        o = np.argsort(ts, kind="stable")
+        X = np.asarray(X, dtype=np.float64)[o]; y = np.asarray(y, dtype=np.float32)[o]
+        ts = np.asarray(ts, dtype=np.float64)[o]
+        ret = None if ret is None else np.asarray(ret, dtype=np.float64)[o]
+        n = len(X)
+        if n < 600:
+            raise ValueError(f"not enough samples ({n})")
+        nv = max(int(n * 0.2), 200)
+        ntr = int(np.searchsorted(ts, ts[n - nv] - CFG["BARRIER_H"] * 3600))
+        if ntr < 400:
+            raise ValueError("training part too small after embargo")
+        mu = X[:ntr].mean(0); sd = X[:ntr].std(0) + 1e-8
+        tmp = Brain.__new__(Brain); tmp.mu, tmp.sd = mu, sd
+        Xtr, Xv = tmp._norm(X[:ntr]), tmp._norm(X[n - nv:])
+        ytr, yv = y[:ntr], y[n - nv:]
+        nf = int(ntr * 0.85)
+        models, pv = {}, {}
+        g = GBM()
+        if g.fit(Xtr[:nf], ytr[:nf], Xtr[nf:], ytr[nf:]):
+            models["gbm"] = g; pv["gbm"] = g.predict(Xv)
+        if torch is not None:
+            net = _train_net(Xtr[:nf], ytr[:nf], Xtr[nf:], ytr[nf:], epochs)
+            models["nn"] = net; pv["nn"] = _nn_predict(net, Xv)
+        if not pv:
+            raise RuntimeError("no model available: install torch and/or lightgbm / scikit-learn")
+        if len(pv) == 2:
+            pv["ens"] = (pv["nn"] + pv["gbm"]) / 2
+        aucs = {k: auc_score(yv, p) for k, p in pv.items()}
+        mode = max(aucs, key=aucs.get)
+        thrs = {k: float(np.quantile(p, 0.90)) for k, p in pv.items()}
+        info = dict(n=int(n), n_val=int(nv), aucs=aucs, mode=mode, auc=aucs[mode], thr=thrs[mode],
+                    win_rate=float(y.mean()), gbm_kind=g.kind if "gbm" in models else None)
+        if ret is not None:
+            rv = ret[n - nv:]; m = pv[mode] >= thrs[mode]
+            info["val_all_net"] = float(np.nanmean(rv))
+            info["val_top_net"] = float(np.nanmean(rv[m])) if m.any() else None
+        accepted = force or (aucs[mode] >= 0.52 and (self.auc is None or aucs[mode] >= self.auc - 0.03))
+        info["accepted"] = bool(accepted)
+        if accepted:
+            self.nn, self.gbm = models.get("nn"), models.get("gbm")
+            self.mu, self.sd, self.thrs, self.mode, self.auc, self.info = mu, sd, thrs, mode, aucs[mode], info
+            if self.persist:
+                self.save(X.shape[1])
+        self.last_fit = dict(info=info, pv=pv, yv=yv)
+        return info
+
+# =====================================================================
+# PAPER TRADING + SIGNAL LOG + SELF-LEARNING MEMORY
+# =====================================================================
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS trades(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, open_ts REAL, entry REAL, qty REAL,
+  usdt_in REAL, sl REAL, tp REAL, prob REAL, rank INTEGER, feats TEXT,
+  status TEXT DEFAULT 'OPEN', close_ts REAL, exit REAL, pnl REAL, pnl_pct REAL, reason TEXT,
+  spread REAL, vol24 REAL);
+CREATE TABLE IF NOT EXISTS experience(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, feats TEXT, label INTEGER, pnl REAL, ret REAL);
+CREATE TABLE IF NOT EXISTS signals(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, price REAL, atr REAL, feats TEXT,
+  prob REAL, rank INTEGER, labeled INTEGER DEFAULT 0, label INTEGER, ret REAL, hold REAL);
+"""
+
+def locked(f):
+    @functools.wraps(f)
+    def w(self, *a, **k):
+        with self.lock:
+            return f(self, *a, **k)
+    return w
+
+def impact(usdt, vol24):
+    return CFG["IMPACT_K"] * math.sqrt(max(usdt, 0.0) / max(vol24 or 1e6, 1.0))
+
+def _rows_to_ds(rows, label_key="label", ret_key="ret"):
+    X, y, ts, ret, hold, coin = [], [], [], [], [], []
+    for r in rows:
+        f = json.loads(r["feats"])
+        if len(f) != N_FEATURES:
+            continue
+        X.append(f); y.append(r[label_key]); ts.append(r["ts"])
+        ret.append(r[ret_key] if r[ret_key] is not None else np.nan)
+        hold.append(r["hold"] if "hold" in r.keys() and r["hold"] is not None else np.nan)
+        coin.append(r["inst"])
+    if not X:
+        return empty_ds()
+    return dict(X=np.array(X, dtype=np.float32), y=np.array(y, dtype=np.float32), ts=np.array(ts, dtype=np.float64),
+                ret=np.array(ret, dtype=np.float64), hold=np.array(hold, dtype=np.float64),
+                coin=np.array(coin, dtype="<U16"))
+
+class Paper:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(CFG["DB"], check_same_thread=False)
+        self.db.row_factory = sqlite3.Row
+        self.db.executescript(SCHEMA)
+        self._migrate()
+        if self._get("cash") is None:
+            self._set("cash", CFG["START_BALANCE"])
+
+    def _migrate(self):
+        for table, cols in {"trades": {"spread": "REAL", "vol24": "REAL"}, "experience": {"ret": "REAL"}}.items():
+            have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            for c, t in cols.items():
+                if c not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {c} {t}")
+        self.db.commit()
+
+    @locked
+    def _get(self, k):
+        r = self.db.execute("SELECT v FROM meta WHERE k=?", (k,)).fetchone()
+        return None if r is None else r["v"]
+
+    @locked
+    def _set(self, k, v):
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (k, str(v))); self.db.commit()
+
+    @locked
+    def count(self, table, where="1=1"):
+        return self.db.execute(f"SELECT COUNT(*) c FROM {table} WHERE {where}").fetchone()["c"]
+
+    @locked
+    def cash(self):
+        return float(self._get("cash"))
+
+    @locked
+    def open_trades(self):
+        return [dict(r) for r in self.db.execute("SELECT * FROM trades WHERE status='OPEN'")]
+
+    @locked
+    def equity(self, prices=None):
+        eq = self.cash()
+        for t in self.open_trades():
+            px = (prices or {}).get(t["inst"], t["entry"]); eq += t["qty"] * px
+        return eq
+
+    # ---------- risk management ----------
+    @locked
+    def risk_gate(self, equity):
+        """None if new entries are allowed, else the reason (string)."""
+        if self._get("paused") == "1":
+            return "paused"
+        if time.time() < float(self._get("pause_until") or 0):
+            return "cooldown"
+        day0 = time.time() // 86400 * 86400
+        pnl = self.db.execute("SELECT COALESCE(SUM(pnl),0) s FROM trades WHERE status='CLOSED' AND close_ts>=?",
+                              (day0,)).fetchone()["s"]
+        if pnl <= -CFG["DAILY_LOSS"] * equity:
+            return "daily_loss"
+        return None
+
+    # ---------- trading ----------
+    @locked
+    def open(self, inst, ask, atr_pct, prob, rank, feats, vol24, spread):
+        if any(t["inst"] == inst for t in self.open_trades()):
+            return None
+        if len(self.open_trades()) >= CFG["MAX_OPEN"]:
+            return None
+        eq = self.equity()
+        a = float(np.clip(atr_pct, 0.004, 0.06))
+        usdt = min(self.cash(), CFG["POS_FRAC"] * eq, CFG["RISK_PER_TRADE"] * eq / (CFG["SL_ATR"] * a))
+        if usdt < 10:
+            return None
+        entry = ask * (1 + CFG["SLIP"] + impact(usdt, vol24))
+        qty = usdt * (1 - CFG["FEE"]) / entry
+        sl, tp = entry * (1 - CFG["SL_ATR"] * a), entry * (1 + CFG["TP_ATR"] * a)
+        self.db.execute(
+            "INSERT INTO trades(inst,open_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats,spread,vol24) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (inst, time.time(), entry, qty, usdt, sl, tp, prob, rank,
+             json.dumps([float(x) for x in feats]), spread, vol24))
+        self._set("cash", self.cash() - usdt)
+        return dict(inst=inst, entry=entry, sl=sl, tp=tp, usdt=usdt)
+
+    @locked
+    def _close(self, t, price, reason):
+        exit_px = price * (1 - CFG["SLIP"] - (t.get("spread") or 0) / 2 - impact(t["usdt_in"], t.get("vol24")))
+        proceeds = t["qty"] * exit_px * (1 - CFG["FEE"])
+        pnl = proceeds - t["usdt_in"]; pct = pnl / t["usdt_in"]
+        now = time.time()
+        self.db.execute("UPDATE trades SET status='CLOSED',close_ts=?,exit=?,pnl=?,pnl_pct=?,reason=? WHERE id=?",
+                        (now, exit_px, pnl, pct, reason, t["id"]))
+        self.db.execute("INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
+                        (now, t["inst"], t["feats"], int(pnl > 0), pnl, pct))
+        self._set("cash", self.cash() + proceeds); self.db.commit()
+        tg(f"{'✅' if pnl > 0 else '🔴'} إغلاق صفقة ورقية {t['inst']}\nالسبب: {reason}\n"
+           f"دخول {t['entry']:.6g} ← خروج {exit_px:.6g}\nالربح: {pnl:+.2f} USDT ({pct * 100:+.2f}%)")
+        self._streak_check()
+
+    @locked
+    def _streak_check(self):
+        n = CFG["LOSS_STREAK"]; since = float(self._get("streak_from") or 0)
+        rows = self.db.execute("SELECT pnl FROM trades WHERE status='CLOSED' AND close_ts>? "
+                               "ORDER BY close_ts DESC LIMIT ?", (since, n)).fetchall()
+        if len(rows) == n and all(r["pnl"] <= 0 for r in rows):
+            self._set("pause_until", time.time() + CFG["COOLDOWN_H"] * 3600)
+            self._set("streak_from", time.time())
+            tg(f"⛔ {n} خسائر متتالية: إيقاف مؤقت للصفقات الجديدة {CFG['COOLDOWN_H']} ساعات")
+
+    @locked
+    def check(self, prices):
+        """Fast mode (long-running loop): compare the latest price with SL/TP."""
+        closed = 0
+        for t in self.open_trades():
+            px = prices.get(t["inst"])
+            if px is None:
+                continue
+            if px <= t["sl"]:
+                self._close(t, px, "وقف الخسارة"); closed += 1
+            elif px >= t["tp"]:
+                self._close(t, px, "جني الأرباح"); closed += 1
+            elif time.time() - t["open_ts"] > CFG["MAX_HOLD_H"] * 3600:
+                self._close(t, px, "انتهاء المدة"); closed += 1
+        return closed
+
+    @locked
+    def check_candles(self):
+        """Scheduler mode (hourly): scan 5m candles since entry for SL/TP (SL first if both)."""
+        closed = 0
+        trades = self.open_trades()
+        prices = get_prices() if trades else {}
+        for t in trades:
+            px = reason = None
+            d = get_candles(t["inst"], "5m", 300)
+            if d is not None:
+                for _, k in d[d["ts"] >= t["open_ts"] * 1000].iterrows():
+                    if k["l"] <= t["sl"]:
+                        px, reason = t["sl"], "وقف الخسارة"; break
+                    if k["h"] >= t["tp"]:
+                        px, reason = t["tp"], "جني الأرباح"; break
+            if px is None and time.time() - t["open_ts"] > CFG["MAX_HOLD_H"] * 3600 and t["inst"] in prices:
+                px, reason = prices[t["inst"]], "انتهاء المدة"
+            if px is not None:
+                self._close(t, px, reason); closed += 1
+        return closed
+
+    # ---------- signal log (self-learning) ----------
+    @locked
+    def log_signals(self, rows):
+        now = time.time()
+        self.db.executemany("INSERT INTO signals(ts,inst,price,atr,feats,prob,rank) VALUES(?,?,?,?,?,?,?)",
+                            [(now, r["inst"], r["price"], r["atr"], json.dumps([float(x) for x in r["feats"]]),
+                              None if r["prob"] is None or np.isnan(r["prob"]) else float(r["prob"]), r["rank"])
+                             for r in rows])
+        self.db.commit()
+
+    @locked
+    def pending_signals(self, cutoff_ts):
+        return [dict(r) for r in self.db.execute(
+            "SELECT id,ts,inst,price,atr FROM signals WHERE labeled=0 AND ts<=? ORDER BY ts", (cutoff_ts,))]
+
+    @locked
+    def set_label(self, sid, label, ret, hold):
+        self.db.execute("UPDATE signals SET labeled=1,label=?,ret=?,hold=? WHERE id=?", (label, ret, hold, sid))
+        self.db.commit()
+
+    @locked
+    def signal_dataset(self):
+        return _rows_to_ds(self.db.execute(
+            "SELECT ts,inst,feats,label,ret,hold FROM signals WHERE labeled=1 ORDER BY ts").fetchall())
+
+    @locked
+    def experience_dataset(self):
+        return _rows_to_ds(self.db.execute(
+            "SELECT ts,inst,feats,label,ret FROM experience ORDER BY ts").fetchall())
+
+    @locked
+    def stats(self, prices=None):
+        cl = [dict(r) for r in self.db.execute("SELECT * FROM trades WHERE status='CLOSED'")]
+        n = len(cl); wins = [t for t in cl if t["pnl"] > 0]; loss = [t for t in cl if t["pnl"] <= 0]
+        gp, gl = sum(t["pnl"] for t in wins), -sum(t["pnl"] for t in loss)
+        eq = self.equity(prices)
+        return dict(trades=n, open=len(self.open_trades()), winrate=(len(wins) / n if n else 0),
+                    pnl=sum(t["pnl"] for t in cl),
+                    profit_factor=(gp / gl if gl > 0 else (float("inf") if gp else 0)),
+                    equity=eq, ret_pct=100 * (eq / CFG["START_BALANCE"] - 1))
+
+# =====================================================================
+# SIGNAL LABELLING (triple barrier on real later prices)
+# =====================================================================
+def label_signals(paper):
+    H = CFG["BARRIER_H"]
+    rows = paper.pending_signals(time.time() - (H + 2) * 3600)
+    if not rows:
+        return 0
+    by = {}
+    for r in rows:
+        by.setdefault(r["inst"], []).append(r)
+    n = 0
+    for inst, rs in by.items():
+        oldest = min(r["ts"] for r in rs)
+        d = get_candles(inst, "1H", min(1400, int((time.time() - oldest) / 3600) + H + 5))
+        if d is None:
+            continue
+        for r in rs:
+            path = d[d["ts"] >= r["ts"] * 1000]
+            if len(path) < H:
+                continue
+            ret, lab, hold = barrier_single(r["price"], r["atr"], path["h"].values, path["l"].values, path["c"].values)
+            paper.set_label(r["id"], lab, ret, hold); n += 1
+    log.info("labelled %d logged signals", n)
+    return n
 
 # =====================================================================
 # RANKING (best -> worst)
@@ -270,293 +924,216 @@ def rank_universe(X, vol24):
     return score.sort_values(ascending=False)
 
 # =====================================================================
-# DEEP NET : 20 Linear layers (1 input + 18 hidden in 9 residual blocks + 1 output)
+# WALK-FORWARD BACKTEST
 # =====================================================================
-if torch is not None:
-    class Block(nn.Module):
-        def __init__(self, d, p):
-            super().__init__()
-            self.net = nn.Sequential(nn.Linear(d, d), nn.LayerNorm(d), nn.GELU(), nn.Dropout(p),
-                                     nn.Linear(d, d), nn.LayerNorm(d))
-            self.act = nn.GELU()
-        def forward(self, x):
-            return self.act(x + self.net(x))
+def simulate(idx, ds):
+    """Replay signals with the live rules: max concurrent trades, one per coin, fixed-fraction sizing."""
+    ts, ret, hold, coin = ds["ts"][idx], ds["ret"][idx], ds["hold"][idx], ds["coin"][idx]
+    open_, taken, events = [], [], []
+    for i in np.argsort(ts, kind="stable"):
+        t = ts[i]
+        open_ = [(e, c) for e, c in open_ if e > t]
+        if len(open_) >= CFG["MAX_OPEN"] or any(c == coin[i] for _, c in open_):
+            continue
+        end = t + (hold[i] if not np.isnan(hold[i]) else CFG["BARRIER_H"]) * 3600
+        open_.append((end, coin[i])); taken.append(ret[i]); events.append((end, ret[i]))
+    eq = peak = 1.0; mdd = 0.0
+    for _, r in sorted(events):
+        eq *= 1 + CFG["POS_FRAC"] * r; peak = max(peak, eq); mdd = max(mdd, 1 - eq / peak)
+    r = np.array(taken)
+    if not len(r):
+        return dict(n=0, win=0.0, avg=0.0, pf=0.0, total=0.0, mdd=0.0)
+    gp, gl = r[r > 0].sum(), -r[r < 0].sum()
+    return dict(n=int(len(r)), win=float((r > 0).mean()), avg=float(r.mean()),
+                pf=float(gp / gl) if gl > 0 else float("inf"), total=float(eq - 1), mdd=float(mdd))
 
-    class ZiedNet(nn.Module):
-        def __init__(self, n_in, d=192, p=0.15):
-            super().__init__()
-            self.inp = nn.Sequential(nn.Linear(n_in, d), nn.LayerNorm(d), nn.GELU())
-            self.blocks = nn.Sequential(*[Block(d, p) for _ in range(9)])
-            self.out = nn.Linear(d, 1)
-        def forward(self, x):
-            return self.out(self.blocks(self.inp(x)))
+def walk_forward(ds, folds=5, epochs=30, min_train_frac=0.4):
+    o = np.argsort(ds["ts"], kind="stable")
+    ds = {k: v[o] for k, v in ds.items()}
+    ts = ds["ts"]
+    edges = np.linspace(ts.min() + (ts.max() - ts.min()) * min_train_frac, ts.max() + 1, folds + 1)
+    emb = CFG["BARRIER_H"] * 3600
+    oos = {}                                   # mode -> {"idx": [], "sig": [], "p": []}
+    for k in range(folds):
+        te = (ts >= edges[k]) & (ts < edges[k + 1]); tr = ts < edges[k] - emb
+        if te.sum() < 50 or tr.sum() < 800:
+            continue
+        b = Brain(persist=False)
+        try:
+            b.fit(ds["X"][tr], ds["y"][tr], ds["ts"][tr], ds["ret"][tr], epochs=epochs, force=True)
+        except Exception as e:
+            log.warning("fold %d skipped: %s", k, e); continue
+        for mode, p in b.predict_all(ds["X"][te]).items():
+            d = oos.setdefault(mode, {"idx": [], "sig": [], "p": []})
+            d["idx"].append(np.where(te)[0]); d["sig"].append(p >= b.thrs[mode]); d["p"].append(p)
+        log.info("fold %d/%d done (train=%d test=%d)", k + 1, folds, tr.sum(), te.sum())
+    if not oos:
+        raise RuntimeError("backtest produced no out-of-sample fold (not enough data)")
+    rep = {}
+    for mode, d in oos.items():
+        idx, sig, p = np.concatenate(d["idx"]), np.concatenate(d["sig"]), np.concatenate(d["p"])
+        rep[mode] = dict(auc=auc_score(ds["y"][idx], p), n_oos=int(len(idx)),
+                         base_win=float(ds["y"][idx].mean()), base_avg=float(np.nanmean(ds["ret"][idx])),
+                         **simulate(idx[sig], ds))
+    return rep
 
-def n_linear(m):
-    return sum(isinstance(x, nn.Linear) for x in m.modules())
-
-def auc_score(y, p):
-    y = np.asarray(y); o = np.argsort(p); r = np.empty(len(p)); r[o] = np.arange(1, len(p) + 1)
-    npos = y.sum(); nneg = len(y) - npos
-    if npos == 0 or nneg == 0:
-        return 0.5
-    return float((r[y == 1].sum() - npos * (npos + 1) / 2) / (npos * nneg))
-
-class Brain:
-    def __init__(self):
-        self.net = None; self.mu = self.sd = None; self.thr = 0.5; self.auc = None
-        self.load()
-
-    @property
-    def ready(self):
-        return self.net is not None
-
-    def _norm(self, X):
-        return np.clip((np.asarray(X, dtype=np.float64) - self.mu) / self.sd, -5, 5).astype(np.float32)
-
-    def load(self):
-        if torch is None or not os.path.exists(CFG["MODEL"]):
-            return
-        ck = torch.load(CFG["MODEL"], weights_only=False)
-        self.net = ZiedNet(ck["n_in"]); self.net.load_state_dict(ck["state"]); self.net.eval()
-        self.mu, self.sd, self.thr, self.auc = ck["mu"], ck["sd"], ck["thr"], ck["auc"]
-        log.info("model loaded (auc=%.3f thr=%.3f)", self.auc, self.thr)
-
-    def predict(self, X):
-        with torch.no_grad():
-            return torch.sigmoid(self.net(torch.tensor(self._norm(X))).squeeze(1)).numpy()
-
-    def fit(self, X, y, ts, epochs=80):
-        if torch is None:
-            raise RuntimeError("pip install torch")
-        o = np.argsort(ts); X, y = np.asarray(X)[o], np.asarray(y)[o].astype(np.float32)
-        n = len(X); nv = max(int(n * 0.2), 100)
-        if n < 600:
-            raise ValueError(f"not enough samples ({n})")
-        mu = X[:n - nv].mean(0); sd = X[:n - nv].std(0) + 1e-8
-        tmp = Brain.__new__(Brain); tmp.mu, tmp.sd = mu, sd
-        Xt, Xv = torch.tensor(tmp._norm(X[:n - nv])), torch.tensor(tmp._norm(X[n - nv:]))
-        yt, yv = torch.tensor(y[:n - nv]), torch.tensor(y[n - nv:])
-        net = ZiedNet(X.shape[1])
-        assert n_linear(net) == 20, n_linear(net)
-        opt = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-3)
-        sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, epochs)
-        lossf = nn.BCEWithLogitsLoss()
-        best, state, bad = 1e9, None, 0
-        for ep in range(epochs):
-            net.train(); perm = torch.randperm(len(Xt))
-            for i in range(0, len(perm), 256):
-                b = perm[i:i + 256]
-                opt.zero_grad(); loss = lossf(net(Xt[b]).squeeze(1), yt[b]); loss.backward()
-                nn.utils.clip_grad_norm_(net.parameters(), 1.0); opt.step()
-            sch.step(); net.eval()
-            with torch.no_grad():
-                vl = lossf(net(Xv).squeeze(1), yv).item()
-            if vl < best - 1e-4:
-                best, bad = vl, 0; state = {k: v.clone() for k, v in net.state_dict().items()}
-            else:
-                bad += 1
-                if bad >= 10:
-                    break
-        net.load_state_dict(state); net.eval()
-        with torch.no_grad():
-            pv = torch.sigmoid(net(Xv).squeeze(1)).numpy()
-        auc = auc_score(yv.numpy(), pv)
-        thr = float(np.quantile(pv, 0.90))             # top 10% of validation predictions
-        info = dict(auc=auc, thr=thr, val_loss=best, n=n, pos_rate=float(y.mean()))
-        if auc < 0.52 or (self.auc is not None and auc < self.auc - 0.03):
-            info["accepted"] = False
-            return info
-        self.net, self.mu, self.sd, self.thr, self.auc = net, mu, sd, thr, auc
-        torch.save(dict(state=net.state_dict(), n_in=X.shape[1], mu=mu, sd=sd, thr=thr, auc=auc),
-                   CFG["MODEL"])
-        info["accepted"] = True
-        return info
+def backtest_report(rep):
+    lines = ["📉 Backtest walk-forward (خارج العينة، بعد الرسوم)"]
+    for mode, r in sorted(rep.items(), key=lambda kv: -kv[1]["avg"]):
+        name = {"nn": "شبكة 20 طبقة", "gbm": "GBM", "ens": "دمج"}.get(mode, mode)
+        lines.append(f"\n{name}: AUC {r['auc']:.3f} | صفقات {r['n']} | نجاح {r['win'] * 100:.0f}% "
+                     f"(الأساس {r['base_win'] * 100:.0f}%)\n"
+                     f"متوسط/صفقة {r['avg'] * 100:+.2f}% (الأساس {r['base_avg'] * 100:+.2f}%) | PF {r['pf']:.2f} | "
+                     f"عائد {r['total'] * 100:+.1f}% | أقصى تراجع {r['mdd'] * 100:.1f}%")
+    best = max(rep.values(), key=lambda r: r["avg"])
+    ok = best["n"] >= 30 and best["avg"] > 0 and best["pf"] > 1.1 and best["avg"] > best["base_avg"]
+    lines.append("\n" + ("✅ توجد أفضلية أولية، تحتاج تأكيداً بـ paper trading." if ok
+                         else "⚠️ لا توجد أفضلية موثوقة بعد: لا تعتمد على الإشارات."))
+    return "\n".join(lines)
 
 # =====================================================================
-# TRAINING DATA (bootstrap from history)
+# TELEGRAM COMMANDS
 # =====================================================================
-def build_trainset(universe):
-    insts = list(universe.index[:CFG["TRAIN_TOP"]])
-    log.info("downloading history for %d coins ...", len(insts))
-    def one(inst):
-        fr = fetch_frames(inst, CFG["TRAIN_DEPTH"])
-        if fr is None:
-            return None
-        M = aligned_matrix(fr)
-        close = fr[BASE].set_index("avail")["c"]
-        fwd = close.shift(-CFG["LABEL_H"]) / close - 1
-        M = M.assign(_y=(fwd > CFG["LABEL_THR"]).astype(float), _f=fwd).dropna()
-        M["_ts"] = M.index.astype("int64") // 10**9
-        return M
-    with ThreadPoolExecutor(4) as ex:
-        parts = [p for p in ex.map(one, insts) if p is not None and len(p)]
-    D = pd.concat(parts)
-    np.savez_compressed(CFG["TRAINSET"], X=D[FEATURE_COLS].values, y=D["_y"].values, ts=D["_ts"].values)
-    log.info("trainset: %d rows, positive rate %.1f%%", len(D), 100 * D["_y"].mean())
-    return D[FEATURE_COLS].values, D["_y"].values, D["_ts"].values
+def stats_msg(paper, prices=None):
+    s = paper.stats(prices if prices is not None else get_prices())
+    gate = paper.risk_gate(s["equity"])
+    return (f"📈 ملخص Paper Trading\nالرصيد الكلي: {s['equity']:.2f} USDT ({s['ret_pct']:+.2f}%)\n"
+            f"صفقات مغلقة: {s['trades']} | مفتوحة: {s['open']}\n"
+            f"نسبة النجاح: {s['winrate'] * 100:.1f}% | Profit factor: {s['profit_factor']:.2f}\n"
+            f"الحالة: {'متوقف (' + gate + ')' if gate else 'نشط'}")
 
-def load_trainset():
-    if not os.path.exists(CFG["TRAINSET"]):
-        return None
-    z = np.load(CFG["TRAINSET"]); return z["X"], z["y"], z["ts"]
+def positions_msg(paper):
+    ts = paper.open_trades()
+    if not ts:
+        return "لا توجد صفقات مفتوحة."
+    px = get_prices(); lines = []
+    for t in ts:
+        p = px.get(t["inst"], t["entry"])
+        lines.append(f"{t['inst']}: {(p / t['entry'] - 1) * 100:+.2f}% | SL {t['sl']:.6g} | TP {t['tp']:.6g}")
+    return "📌 الصفقات المفتوحة\n" + "\n".join(lines)
 
-# =====================================================================
-# PAPER TRADING + SELF-LEARNING MEMORY
-# =====================================================================
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
-CREATE TABLE IF NOT EXISTS trades(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, open_ts REAL, entry REAL, qty REAL,
-  usdt_in REAL, sl REAL, tp REAL, prob REAL, rank INTEGER, feats TEXT,
-  status TEXT DEFAULT 'OPEN', close_ts REAL, exit REAL, pnl REAL, pnl_pct REAL, reason TEXT);
-CREATE TABLE IF NOT EXISTS experience(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, feats TEXT, label INTEGER, pnl REAL);
-"""
+def top_msg():
+    p = os.path.join(CFG["DIR"], "ranking.csv")
+    if not os.path.exists(p):
+        return "لا يوجد تصنيف بعد."
+    R = pd.read_csv(p, index_col=0).head(10)
+    return "📊 أفضل 10 عملات\n" + "\n".join(
+        f"{int(r['rank'])}. {i.replace('-USDT', '')} نقاط {r['score']:+.2f}"
+        + (f" AI {r['prob'] * 100:.0f}%" if not pd.isna(r["prob"]) else "") for i, r in R.iterrows())
 
-class Paper:
-    def __init__(self):
-        self.lock = threading.RLock()
-        self.db = sqlite3.connect(CFG["DB"], check_same_thread=False)
-        self.db.row_factory = sqlite3.Row
-        self.db.executescript(SCHEMA)
-        if self._get("cash") is None:
-            self._set("cash", CFG["START_BALANCE"])
+def handle_command(text, paper, brain):
+    cmd = text.split()[0].split("@")[0].lower()
+    if cmd in ("/stats", "/status"):
+        return stats_msg(paper)
+    if cmd == "/positions":
+        return positions_msg(paper)
+    if cmd == "/top":
+        return top_msg()
+    if cmd == "/pause":
+        paper._set("paused", "1"); return "⏸ تم إيقاف الصفقات الجديدة (المتابعة مستمرة)."
+    if cmd == "/resume":
+        paper._set("paused", "0"); paper._set("pause_until", "0"); return "▶️ تم استئناف الصفقات الجديدة."
+    if cmd == "/model":
+        return "🧠 " + brain.describe()
+    if cmd == "/signals":
+        return (f"سجل الإشارات: {paper.count('signals')} | موسومة: {paper.count('signals', 'labeled=1')} | "
+                f"صفقات مغلقة: {paper.count('experience')}")
+    return ("الأوامر: /stats /positions /top /model /signals /pause /resume")
 
-    def _get(self, k):
-        r = self.db.execute("SELECT v FROM meta WHERE k=?", (k,)).fetchone()
-        return None if r is None else r["v"]
-
-    def _set(self, k, v):
-        self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (k, str(v))); self.db.commit()
-
-    def cash(self):
-        return float(self._get("cash"))
-
-    def open_trades(self):
-        return [dict(r) for r in self.db.execute("SELECT * FROM trades WHERE status='OPEN'")]
-
-    def equity(self, prices=None):
-        eq = self.cash()
-        for t in self.open_trades():
-            px = (prices or {}).get(t["inst"], t["entry"]); eq += t["qty"] * px
-        return eq
-
-    def open(self, inst, price, atr_pct, prob, rank, feats):
-        with self.lock:
-            if any(t["inst"] == inst for t in self.open_trades()):
-                return None
-            if len(self.open_trades()) >= CFG["MAX_OPEN"]:
-                return None
-            usdt = min(self.cash(), CFG["POS_FRAC"] * self.equity())
-            if usdt < 10:
-                return None
-            entry = price * (1 + CFG["SLIP"])
-            qty = usdt * (1 - CFG["FEE"]) / entry
-            a = float(np.clip(atr_pct, 0.004, 0.06))
-            sl, tp = entry * (1 - CFG["SL_ATR"] * a), entry * (1 + CFG["TP_ATR"] * a)
-            self.db.execute(
-                "INSERT INTO trades(inst,open_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                (inst, time.time(), entry, qty, usdt, sl, tp, prob, rank, json.dumps([float(x) for x in feats])))
-            self._set("cash", self.cash() - usdt)
-            return dict(inst=inst, entry=entry, sl=sl, tp=tp, usdt=usdt)
-
-    def _close(self, t, price, reason):
-        proceeds = t["qty"] * price * (1 - CFG["FEE"])
-        pnl = proceeds - t["usdt_in"]; pct = pnl / t["usdt_in"]
-        self.db.execute("UPDATE trades SET status='CLOSED',close_ts=?,exit=?,pnl=?,pnl_pct=?,reason=? WHERE id=?",
-                        (time.time(), price, pnl, pct, reason, t["id"]))
-        self.db.execute("INSERT INTO experience(ts,inst,feats,label,pnl) VALUES(?,?,?,?,?)",
-                        (time.time(), t["inst"], t["feats"], int(pnl > 0), pnl))
-        self._set("cash", self.cash() + proceeds); self.db.commit()
-        icon = "✅" if pnl > 0 else "🔴"
-        tg(f"{icon} إغلاق صفقة ورقية {t['inst']}\nالسبب: {reason}\n"
-           f"دخول {t['entry']:.6g} ← خروج {price:.6g}\nالربح: {pnl:+.2f} USDT ({pct * 100:+.2f}%)")
-
-    def check(self, prices):
-        closed = 0
-        with self.lock:
-            for t in self.open_trades():
-                px = prices.get(t["inst"])
-                if px is None:
-                    continue
-                if px <= t["sl"]:
-                    self._close(t, px, "وقف الخسارة"); closed += 1
-                elif px >= t["tp"]:
-                    self._close(t, px, "جني الأرباح"); closed += 1
-                elif time.time() - t["open_ts"] > CFG["MAX_HOLD_H"] * 3600:
-                    self._close(t, px, "انتهاء المدة"); closed += 1
-        return closed
-
-    def check_candles(self):
-        """Hourly mode: scan 5m candles since entry for SL/TP hits (SL first if both in one candle)."""
-        closed = 0
-        with self.lock:
-            trades = self.open_trades()
-            prices = get_prices() if trades else {}
-            for t in trades:
-                px = reason = None
-                d = get_candles(t["inst"], "5m", 300)
-                if d is not None:
-                    for _, k in d[d["ts"] >= t["open_ts"] * 1000].iterrows():
-                        if k["l"] <= t["sl"]:
-                            px, reason = t["sl"], "وقف الخسارة"; break
-                        if k["h"] >= t["tp"]:
-                            px, reason = t["tp"], "جني الأرباح"; break
-                if px is None and time.time() - t["open_ts"] > CFG["MAX_HOLD_H"] * 3600 and t["inst"] in prices:
-                    px, reason = prices[t["inst"]], "انتهاء المدة"
-                if px is not None:
-                    self._close(t, px, reason); closed += 1
-        return closed
-
-    def experience(self):
-        rows = self.db.execute("SELECT ts,feats,label FROM experience ORDER BY ts").fetchall()
-        if not rows:
-            return None
-        return (np.array([json.loads(r["feats"]) for r in rows]),
-                np.array([r["label"] for r in rows], dtype=float),
-                np.array([r["ts"] for r in rows]))
-
-    def stats(self, prices=None):
-        cl = [dict(r) for r in self.db.execute("SELECT * FROM trades WHERE status='CLOSED'")]
-        n = len(cl); wins = [t for t in cl if t["pnl"] > 0]; loss = [t for t in cl if t["pnl"] <= 0]
-        gp, gl = sum(t["pnl"] for t in wins), -sum(t["pnl"] for t in loss)
-        eq = self.equity(prices)
-        return dict(trades=n, open=len(self.open_trades()), winrate=(len(wins) / n if n else 0),
-                    pnl=sum(t["pnl"] for t in cl), profit_factor=(gp / gl if gl > 0 else float("inf") if gp else 0),
-                    equity=eq, ret_pct=100 * (eq / CFG["START_BALANCE"] - 1))
+def poll_commands(paper, brain, timeout=0):
+    tok, chat = os.getenv("TELEGRAM_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
+    if not tok or not chat:
+        return 0
+    params = {"timeout": timeout}
+    off = paper._get("tg_offset")
+    if off:
+        params["offset"] = int(off) + 1
+    try:
+        j = requests.get(f"https://api.telegram.org/bot{tok}/getUpdates", params=params, timeout=timeout + 10).json()
+    except Exception:
+        return 0
+    n = 0
+    for u in j.get("result", []):
+        paper._set("tg_offset", u["update_id"])
+        m = u.get("message") or {}
+        if str(m.get("chat", {}).get("id")) != str(chat):         # only the owner chat is obeyed
+            continue
+        text = (m.get("text") or "").strip()
+        if text.startswith("/"):
+            tg(handle_command(text, paper, brain)); n += 1
+    return n
 
 # =====================================================================
 # PIPELINE
 # =====================================================================
-def retrain(brain, paper, universe=None, reason="manual"):
-    parts = []
-    base = load_trainset()
+def collect_training_data(paper, universe=None, refresh=False, with_trades=True):
+    base = None if refresh else load_trainset()
     if base is None:
         universe = universe if universe is not None else get_universe()
         base = build_trainset(universe)
-    parts.append(base)
-    exp = paper.experience()
-    if exp is not None:                               # real paper-trade outcomes, weight x3
-        for _ in range(3):
-            parts.append(exp)
-    X = np.vstack([p[0] for p in parts]); y = np.concatenate([p[1] for p in parts])
-    ts = np.concatenate([p[2] for p in parts])
-    info = brain.fit(X, y, ts)
-    paper._set("last_train_n", paper.db.execute("SELECT COUNT(*) c FROM experience").fetchone()["c"])
-    tg(f"🧠 تدريب الشبكة (20 طبقة) [{reason}]\nعيّنات: {info['n']} | AUC: {info['auc']:.3f}\n"
-       f"{'تم اعتماد النموذج ✅' if info['accepted'] else 'لم يُعتمد (أسوأ من السابق) ⚠️'}")
+    parts = [base, paper.signal_dataset()]
+    if with_trades:
+        exp = paper.experience_dataset()
+        parts += [exp] * 3                                # real paper-trade outcomes weigh x3
+    return ds_concat(parts)
+
+def retrain(brain, paper, universe=None, reason="manual", refresh=False):
+    ds = collect_training_data(paper, universe, refresh)
+    info = brain.fit(ds["X"], ds["y"], ds["ts"], ds["ret"])
+    paper._set("last_train_n", paper.count("experience"))
+    paper._set("last_train_sig", paper.count("signals", "labeled=1"))
+    aucs = " | ".join(f"{k}:{v:.3f}" for k, v in info["aucs"].items())
+    top = info.get("val_top_net")
+    tg(f"🧠 تدريب النماذج [{reason}]\nعيّنات: {info['n']} | AUC ({aucs})\n"
+       f"النمط المختار: {info['mode']}"
+       + (f" | متوسط صفقات الإشارة في التحقق: {top * 100:+.2f}%" if top is not None else "")
+       + f"\n{'تم اعتماد النموذج ✅' if info['accepted'] else 'لم يُعتمد (أسوأ من السابق أو ضعيف) ⚠️'}")
     return info
+
+def need_retrain(paper):
+    new_trades = paper.count("experience") - int(paper._get("last_train_n") or 0)
+    new_sigs = paper.count("signals", "labeled=1") - int(paper._get("last_train_sig") or 0)
+    return new_trades >= CFG["RETRAIN_EVERY"] or new_sigs >= CFG["RETRAIN_SIGNALS"]
+
+def _hourly_returns(inst):
+    d = get_candles(inst, "1H", 100)
+    if d is None:
+        return None
+    return pd.Series(np.log(d["c"]).diff().values, index=d["ts"].values).dropna()
+
+def max_corr_with_open(inst, open_insts, cache):
+    if not open_insts:
+        return 0.0
+    for k in [inst] + list(open_insts):
+        if k not in cache:
+            cache[k] = _hourly_returns(k)
+    a, best = cache[inst], 0.0
+    if a is None:
+        return 0.0
+    for o in open_insts:
+        b = cache[o]
+        if b is None:
+            continue
+        x = pd.concat([a, b], axis=1, join="inner").tail(72)
+        if len(x) >= 30:
+            best = max(best, float(x.corr().iloc[0, 1]))
+    return best
 
 def scan(brain, paper, universe=None, cycle=0, trade=True):
     uni = universe if universe is not None else get_universe()
     log.info("universe: %d coins", len(uni))
+    if uni.empty:
+        return None
+    btc = fetch_btc(CFG["SCAN_DEPTH"], CFG["SCAN_DEPTH"])
     def one(inst):
-        fr = fetch_frames(inst, CFG["SCAN_DEPTH"])
-        return inst, (None if fr is None else live_vector(fr))
+        try:
+            fr = fetch_frames(inst, CFG["SCAN_DEPTH"])
+            return inst, (None if fr is None else live_vector(fr, btc))
+        except Exception as e:
+            log.warning("%s: %s", inst, e); return inst, None
     with ThreadPoolExecutor(4) as ex:
         res = dict(ex.map(one, uni.index))
-    X = pd.DataFrame({k: v for k, v in res.items() if v is not None}).T
-    X = X.dropna()
+    X = pd.DataFrame({k: v for k, v in res.items() if v is not None}).T.dropna()
     if X.empty:
         log.warning("no data"); return None
     score = rank_universe(X, uni["vol"])
@@ -567,103 +1144,140 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     R.to_csv(os.path.join(CFG["DIR"], "ranking.csv"))
     log.info("top 5:\n%s", R.head(5))
     if cycle % CFG["RANK_MSG_EVERY"] == 0:
-        lines = [f"{int(r['rank'])}. {i.replace('-USDT', '')}  نقاط {r['score']:+.2f}"
-                 + (f"  AI {r['prob'] * 100:.0f}%" if not np.isnan(r["prob"]) else "")
-                 for i, r in R.head(10).iterrows()]
-        tg("📊 أفضل 10 عملات الآن (OKX Spot)\n" + "\n".join(lines))
-    if not (brain.ready and trade):
+        tg(top_msg())
+    if not trade:
         return R
-    # BTC regime filter
-    btc = X.loc["BTC-USDT", "4H_ema_dist50"] if "BTC-USDT" in X.index else 0
-    if btc < CFG["BTC_FILTER"]:
-        log.info("BTC bearish (%.3f) -> no new entries", btc); return R
-    thr = CFG["PROB_MIN"] or brain.thr
-    sig = R[(R["prob"] >= thr)].sort_values("prob", ascending=False)
+    # log the top coins of every scan: they become labelled training examples later
+    paper.log_signals([dict(inst=i, price=float(uni.loc[i, "last"]), atr=float(X.loc[i, "1H_atr_pct"]),
+                            feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]))
+                       for i in R.index[:CFG["LOG_TOP"]]])
+    if not brain.ready:
+        return R
+    gate = paper.risk_gate(paper.equity(uni["last"].to_dict()))
+    if gate:
+        log.info("entries blocked: %s", gate); return R
+    if float(X["ctx_btc_regime"].iloc[0]) < CFG["BTC_FILTER"]:
+        log.info("BTC bearish -> no new entries"); return R
+    thr = CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else brain.thr
+    sig = R[R["prob"] >= thr].sort_values("prob", ascending=False)
+    cache = {}
     for inst, r in sig.iterrows():
+        opened = [t["inst"] for t in paper.open_trades()]
+        if inst in opened or len(opened) >= CFG["MAX_OPEN"]:
+            continue
+        corr = max_corr_with_open(inst, opened, cache)
+        if corr > CFG["CORR_MAX"]:
+            log.info("%s skipped: corr %.2f with an open position", inst, corr); continue
         px = float(uni.loc[inst, "ask"])
-        atr = float(X.loc[inst, "1H_atr_pct"])
         tg(f"🟢 إشارة شراء {inst}\nاحتمال AI: {r['prob'] * 100:.1f}% (العتبة {thr * 100:.1f}%)\n"
            f"الترتيب: #{int(r['rank'])} | السعر: {px:.6g}")
-        t = paper.open(inst, px, atr, float(r["prob"]), int(r["rank"]), X.loc[inst, FEATURE_COLS].values)
+        t = paper.open(inst, px, float(X.loc[inst, "1H_atr_pct"]), float(r["prob"]), int(r["rank"]),
+                       X.loc[inst, FEATURE_COLS].values, float(uni.loc[inst, "vol"]), float(uni.loc[inst, "spread"]))
         if t:
             tg(f"📥 فتح صفقة ورقية {inst}\nدخول {t['entry']:.6g} | SL {t['sl']:.6g} | TP {t['tp']:.6g}\n"
                f"الحجم: {t['usdt']:.2f} USDT")
     return R
 
-def monitor_loop(paper, stop, retrain_flag):
+def once():
+    """One full cycle for schedulers (GitHub Actions)."""
+    brain, paper = Brain(), Paper()
+    uni = get_universe()
+    if uni.empty:
+        raise RuntimeError("OKX returned no tradable pairs (blocked? try OKX_BASE=https://aws.okx.com)")
+    if not brain.ready:
+        try:
+            retrain(brain, paper, uni, "أول تدريب")
+        except Exception as e:
+            log.exception("first training failed: %s", e); tg(f"⚠️ فشل أول تدريب: {e}")
+    poll_commands(paper, brain)
+    paper.check_candles()
+    label_signals(paper)
+    cycle = int(paper._get("cycle") or 0)
+    scan(brain, paper, uni, cycle)
+    paper._set("cycle", cycle + 1)
+    if need_retrain(paper):
+        try:
+            retrain(brain, paper, uni, "تعلّم ذاتي")
+        except Exception as e:
+            log.warning("retrain: %s", e)
+    if time.time() - float(paper._get("last_daily") or 0) > 86400:
+        tg(stats_msg(paper)); paper._set("last_daily", time.time())
+
+def monitor_loop(paper, stop):
     while not stop.is_set():
         try:
             if paper.open_trades():
-                if paper.check(get_prices()):
-                    retrain_flag.set()
+                paper.check(get_prices())
         except Exception as e:
             log.warning("monitor: %s", e)
         stop.wait(CFG["MONITOR_EVERY_SEC"])
 
-def stats_msg(paper):
-    s = paper.stats(get_prices())
-    return (f"📈 ملخص Paper Trading\nالرصيد الكلي: {s['equity']:.2f} USDT ({s['ret_pct']:+.2f}%)\n"
-            f"صفقات مغلقة: {s['trades']} | مفتوحة: {s['open']}\n"
-            f"نسبة النجاح: {s['winrate'] * 100:.1f}% | Profit factor: {s['profit_factor']:.2f}")
-
-def once():
-    """One full cycle, for schedulers (GitHub Actions): check trades, scan, learn, report."""
-    brain, paper = Brain(), Paper()
-    uni = get_universe()
-    if not brain.ready:
-        retrain(brain, paper, uni, "أول تدريب")
-    paper.check_candles()
-    cycle = int(paper._get("cycle") or 0)
-    scan(brain, paper, uni, cycle)
-    paper._set("cycle", cycle + 1)
-    done = paper.db.execute("SELECT COUNT(*) c FROM experience").fetchone()["c"]
-    if done - int(paper._get("last_train_n") or 0) >= CFG["RETRAIN_EVERY"]:
-        retrain(brain, paper, uni, f"تعلّم ذاتي بعد {done} صفقة")
-    if time.time() - float(paper._get("last_daily") or 0) > 86400:
-        tg(stats_msg(paper)); paper._set("last_daily", time.time())
+def telegram_loop(paper, brain, stop):
+    while not stop.is_set():
+        try:
+            poll_commands(paper, brain, timeout=25)
+        except Exception as e:
+            log.warning("telegram loop: %s", e)
+        stop.wait(2)
 
 def run():
+    """Endless loop (VPS / Docker)."""
     brain, paper = Brain(), Paper()
-    stop, flag = threading.Event(), threading.Event()
+    stop = threading.Event()
     uni = get_universe()
     if not brain.ready:
         retrain(brain, paper, uni, "أول تدريب")
-        if not brain.ready:
-            log.error("model not accepted; running ranking only")
-    threading.Thread(target=monitor_loop, args=(paper, stop, flag), daemon=True).start()
-    tg("🚀 Zied Quant بدأ العمل (Paper Trading فقط)")
+    threading.Thread(target=monitor_loop, args=(paper, stop), daemon=True).start()
+    threading.Thread(target=telegram_loop, args=(paper, brain, stop), daemon=True).start()
+    tg("🚀 Zied Quant v2 بدأ العمل (Paper Trading فقط). أرسل /help للأوامر.")
     cycle, last_daily = 0, time.time()
     try:
         while True:
             t0 = time.time()
             try:
+                label_signals(paper)
                 scan(brain, paper, None, cycle)
             except Exception as e:
                 log.exception("scan failed: %s", e); tg(f"⚠️ خطأ في المسح: {e}")
             cycle += 1
-            done = paper.db.execute("SELECT COUNT(*) c FROM experience").fetchone()["c"]
-            last = int(paper._get("last_train_n") or 0)
-            if done - last >= CFG["RETRAIN_EVERY"]:
-                try: retrain(brain, paper, None, f"تعلّم ذاتي بعد {done} صفقة")
-                except Exception as e: log.warning("retrain: %s", e)
-            flag.clear()
+            if need_retrain(paper):
+                try:
+                    retrain(brain, paper, None, "تعلّم ذاتي")
+                except Exception as e:
+                    log.warning("retrain: %s", e)
             if time.time() - last_daily > 86400:
                 tg(stats_msg(paper)); last_daily = time.time()
             time.sleep(max(5, CFG["SCAN_EVERY_SEC"] - (time.time() - t0)))
     except KeyboardInterrupt:
         stop.set(); tg("⏹ Zied Quant توقف")
 
-if __name__ == "__main__":
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "run"
-    if cmd in ("train", "scan", "run", "once") and torch is None:
-        sys.exit("pip install torch  (required)")
-    if cmd == "train":
-        b, p = Brain(), Paper(); print(retrain(b, p, get_universe(), "يدوي"))
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else "run"
+    if cmd in ("train", "refresh", "backtest", "scan", "once", "run") and torch is None:
+        try:
+            import sklearn  # noqa: F401
+            log.warning("torch missing: the 20-layer net is disabled, using gradient boosting only")
+        except ImportError:
+            sys.exit("pip install torch scikit-learn lightgbm  (at least one model library is required)")
+    if cmd in ("train", "refresh"):
+        b, p = Brain(), Paper(); print(retrain(b, p, get_universe(), "يدوي", refresh=(cmd == "refresh")))
+    elif cmd == "backtest":
+        p = Paper(); folds = int(argv[2]) if len(argv) > 2 else 5
+        ds = collect_training_data(p, with_trades=False)
+        rep = walk_forward(ds, folds=folds)
+        txt = backtest_report(rep); print(txt)
+        json.dump(rep, open(os.path.join(CFG["DIR"], "backtest.json"), "w"), indent=2)
+        tg(txt)
     elif cmd == "scan":
         b, p = Brain(), Paper(); print(scan(b, p, trade=False).head(30))
     elif cmd == "once":
         once()
+    elif cmd == "label":
+        print(label_signals(Paper()))
     elif cmd == "stats":
         print(stats_msg(Paper()))
     else:
         run()
+
+if __name__ == "__main__":
+    main(sys.argv)

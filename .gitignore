@@ -2,4 +2,6 @@ zied_data/
 __pycache__/
 *.pt
 *.db
+*.pkl
 .env
+.pytest_cache/

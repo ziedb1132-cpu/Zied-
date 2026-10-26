@@ -3,7 +3,7 @@ name: Zied Quant hourly
 on:
   schedule:
     - cron: "7 * * * *"        # every hour at minute 07 (UTC)
-  workflow_dispatch:           # manual run button
+  workflow_dispatch:
 
 concurrency:
   group: zied-quant            # never run two cycles at once
@@ -15,7 +15,7 @@ permissions:
 jobs:
   cycle:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
 
@@ -27,10 +27,10 @@ jobs:
 
       - name: Install dependencies (CPU torch)
         run: |
-          pip install numpy pandas requests
+          pip install numpy pandas requests scikit-learn lightgbm
           pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-      # Runners are ephemeral: restore the model, training set and paper-trading DB.
+      # Runners are ephemeral: restore the model, dataset, signal log and paper-trading DB.
       - name: Restore state
         uses: actions/cache/restore@v4
         with:
@@ -51,3 +51,13 @@ jobs:
         with:
           path: zied_data
           key: zied-state-${{ github.run_id }}
+
+      # Backup of the paper-trading DB: survives cache eviction.
+      - name: Backup DB
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zied-paper-db
+          path: zied_data/paper.db
+          retention-days: 14
+          if-no-files-found: ignore

@@ -1,0 +1,7 @@
+services:
+  zied:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./zied_data:/app/zied_data     # model, dataset and paper-trading DB survive restarts
