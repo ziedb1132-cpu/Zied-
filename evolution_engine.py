@@ -60,8 +60,21 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
         tune_p["ens"] = (tune_p["nn"] + tune_p["gbm"]) / 2
         test_p["ens"] = (test_p["nn"] + test_p["gbm"]) / 2
     tune_auc = {k: zq.auc_score(ytune, p) for k, p in tune_p.items()}
-    thresholds = {k: float(np.quantile(p, 0.85)) for k, p in tune_p.items()}
-    tune_stats = {k: trade_metrics(rtune, tune_p[k] >= thresholds[k]) for k in tune_p}
+    # Evolve the confidence threshold using only the tuning block. The final
+    # holdout is never used to select a threshold or model.
+    thresholds, tune_stats = {}, {}
+    for name, probs in tune_p.items():
+        trials = []
+        for q in (0.70, 0.75, 0.80, 0.85, 0.90, 0.925):
+            threshold = float(np.quantile(probs, q))
+            metrics = trade_metrics(rtune, probs >= threshold)
+            if metrics["n"] >= 30 and metrics["avg"] > 0 and metrics["pf"] > 1.05:
+                trials.append((metrics["avg"], threshold, metrics))
+        if trials:
+            _, thresholds[name], tune_stats[name] = max(trials, key=lambda item: item[0])
+        else:
+            thresholds[name] = float(np.quantile(probs, 0.85))
+            tune_stats[name] = trade_metrics(rtune, probs >= thresholds[name])
     eligible = [k for k in tune_p if tune_auc[k] >= 0.52 and tune_stats[k]["n"] >= 30
                 and tune_stats[k]["avg"] > 0 and tune_stats[k]["pf"] > 1.05]
     mode = max(eligible, key=lambda k: tune_stats[k]["avg"]) if eligible else max(tune_auc, key=tune_auc.get)
