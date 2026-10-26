@@ -200,6 +200,7 @@ def test_scan_and_once_pipeline():
     zq.get_prices = lambda: {i: 100.0 for i in uni.index}
     zq.poll_commands = lambda *a, **k: 0
     zq.CFG["SCAN_DEPTH"] = 300
+    zq.CFG["BTC_FILTER"] = -1.0  # synthetic test candles should not trip the live BTC gate
     b = zq.Brain(persist=False); p = zq.Paper()
     R = zq.scan(b, p, uni, 0, trade=True)                       # no model yet: ranking + signal logging only
     assert len(R) > 0 and R["rank"].is_monotonic_increasing and p.count("signals") == min(zq.CFG["LOG_TOP"], len(R))
