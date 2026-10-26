@@ -1322,9 +1322,20 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     paper._set("last_train_sig", paper.count("signals", "labeled=1"))
     aucs = " | ".join(f"{k}:{v:.3f}" for k, v in info["aucs"].items())
     top = info.get("val_top_net")
+    baseline = info.get("baseline_test_avg_net", info.get("val_all_net"))
+    test_n, test_pf = info.get("test_n"), info.get("test_pf")
+    rates = [info.get(k) for k in ("train_positive_rate", "tune_positive_rate", "test_positive_rate")]
+    diag = ""
+    if baseline is not None and np.isfinite(baseline):
+        diag += f"\nمتوسط كل إشارات الاختبار: {baseline * 100:+.2f}%"
+    if test_n is not None and test_pf is not None:
+        diag += f" | صفقات النموذج: {int(test_n)} | PF: {float(test_pf):.2f}"
+    if all(v is not None and np.isfinite(v) for v in rates):
+        diag += f"\nنسبة العينات الرابحة train/tune/test: {rates[0] * 100:.1f}%/{rates[1] * 100:.1f}%/{rates[2] * 100:.1f}%"
     tg(f"🧠 تدريب النماذج [{reason}]\nعيّنات: {info['n']} | AUC ({aucs})\n"
        f"النمط المختار: {info['mode']}"
-       + (f" | متوسط صفقات الإشارة في التحقق: {top * 100:+.2f}%" if top is not None else "")
+       + (f" | متوسط صفقات الإشارة في التحقق: {top * 100:+.2f}%" if top is not None and np.isfinite(top) else "")
+       + diag
        + f"\n{'تم اعتماد النموذج ✅' if info['accepted'] else 'لم يُعتمد (أسوأ من السابق أو ضعيف) ⚠️'}")
     return info
 
