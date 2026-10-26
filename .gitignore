@@ -1,0 +1,5 @@
+zied_data/
+__pycache__/
+*.pt
+*.db
+.env
