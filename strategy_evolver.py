@@ -90,7 +90,8 @@ def evaluate(df, signals, start, end):
     losses = -x[x < 0].sum()
     return {"trades": int(len(x)), "avg_net": float(x.mean()) if len(x) else None,
             "win_rate": float((x > 0).mean()) if len(x) else None,
-            "profit_factor": float(wins / losses) if losses > 0 else (999.0 if wins > 0 else 0.0)}
+            "profit_factor": float(wins / losses) if losses > 0 else (999.0 if wins > 0 else 0.0),
+            "_returns": x.tolist()}
 
 
 def evaluate_candidate(frames, spec):
@@ -115,17 +116,15 @@ def evaluate_candidate(frames, spec):
                 totals[name].append(m)
     out = {}
     for name, chunks in totals.items():
-        ntr = sum(x["trades"] for x in chunks)
-        if not ntr:
+        x = np.asarray([r for chunk in chunks for r in chunk["_returns"]], dtype=float)
+        if not len(x):
             out[name] = {"trades": 0, "avg_net": None, "win_rate": None, "profit_factor": 0.0}
             continue
-        avg = sum(x["avg_net"] * x["trades"] for x in chunks) / ntr
-        win = sum(x["win_rate"] * x["trades"] for x in chunks) / ntr
-        # Conservative aggregate PF proxy from positive/negative average components.
-        gross_win = sum(max(x["avg_net"], 0) * x["trades"] for x in chunks)
-        gross_loss = sum(max(-x["avg_net"], 0) * x["trades"] for x in chunks)
-        pf = gross_win / gross_loss if gross_loss else (999.0 if gross_win else 0.0)
-        out[name] = {"trades": int(ntr), "avg_net": float(avg), "win_rate": float(win), "profit_factor": float(pf)}
+        gross_win = float(x[x > 0].sum())
+        gross_loss = float(-x[x < 0].sum())
+        pf = gross_win / gross_loss if gross_loss > 0 else (999.0 if gross_win > 0 else 0.0)
+        out[name] = {"trades": int(len(x)), "avg_net": float(x.mean()),
+                     "win_rate": float((x > 0).mean()), "profit_factor": float(pf)}
     return out
 
 
