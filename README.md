@@ -9,7 +9,7 @@ OKX Spot (USDT, no stablecoins) scanner with a self-learning pipeline.
    (beta/correlation to BTC, relative strength, BTC regime/volatility, hour/day, liquidity).
 3. **Ranking** of every coin, best to worst.
 4. **Models**: 20-layer residual net + gradient boosting (LightGBM, or scikit-learn fallback) + their ensemble.
-   The best one is chosen on a time-ordered validation block (with an embargo) and the buy threshold comes from it.
+   The evolved runner chooses the model and confidence threshold on a chronological tuning block, then promotes it only if a separate later holdout has at least 30 selected trades, positive net expectancy after costs, PF > 1.05, and acceptable AUC. AUC alone cannot promote a model.
 5. **Labels** = triple barrier (same ATR stop/target as the paper trader, 24h max, costs included).
 6. **Paper trading** with realistic costs (fees, slippage, spread, size impact) and risk management:
    volatility-based sizing, max open trades, correlation filter, daily loss limit, loss-streak kill-switch, BTC regime filter.
