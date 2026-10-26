@@ -81,3 +81,20 @@ def test_model_save_rejects_invalid_normalization(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="normalization"):
         brain.save(zq.N_FEATURES)
     assert not (tmp_path / "meta.json").exists()
+
+
+
+def test_load_removes_orphan_model_files_without_metadata(tmp_path, monkeypatch):
+    monkeypatch.setitem(zq.CFG, "DIR", str(tmp_path))
+    monkeypatch.setitem(zq.CFG, "MODEL", str(tmp_path / "model.pt"))
+    monkeypatch.setitem(zq.CFG, "GBM", str(tmp_path / "gbm.pkl"))
+    monkeypatch.setitem(zq.CFG, "META", str(tmp_path / "meta.json"))
+    (tmp_path / "model.pt").write_bytes(b"stale model")
+    (tmp_path / "gbm.pkl").write_bytes(b"stale gbm")
+
+    brain = zq.Brain(persist=True)
+
+    assert not brain.ready
+    assert not (tmp_path / "model.pt").exists()
+    assert not (tmp_path / "gbm.pkl").exists()
+    assert not (tmp_path / "meta.json").exists()
