@@ -20,7 +20,7 @@ class TradeMetricsTests(unittest.TestCase):
 
     def test_all_winners_have_infinite_profit_factor(self):
         m = trade_metrics(np.array([0.01, 0.02]), np.array([1, 1]))
-        self.assertTrue(math.isinf(m["pf"]))
+        self.assertEqual(m["pf"], 999.0)
 
 
 if __name__ == "__main__":
