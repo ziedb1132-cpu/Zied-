@@ -16,7 +16,8 @@ OKX Spot (USDT, no stablecoins) scanner with a self-learning pipeline.
 7. **Self-learning**: every scan logs the top coins; after 24h each logged signal is labelled with what really happened.
    The models retrain on history + labelled signals + real paper-trade outcomes (x3 weight).
 8. **Walk-forward backtest** (`backtest`) to check the edge out-of-sample before trusting anything.
-9. **Telegram**: alerts and commands `/stats /positions /top /model /signals /pause /resume`.
+9. **Strategy discovery**: daily candidate generation across trend-pullback, breakout and RSI-reversal rule families; parameter mutations are evaluated chronologically with a 24-hour embargo, a 20 bps round-trip cost reserve, and an untouched holdout. A candidate is recorded as champion only with at least 30 holdout trades, positive average net return and PF > 1.05. Discovery is research-only and never changes live entries automatically.
+10. **Telegram**: alerts and commands `/stats /positions /top /model /signals /pause /resume`.
 
 ## Commands
 ```bash
