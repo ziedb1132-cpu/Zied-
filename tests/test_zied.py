@@ -208,7 +208,8 @@ def test_scan_and_once_pipeline():
     b.fit(ds["X"], ds["y"], ds["ts"], ds["ret"], epochs=2, force=True)
     zq.CFG["PROB_MIN"] = 0.0                                   # force signals to exercise the entry path
     R = zq.scan(b, p, uni, 1, trade=True)
-    assert R["prob"].notna().sum() > 0 and len(p.open_trades()) >= 1
+    assert R["prob"].notna().sum() > 0 and len(p.pending_orders()) >= 1
+    assert len(p.open_trades()) == 0  # LIMIT orders remain pending until a later candle fills them
     assert len(p.open_trades()) <= zq.CFG["MAX_OPEN"]
     zq.CFG["PROB_MIN"] = None
     zq.once()                                                  # full scheduler cycle must not raise
