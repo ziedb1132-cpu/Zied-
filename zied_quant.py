@@ -1036,7 +1036,9 @@ def rank_universe(X, vol24):
 def simulate(idx, ds):
     """Replay time-ordered signals with max positions, one per coin and aggregate stop-risk budget."""
     ts, ret, hold, coin = ds["ts"][idx], ds["ret"][idx], ds["hold"][idx], ds["coin"][idx]
-    atr = ds["X"][idx, FEATURE_COLS.index("1H_atr_pct")]
+    # Some small unit fixtures contain only outcomes; use a neutral ATR in that case.
+    atr = (ds["X"][idx, FEATURE_COLS.index("1H_atr_pct")] if "X" in ds
+           else np.full(len(idx), 0.01, dtype=np.float64))
     open_, taken, events = [], [], []
     for i in np.argsort(ts, kind="stable"):
         t = ts[i]
