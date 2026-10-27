@@ -837,7 +837,7 @@ class Paper:
             "UPDATE trades AS t SET feature_ts=COALESCE(("
             "SELECT p.created_ts FROM pending_orders p WHERE p.inst=t.inst "
             "AND p.feats=t.feats AND p.status='FILLED' AND p.created_ts<=t.open_ts "
-            "ORDER BY ABS(p.created_ts-t.open_ts) ASC LIMIT 1), t.open_ts) "
+            "ORDER BY p.created_ts DESC LIMIT 1), t.open_ts) "
             "WHERE t.feature_ts IS NULL"
         )
         self.db.execute(
