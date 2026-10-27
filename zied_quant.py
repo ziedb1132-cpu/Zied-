@@ -1348,13 +1348,18 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=True)
         mismatch = (np.mean((y[finite_ret] > 0.5) != (ret[finite_ret] > 0))
                     if finite_ret.any() else float("nan"))
         coin = np.asarray(ds["coin"]).astype(str)
-        keys = np.char.add(np.char.add(coin, "|"), np.asarray(ts, dtype=np.int64).astype(str))
+        finite_ts = np.isfinite(ts)
+        keys = np.char.add(np.char.add(coin[finite_ts], "|"),
+                           ts[finite_ts].astype(np.int64).astype(str))
         duplicate_rows = int(len(keys) - len(np.unique(keys)))
+        ts_range = (f"{int(ts[finite_ts].min())}..{int(ts[finite_ts].max())}"
+                    if finite_ts.any() else "invalid")
         log.info(
             "training data source=%s n=%d win_rate=%.3f ret_finite=%d/%d "
-            "label_return_mismatch=%.4f duplicate_coin_timestamp=%d ts_range=%s..%s",
-            name, n, float(np.mean(y > 0.5)), int(finite_ret.sum()), n, float(mismatch),
-            duplicate_rows, int(np.nanmin(ts)), int(np.nanmax(ts)))
+            "ts_finite=%d/%d label_return_mismatch=%.4f "
+            "duplicate_coin_timestamp=%d ts_range=%s",
+            name, n, float(np.mean(y > 0.5)), int(finite_ret.sum()), n,
+            int(finite_ts.sum()), n, float(mismatch), duplicate_rows, ts_range)
 
     report_source("historical", base)
     report_source("labelled_signals", signals)
