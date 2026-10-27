@@ -22,6 +22,19 @@ def fake_brain(probabilities):
 
 
 class AINanGuardTests(unittest.TestCase):
+    def test_get_prices_skips_empty_and_invalid_okx_tickers(self):
+        tickers = [
+            {"instId": "BTC-USDT", "last": "65000"},
+            {"instId": "EMPTY-USDT", "last": ""},
+            {"instId": "NONE-USDT", "last": None},
+            {"instId": "BAD-USDT", "last": "not-a-price"},
+            {"instId": "NAN-USDT", "last": "nan"},
+            {"instId": "INF-USDT", "last": "inf"},
+            {"instId": "ZERO-USDT", "last": "0"},
+        ]
+        with patch.object(zq, "okx_get", return_value=tickers):
+            self.assertEqual(zq.get_prices(), {"BTC-USDT": 65000.0})
+
     def test_ai_predict_accepts_finite_probabilities(self):
         brain = fake_brain([0.62, 0.81])
         result = brain.predict(np.zeros((2, zq.N_FEATURES), dtype=float))
