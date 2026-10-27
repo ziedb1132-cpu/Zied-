@@ -834,11 +834,11 @@ class Paper:
         # precede its fill by up to LIMIT_TTL_H. Keep the sample timestamp at feature
         # observation time, not fill/close time, to preserve chronological evaluation.
         self.db.execute(
-            "UPDATE trades SET feature_ts=COALESCE(("
-            "SELECT p.created_ts FROM pending_orders p WHERE p.inst=trades.inst "
-            "AND p.feats=trades.feats AND p.status='FILLED' AND p.created_ts<=trades.open_ts "
-            "ORDER BY ABS(p.created_ts-trades.open_ts) ASC LIMIT 1), open_ts) "
-            "WHERE feature_ts IS NULL"
+            "UPDATE trades AS t SET feature_ts=COALESCE(("
+            "SELECT p.created_ts FROM pending_orders p WHERE p.inst=t.inst "
+            "AND p.feats=t.feats AND p.status='FILLED' AND p.created_ts<=t.open_ts "
+            "ORDER BY ABS(p.created_ts-t.open_ts) ASC LIMIT 1), t.open_ts) "
+            "WHERE t.feature_ts IS NULL"
         )
         self.db.execute(
             "UPDATE experience SET ts=(SELECT COALESCE(t.feature_ts,t.open_ts) FROM trades t "
