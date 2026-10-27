@@ -31,6 +31,33 @@ jobs:
           path: zied_data
           key: zied-state-${{ github.run_id }}
           restore-keys: zied-state-
+      # Durable state-data is the source of truth; cache is only a best-effort fallback.
+      - name: Restore durable learning state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git fetch origin state-data:refs/remotes/origin/state-data 2>/dev/null; then
+            rm -rf zied_data zied_data_store
+            if git ls-tree -r --name-only origin/state-data | grep -qx 'zied_data_store/manifest.json'; then
+              git checkout origin/state-data -- zied_data_store
+              python state_chunks.py unpack zied_data_store zied_data
+              echo "DURABLE_STATE=restored_from_chunks"
+            elif git ls-tree -r --name-only origin/state-data | grep -q '^zied_data/'; then
+              git checkout origin/state-data -- zied_data
+              echo "DURABLE_STATE=restored_legacy"
+            else
+              mkdir -p zied_data
+              echo "DURABLE_STATE=branch_has_no_state"
+            fi
+          else
+            echo "DURABLE_STATE=cache_or_first_run_fallback"
+            mkdir -p zied_data
+          fi
+          echo "=== Backtest state files ==="
+          find zied_data -maxdepth 1 -type f -printf '%f %s bytes\\n' | sort
+          for f in paper.db train.npz model.pt gbm.pkl meta.json; do
+            if [ -s "zied_data/$f" ]; then echo "FOUND: $f"; else echo "MISSING/EMPTY: $f"; fi
+          done
       - name: Backtest
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
