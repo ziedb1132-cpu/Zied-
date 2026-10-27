@@ -1157,25 +1157,52 @@ class Paper:
 # =====================================================================
 def label_signals(paper):
     H = CFG["BARRIER_H"]
-    rows = paper.pending_signals(time.time() - (H + 2) * 3600)
+    now = time.time()
+    total_unlabelled = paper.count("signals", "labeled=0")
+    cutoff = now - (H + 2) * 3600
+    rows = paper.pending_signals(cutoff)
     if not rows:
+        log.info("signal labelling: total=%d unlabelled=%d mature=0 labelled_now=0 "
+                 "(waiting for %dh horizon + safety buffer)",
+                 paper.count("signals"), total_unlabelled, H + 2)
         return 0
     by = {}
     for r in rows:
         by.setdefault(r["inst"], []).append(r)
-    n = 0
+    n = no_candles = insufficient = errors = 0
     for inst, rs in by.items():
         oldest = min(r["ts"] for r in rs)
-        d = get_candles(inst, "1H", min(1400, int((time.time() - oldest) / 3600) + H + 5))
-        if d is None:
+        depth = min(1400, max(H + 5, int((now - oldest) / 3600) + H + 5))
+        try:
+            d = get_candles(inst, "1H", depth)
+        except Exception as exc:
+            errors += len(rs)
+            log.warning("signal labelling: candle fetch failed for %s: %s", inst, exc)
+            continue
+        if d is None or d.empty:
+            no_candles += len(rs)
+            log.warning("signal labelling: no 1H candles for %s (%d mature signals)", inst, len(rs))
             continue
         for r in rs:
             path = d[d["ts"] >= r["ts"] * 1000]
             if len(path) < H:
+                insufficient += 1
                 continue
-            ret, lab, hold = barrier_single(r["price"], r["atr"], path["h"].values, path["l"].values, path["c"].values)
-            paper.set_label(r["id"], lab, ret, hold); n += 1
-    log.info("labelled %d logged signals", n)
+            try:
+                ret, lab, hold = barrier_single(r["price"], r["atr"], path["h"].values,
+                                                path["l"].values, path["c"].values)
+                if not np.isfinite(ret) or not np.isfinite(hold) or lab not in (0, 1):
+                    errors += 1
+                    log.warning("signal labelling: invalid barrier outcome signal_id=%s inst=%s", r["id"], inst)
+                    continue
+                paper.set_label(r["id"], lab, ret, hold)
+                n += 1
+            except Exception as exc:
+                errors += 1
+                log.warning("signal labelling: outcome failed signal_id=%s inst=%s: %s", r["id"], inst, exc)
+    log.info("signal labelling: total=%d unlabelled=%d mature=%d labelled_now=%d "
+             "no_candles=%d insufficient_future_candles=%d errors=%d",
+             paper.count("signals"), total_unlabelled, len(rows), n, no_candles, insufficient, errors)
     return n
 
 # =====================================================================
