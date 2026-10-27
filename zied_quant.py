@@ -1607,26 +1607,55 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
             log.info("%s LIMIT skipped by cash, slot, exposure or aggregate-risk controls", inst)
     return R
 
+def bootstrap_training_due(paper, now=None):
+    """Throttle rejected/unavailable bootstrap models; retry on new data or after 24h."""
+    now = time.time() if now is None else float(now)
+    last = float(paper._get("bootstrap_train_attempt_ts") or 0)
+    if last <= 0:
+        return True
+    new_trades = paper.count("experience") - int(paper._get("bootstrap_attempt_exp") or 0)
+    new_labels = paper.count("signals", "labeled=1") - int(paper._get("bootstrap_attempt_labels") or 0)
+    return (now - last >= 86400
+            or new_trades >= int(CFG["RETRAIN_EVERY"])
+            or new_labels >= int(CFG["RETRAIN_SIGNALS"]))
+
+
+def mark_bootstrap_training_attempt(paper, now=None):
+    """Persist the attempt and data counters even if validation rejects the candidate."""
+    now = time.time() if now is None else float(now)
+    paper._set("bootstrap_train_attempt_ts", now)
+    paper._set("bootstrap_attempt_exp", paper.count("experience"))
+    paper._set("bootstrap_attempt_labels", paper.count("signals", "labeled=1"))
+
+
 def once():
     """One full cycle for schedulers (GitHub Actions)."""
     brain, paper = Brain(), Paper()
     uni = get_universe()
     if uni.empty:
         raise RuntimeError("OKX returned no tradable pairs (blocked? try OKX_BASE=https://aws.okx.com)")
-    if not brain.ready:
-        try:
-            retrain(brain, paper, uni, "أول تدريب")
-        except Exception as e:
-            log.exception("first training failed: %s", e); tg(f"⚠️ فشل أول تدريب: {e}")
     poll_commands(paper, brain)
     paper.check_candles()
+    # Label mature outcomes BEFORE training so the latest eligible experience is available.
     label_signals(paper)
+    if not brain.ready and bootstrap_training_due(paper):
+        first_attempt = not paper._get("bootstrap_train_attempt_ts")
+        mark_bootstrap_training_attempt(paper)
+        try:
+            retrain(brain, paper, uni,
+                    "أول تدريب" if first_attempt else "إعادة محاولة اعتماد النموذج")
+        except Exception as e:
+            log.exception("bootstrap training failed: %s", e)
+            tg(f"⚠️ فشل تدريب النموذج: {e}")
+    elif not brain.ready:
+        log.info("AI model not approved; bootstrap retry deferred until enough new labels/trades or 24 hours")
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
     paper._set("cycle", cycle + 1)
     # Send a complete portfolio snapshot to Telegram after every hourly GitHub Actions cycle.
     tg(portfolio_msg(paper))
-    if need_retrain(paper):
+    # When no model has passed validation, bootstrap cooldown is the only retry path.
+    if brain.ready and need_retrain(paper):
         try:
             retrain(brain, paper, uni, "تعلّم ذاتي")
         except Exception as e:
@@ -1656,8 +1685,19 @@ def run():
     brain, paper = Brain(), Paper()
     stop = threading.Event()
     uni = get_universe()
-    if not brain.ready:
-        retrain(brain, paper, uni, "أول تدريب")
+    # Mature old signals before the initial training attempt, just like the scheduled runner.
+    label_signals(paper)
+    if not brain.ready and bootstrap_training_due(paper):
+        first_attempt = not paper._get("bootstrap_train_attempt_ts")
+        mark_bootstrap_training_attempt(paper)
+        try:
+            retrain(brain, paper, uni,
+                    "أول تدريب" if first_attempt else "إعادة محاولة اعتماد النموذج")
+        except Exception as e:
+            log.exception("bootstrap training failed: %s", e)
+            tg(f"⚠️ فشل تدريب النموذج: {e}")
+    elif not brain.ready:
+        log.info("AI model not approved; bootstrap retry deferred until enough new labels/trades or 24 hours")
     threading.Thread(target=monitor_loop, args=(paper, stop), daemon=True).start()
     threading.Thread(target=telegram_loop, args=(paper, brain, stop), daemon=True).start()
     tg("🚀 Zied Quant v2 بدأ العمل (Paper Trading فقط). أرسل /help للأوامر.")
@@ -1667,11 +1707,20 @@ def run():
             t0 = time.time()
             try:
                 label_signals(paper)
+                if not brain.ready and bootstrap_training_due(paper):
+                    first_attempt = not paper._get("bootstrap_train_attempt_ts")
+                    mark_bootstrap_training_attempt(paper)
+                    try:
+                        retrain(brain, paper, None,
+                                "أول تدريب" if first_attempt else "إعادة محاولة اعتماد النموذج")
+                    except Exception as e:
+                        log.exception("bootstrap training failed: %s", e)
+                        tg(f"⚠️ فشل تدريب النموذج: {e}")
                 scan(brain, paper, None, cycle)
             except Exception as e:
                 log.exception("scan failed: %s", e); tg(f"⚠️ خطأ في المسح: {e}")
             cycle += 1
-            if need_retrain(paper):
+            if brain.ready and need_retrain(paper):
                 try:
                     retrain(brain, paper, None, "تعلّم ذاتي")
                 except Exception as e:
