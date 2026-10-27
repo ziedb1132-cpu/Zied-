@@ -773,7 +773,7 @@ class Brain:
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS trades(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, open_ts REAL, entry REAL, qty REAL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, open_ts REAL, feature_ts REAL, entry REAL, qty REAL,
   usdt_in REAL, sl REAL, tp REAL, prob REAL, rank INTEGER, feats TEXT,
   status TEXT DEFAULT 'OPEN', close_ts REAL, exit REAL, pnl REAL, pnl_pct REAL, reason TEXT,
   spread REAL, vol24 REAL);
@@ -825,16 +825,23 @@ class Paper:
             self._set("cash", CFG["START_BALANCE"])
 
     def _migrate(self):
-        for table, cols in {"trades": {"spread": "REAL", "vol24": "REAL"}, "experience": {"ret": "REAL"}}.items():
+        for table, cols in {"trades": {"spread": "REAL", "vol24": "REAL", "feature_ts": "REAL"}, "experience": {"ret": "REAL"}}.items():
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
             for c, t in cols.items():
                 if c not in have:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {c} {t}")
-        # Historical experience rows were timestamped at trade close, although their
-        # feature vectors were captured at entry. Re-anchor them to entry time so the
-        # chronological train/tune/holdout split follows when features were observable.
+        # A LIMIT order's features are observed when the order is created, which can
+        # precede its fill by up to LIMIT_TTL_H. Keep the sample timestamp at feature
+        # observation time, not fill/close time, to preserve chronological evaluation.
         self.db.execute(
-            "UPDATE experience SET ts=(SELECT t.open_ts FROM trades t "
+            "UPDATE trades SET feature_ts=COALESCE(("
+            "SELECT p.created_ts FROM pending_orders p WHERE p.inst=trades.inst "
+            "AND p.feats=trades.feats AND p.status='FILLED' AND p.created_ts<=trades.open_ts "
+            "ORDER BY ABS(p.created_ts-trades.open_ts) ASC LIMIT 1), open_ts) "
+            "WHERE feature_ts IS NULL"
+        )
+        self.db.execute(
+            "UPDATE experience SET ts=(SELECT COALESCE(t.feature_ts,t.open_ts) FROM trades t "
             "WHERE t.inst=experience.inst AND t.feats=experience.feats "
             "AND t.close_ts=experience.ts ORDER BY t.id DESC LIMIT 1) "
             "WHERE EXISTS (SELECT 1 FROM trades t WHERE t.inst=experience.inst "
@@ -966,10 +973,10 @@ class Paper:
             if hit is not None:
                 fill_ts = float(hit["ts"]) / 1000.0 + CFG["TF_SEC"]["5m"]
                 self.db.execute(
-                    "INSERT INTO trades(inst,open_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats,spread,vol24) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (o["inst"], fill_ts, o["limit_px"], o["qty"], o["reserved_usdt"], o["sl"], o["tp"],
-                     o["prob"], o["rank"], o["feats"], o["spread"], o["vol24"]))
+                    "INSERT INTO trades(inst,open_ts,feature_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats,spread,vol24) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (o["inst"], fill_ts, o["created_ts"], o["limit_px"], o["qty"], o["reserved_usdt"],
+                     o["sl"], o["tp"], o["prob"], o["rank"], o["feats"], o["spread"], o["vol24"]))
                 self.db.execute("UPDATE pending_orders SET status='FILLED' WHERE id=?", (o["id"],))
                 self.db.commit()
                 tg(f"✅ تنفيذ LIMIT افتراضي {o['inst']}\nالسعر: {o['limit_px']:.8g}\n"
@@ -998,9 +1005,11 @@ class Paper:
         entry = ask * (1 + CFG["SLIP"] + impact(usdt, vol24))
         qty = usdt * (1 - CFG["FEE"]) / entry
         sl, tp = entry * (1 - CFG["SL_ATR"] * a), entry * (1 + CFG["TP_ATR"] * a)
+        now = time.time()
         self.db.execute(
-            "INSERT INTO trades(inst,open_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats,spread,vol24) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            (inst, time.time(), entry, qty, usdt, sl, tp, prob, rank,
+            "INSERT INTO trades(inst,open_ts,feature_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats,spread,vol24) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (inst, now, now, entry, qty, usdt, sl, tp, prob, rank,
              json.dumps([float(x) for x in feats]), spread, vol24))
         self._set("cash", self.cash() - usdt)
         return dict(inst=inst, entry=entry, sl=sl, tp=tp, usdt=usdt)
@@ -1013,10 +1022,11 @@ class Paper:
         now = time.time()
         self.db.execute("UPDATE trades SET status='CLOSED',close_ts=?,exit=?,pnl=?,pnl_pct=?,reason=? WHERE id=?",
                         (now, exit_px, pnl, pct, reason, t["id"]))
-        # Timestamp the sample when its entry features were observed, not when its
-        # outcome became known; the time split applies a barrier-horizon embargo.
+        # Timestamp the sample when its features were observed, not when it filled
+        # or closed. This matters for LIMIT orders whose feature vector can be hours old.
+        feature_ts = t.get("feature_ts") or t["open_ts"]
         self.db.execute("INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
-                        (float(t["open_ts"]), t["inst"], t["feats"], int(pnl > 0), pnl, pct))
+                        (float(feature_ts), t["inst"], t["feats"], int(pnl > 0), pnl, pct))
         self._set("cash", self.cash() + proceeds); self.db.commit()
         tg(f"{'✅' if pnl > 0 else '🔴'} إغلاق صفقة ورقية {t['inst']}\nالسبب: {reason}\n"
            f"دخول {t['entry']:.6g} ← خروج {exit_px:.6g}\nالربح: {pnl:+.2f} USDT ({pct * 100:+.2f}%)")
@@ -1366,12 +1376,15 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=True)
         duplicate_rows = int(len(keys) - len(np.unique(keys)))
         ts_range = (f"{int(ts[finite_ts].min())}..{int(ts[finite_ts].max())}"
                     if finite_ts.any() else "invalid")
+        ret_mean = float(np.mean(ret[finite_ret])) if finite_ret.any() else float("nan")
+        ret_win = float(np.mean(ret[finite_ret] > 0)) if finite_ret.any() else float("nan")
         log.info(
-            "training data source=%s n=%d win_rate=%.3f ret_finite=%d/%d "
-            "ts_finite=%d/%d label_return_mismatch=%.4f "
-            "duplicate_coin_timestamp=%d ts_range=%s",
-            name, n, float(np.mean(y > 0.5)), int(finite_ret.sum()), n,
-            int(finite_ts.sum()), n, float(mismatch), duplicate_rows, ts_range)
+            "training data source=%s n=%d label_win_rate=%.3f return_win_rate=%.3f "
+            "mean_net_return=%.5f ret_finite=%d/%d ts_finite=%d/%d "
+            "label_return_mismatch=%.4f duplicate_coin_timestamp=%d ts_range=%s",
+            name, n, float(np.mean(y > 0.5)), ret_win, ret_mean,
+            int(finite_ret.sum()), n, int(finite_ts.sum()), n,
+            float(mismatch), duplicate_rows, ts_range)
 
     report_source("historical", base)
     report_source("labelled_signals", signals)
