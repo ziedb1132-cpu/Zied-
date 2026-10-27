@@ -22,6 +22,30 @@ def fake_brain(probabilities):
 
 
 class AINanGuardTests(unittest.TestCase):
+
+    def test_forced_walk_forward_fit_does_not_claim_quality_acceptance(self):
+        class WeakGBM:
+            kind = "test"
+            def fit(self, Xf, yf, Xe, ye):
+                return True
+            def predict(self, X):
+                return 1.0 / (1.0 + np.exp(-np.asarray(X)[:, 0]))
+
+        rng = np.random.default_rng(17)
+        n = 3000
+        X = rng.normal(size=(n, zq.N_FEATURES))
+        y = rng.integers(0, 2, size=n).astype(float)
+        ts = np.arange(n, dtype=float) * 3600.0
+        ret = np.full(n, -0.01, dtype=float)
+        brain = zq.Brain(persist=False)
+        with patch.object(zq, "GBM", WeakGBM), patch.object(zq, "torch", None):
+            info = brain.fit(X, y, ts, ret, force=True)
+        self.assertFalse(info["accepted"])
+        self.assertTrue(info["forced_for_evaluation"])
+        self.assertGreaterEqual(info["n_gate"], 100)
+        self.assertGreaterEqual(info["n_selection"], 50)
+        self.assertTrue(brain.ready)
+
     def test_paper_experience_migration_uses_entry_timestamp(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(zq.CFG, {"DB": os.path.join(tmp, "paper.db")}):

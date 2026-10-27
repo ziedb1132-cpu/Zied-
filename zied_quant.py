@@ -722,49 +722,82 @@ class Brain:
         if n < 600:
             raise ValueError(f"not enough samples ({n})")
         nv = max(int(n * 0.2), 200)
-        ntr = int(np.searchsorted(ts, ts[n - nv] - CFG["BARRIER_H"] * 3600))
+        # The recent tail is split chronologically: the first block selects the model
+        # and probability threshold; the later block is an untouched quality gate.
+        ng = max(100, nv // 2)
+        ns = nv - ng
+        if ns < 50:
+            raise ValueError("selection validation block too small")
+        selection_start = n - nv
+        gate_start = n - ng
+        ntr = int(np.searchsorted(ts, ts[selection_start] - CFG["BARRIER_H"] * 3600))
         if ntr < 400:
             raise ValueError("training part too small after embargo")
-        # Fit preprocessing only on the actual model-fit segment; do not use early-stop
-        # validation rows to estimate feature means/standard deviations.
+        # Preprocessing statistics use only the model-fit segment.
         nf = int(ntr * 0.85)
         mu = X[:nf].mean(0); sd = X[:nf].std(0) + 1e-8
         tmp = Brain.__new__(Brain); tmp.mu, tmp.sd = mu, sd
-        Xtr, Xv = tmp._norm(X[:ntr]), tmp._norm(X[n - nv:])
-        ytr, yv = y[:ntr], y[n - nv:]
-        models, pv = {}, {}
+        Xtr = tmp._norm(X[:ntr])
+        Xs, Xg = tmp._norm(X[selection_start:gate_start]), tmp._norm(X[gate_start:])
+        ys, yg = y[selection_start:gate_start], y[gate_start:]
+        models, ps = {}, {}
         g = GBM()
-        if g.fit(Xtr[:nf], ytr[:nf], Xtr[nf:], ytr[nf:]):
-            models["gbm"] = g; pv["gbm"] = g.predict(Xv)
+        if g.fit(Xtr[:nf], y[:nf], Xtr[nf:], y[nf:ntr]):
+            models["gbm"] = g; ps["gbm"] = g.predict(Xs)
         if torch is not None:
-            net = _train_net(Xtr[:nf], ytr[:nf], Xtr[nf:], ytr[nf:], epochs)
-            models["nn"] = net; pv["nn"] = _nn_predict(net, Xv)
-        if not pv:
+            net = _train_net(Xtr[:nf], y[:nf], Xtr[nf:], y[nf:ntr], epochs)
+            models["nn"] = net; ps["nn"] = _nn_predict(net, Xs)
+        if not ps:
             raise RuntimeError("no model available: install torch and/or lightgbm / scikit-learn")
-        if len(pv) == 2:
-            pv["ens"] = (pv["nn"] + pv["gbm"]) / 2
-        aucs = {k: auc_score(yv, p) for k, p in pv.items()}
-        mode = max(aucs, key=aucs.get)
-        thrs = {k: float(np.quantile(p, 0.90)) for k, p in pv.items()}
-        info = dict(n=int(n), n_val=int(nv), aucs=aucs, mode=mode, auc=aucs[mode], thr=thrs[mode],
+        if len(ps) == 2:
+            ps["ens"] = (ps["nn"] + ps["gbm"]) / 2
+        selection_aucs = {k: auc_score(ys, p) for k, p in ps.items()}
+        mode = max(selection_aucs, key=selection_aucs.get)
+        thrs = {k: float(np.quantile(p, 0.90)) for k, p in ps.items()}
+        # The later gate evaluates the selected model once; it cannot tune the threshold.
+        pg_all = {}
+        if "gbm" in models:
+            pg_all["gbm"] = models["gbm"].predict(Xg)
+        if "nn" in models:
+            pg_all["nn"] = _nn_predict(models["nn"], Xg)
+        if len(pg_all) == 2:
+            pg_all["ens"] = (pg_all["nn"] + pg_all["gbm"]) / 2
+        pg = pg_all[mode]
+        gate_auc = auc_score(yg, pg)
+        gate_mask = pg >= thrs[mode]
+        gate_selected = int(gate_mask.sum())
+        info = dict(n=int(n), n_val=int(nv), n_selection=int(ns), n_gate=int(ng),
+                    aucs=selection_aucs, gate_auc=float(gate_auc), mode=mode,
+                    auc=float(gate_auc), thr=thrs[mode], gate_selected=gate_selected,
                     win_rate=float(y.mean()), gbm_kind=g.kind if "gbm" in models else None)
         if ret is not None:
-            rv = ret[n - nv:]; m = pv[mode] >= thrs[mode]
-            info["val_all_net"] = float(np.nanmean(rv))
-            info["val_top_net"] = float(np.nanmean(rv[m])) if m.any() else None
-        accepted = force or (aucs[mode] >= 0.52 and (self.auc is None or aucs[mode] >= self.auc - 0.03))
-        info["accepted"] = bool(accepted)
-        log.info("model validation: n=%d val=%d selected=%s AUC=%.4f threshold=%.4f accepted=%s previous_auc=%s",
-                 n, nv, mode, aucs[mode], thrs[mode], bool(accepted),
+            rg = ret[gate_start:]
+            info["val_all_net"] = float(np.nanmean(rg))
+            info["val_top_net"] = float(np.nanmean(rg[gate_mask])) if gate_mask.any() else None
+        gate_edge = (ret is not None and gate_selected >= 20
+                     and info.get("val_top_net") is not None
+                     and np.isfinite(info["val_top_net"])
+                     and np.isfinite(info["val_all_net"])
+                     and info["val_top_net"] > 0.0
+                     and info["val_top_net"] > info["val_all_net"])
+        quality_ok = (gate_auc >= 0.52
+                      and (self.auc is None or gate_auc >= self.auc - 0.03)
+                      and gate_edge)
+        usable = bool(force or quality_ok)
+        info["accepted"] = bool(quality_ok)
+        info["forced_for_evaluation"] = bool(force and not quality_ok)
+        log.info("model validation: n=%d selection=%d gate=%d selected=%s selection_AUC=%.4f gate_AUC=%.4f threshold=%.4f gate_selected=%d accepted=%s forced=%s previous_gate_auc=%s",
+                 n, ns, ng, mode, selection_aucs[mode], gate_auc, thrs[mode],
+                 gate_selected, bool(quality_ok), bool(force),
                  "none" if self.auc is None else f"{self.auc:.4f}")
-        if not accepted:
-            log.warning("candidate model rejected by quality gate; no model artifacts will be written")
-        if accepted:
+        if not quality_ok:
+            log.warning("candidate model failed untouched quality gate; usable only if forced for walk-forward evaluation")
+        if usable:
             self.nn, self.gbm = models.get("nn"), models.get("gbm")
-            self.mu, self.sd, self.thrs, self.mode, self.auc, self.info = mu, sd, thrs, mode, aucs[mode], info
+            self.mu, self.sd, self.thrs, self.mode, self.auc, self.info = mu, sd, thrs, mode, gate_auc, info
             if self.persist:
                 self.save(X.shape[1])
-        self.last_fit = dict(info=info, pv=pv, yv=yv)
+        self.last_fit = dict(info=info, pv=ps, yv=ys, gate_p=pg, gate_y=yg)
         return info
 
 # =====================================================================
