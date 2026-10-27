@@ -712,8 +712,8 @@ class Brain:
 
     # ---------- training ----------
     def fit(self, X, y, ts, ret=None, epochs=80, force=False):
-        """Time-ordered split with an embargo; early stopping uses the tail of the training part only,
-        so the validation block (last 20%) stays untouched for model choice and the threshold."""
+        """Fit on older data, select model/threshold on a recent tune block, and quality-check
+        on a later untouched gate block. Walk-forward may force-fit solely for evaluation."""
         o = np.argsort(ts, kind="stable")
         X = np.asarray(X, dtype=np.float64)[o]; y = np.asarray(y, dtype=np.float32)[o]
         ts = np.asarray(ts, dtype=np.float64)[o]
@@ -1459,7 +1459,8 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
         diag += f" | صفقات النموذج: {int(test_n)} | PF: {float(test_pf):.2f}"
     if all(v is not None and np.isfinite(v) for v in rates):
         diag += f"\nنسبة العينات الرابحة train/tune/test: {rates[0] * 100:.1f}%/{rates[1] * 100:.1f}%/{rates[2] * 100:.1f}%"
-    tg(f"🧠 تدريب النماذج [{reason}]\nعيّنات: {info['n']} | AUC ({aucs})\n"
+    tg(f"🧠 تدريب النماذج [{reason}]\nعيّنات: {info['n']} | AUC اختيار ({aucs})"
+       f" | Gate AUC: {info.get('gate_auc', info.get('auc', 0.0)):.3f}\n"
        f"النمط المختار: {info['mode']}"
        + (f" | متوسط صفقات الإشارة في التحقق: {top * 100:+.2f}%" if top is not None and np.isfinite(top) else "")
        + diag
