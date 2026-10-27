@@ -224,3 +224,45 @@ if __name__ == "__main__":
             except Exception as e:                                   # noqa
                 import traceback; traceback.print_exc(); print("FAIL", name, e); fails += 1
     sys.exit(1 if fails else 0)
+
+# ---------------------------------------------------------------- bootstrap training retry policy
+class _BootstrapPaper:
+    def __init__(self):
+        self.meta = {}
+        self.experience = 0
+        self.labelled = 0
+
+    def _get(self, key):
+        return self.meta.get(key)
+
+    def _set(self, key, value):
+        self.meta[key] = str(value)
+
+    def count(self, table, where="1=1"):
+        if table == "experience":
+            return self.experience
+        if table == "signals" and where == "labeled=1":
+            return self.labelled
+        raise AssertionError((table, where))
+
+
+def test_bootstrap_training_retry_is_persistently_throttled():
+    paper = _BootstrapPaper()
+    assert zq.bootstrap_training_due(paper, now=1000)
+    zq.mark_bootstrap_training_attempt(paper, now=1000)
+    assert not zq.bootstrap_training_due(paper, now=1001)
+    assert not zq.bootstrap_training_due(paper, now=1000 + 86399)
+    assert zq.bootstrap_training_due(paper, now=1000 + 86400)
+
+
+def test_bootstrap_training_retries_after_enough_new_labels_or_trades():
+    paper = _BootstrapPaper()
+    zq.mark_bootstrap_training_attempt(paper, now=1000)
+    paper.labelled = int(zq.CFG["RETRAIN_SIGNALS"])
+    assert zq.bootstrap_training_due(paper, now=1001)
+
+    paper = _BootstrapPaper()
+    zq.mark_bootstrap_training_attempt(paper, now=1000)
+    paper.experience = int(zq.CFG["RETRAIN_EVERY"])
+    assert zq.bootstrap_training_due(paper, now=1001)
+
