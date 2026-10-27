@@ -145,13 +145,24 @@ def get_universe():
           if i["quoteCcy"] == "USDT" and i["state"] == "live" and not is_stable(i["baseCcy"])}
     rows = []
     for t in okx_get("/api/v5/market/tickers", {"instType": "SPOT"}):
-        if t["instId"] in ok:
+        inst = t.get("instId")
+        if inst not in ok:
+            continue
+        try:
             vol = float(t.get("volCcy24h") or 0)
-            if vol >= CFG["MIN_VOL_USDT"]:
-                last = float(t["last"])
-                ask = float(t.get("askPx") or last); bid = float(t.get("bidPx") or 0)
-                spread = (ask - bid) / last if bid > 0 and last > 0 else 0.002
-                rows.append(dict(inst=t["instId"], vol=vol, last=last, ask=ask, spread=spread))
+            last = float(t.get("last") or 0)
+            ask = float(t.get("askPx") or last)
+            bid = float(t.get("bidPx") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not all(np.isfinite(v) for v in (vol, last, ask, bid)):
+            continue
+        if vol < CFG["MIN_VOL_USDT"] or last <= 0 or ask <= 0 or bid < 0:
+            continue
+        spread = (ask - bid) / last if bid > 0 else 0.002
+        if not np.isfinite(spread) or spread < 0:
+            continue
+        rows.append(dict(inst=inst, vol=vol, last=last, ask=ask, spread=spread))
     if not rows:
         return pd.DataFrame(columns=["vol", "last", "ask", "spread"])
     return pd.DataFrame(rows).set_index("inst").sort_values("vol", ascending=False)
@@ -1322,11 +1333,51 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=True)
     if base is None:
         universe = universe if universe is not None else get_universe()
         base = build_trainset(universe)
-    parts = [base, paper.signal_dataset()]
+    signals = paper.signal_dataset()
+    exp = paper.experience_dataset() if with_trades else empty_ds()
+
+    def report_source(name, ds):
+        n = len(ds["y"])
+        if not n:
+            log.info("training data source=%s n=0", name)
+            return
+        y = np.asarray(ds["y"], dtype=np.float64)
+        ret = np.asarray(ds["ret"], dtype=np.float64)
+        ts = np.asarray(ds["ts"], dtype=np.float64)
+        finite_ret = np.isfinite(ret)
+        mismatch = (np.mean((y[finite_ret] > 0.5) != (ret[finite_ret] > 0))
+                    if finite_ret.any() else float("nan"))
+        coin = np.asarray(ds["coin"]).astype(str)
+        keys = np.char.add(np.char.add(coin, "|"), np.asarray(ts, dtype=np.int64).astype(str))
+        duplicate_rows = int(len(keys) - len(np.unique(keys)))
+        log.info(
+            "training data source=%s n=%d win_rate=%.3f ret_finite=%d/%d "
+            "label_return_mismatch=%.4f duplicate_coin_timestamp=%d ts_range=%s..%s",
+            name, n, float(np.mean(y > 0.5)), int(finite_ret.sum()), n, float(mismatch),
+            duplicate_rows, int(np.nanmin(ts)), int(np.nanmax(ts)))
+
+    report_source("historical", base)
+    report_source("labelled_signals", signals)
     if with_trades:
-        exp = paper.experience_dataset()
+        report_source("paper_experience", exp)
+    parts = [base, signals]
+    if with_trades:
         parts += [exp] * 3                                # real paper-trade outcomes weigh x3
-    return ds_concat(parts)
+    merged = ds_concat(parts)
+    valid = (np.isfinite(merged["X"]).all(axis=1)
+             & np.isfinite(merged["y"])
+             & np.isin(merged["y"], [0, 1])
+             & np.isfinite(merged["ts"])
+             & np.isfinite(merged["ret"]))
+    dropped = int(len(valid) - valid.sum())
+    if dropped:
+        log.warning("training data integrity: dropping %d/%d rows with invalid features/labels/timestamps/returns",
+                    dropped, len(valid))
+        merged = {k: v[valid] for k, v in merged.items()}
+    if len(merged["y"]):
+        log.info("training data merged: n=%d win_rate=%.3f", len(merged["y"]),
+                 float(np.mean(merged["y"] > 0.5)))
+    return merged
 
 def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     ds = collect_training_data(paper, universe, refresh)
