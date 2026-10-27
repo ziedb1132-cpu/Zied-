@@ -1,8 +1,13 @@
 """Regression tests for fail-closed AI probability validation."""
+import json
 import os
+import pickle
 import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
 import numpy as np
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import zied_quant as zq
@@ -11,90 +16,91 @@ import zied_quant as zq
 def fake_brain(probabilities):
     brain = zq.Brain(persist=False)
     brain.mode = "nn"
-    brain.nn = object()  # mark the model as available; inference is stubbed below
+    brain.nn = object()
     brain.predict_all = lambda X: {"nn": np.asarray(probabilities, dtype=float)}
     return brain
 
 
-def test_ai_predict_accepts_finite_probabilities():
-    brain = fake_brain([0.62, 0.81])
-    result = brain.predict(np.zeros((2, zq.N_FEATURES), dtype=float))
-    assert np.allclose(result, [0.62, 0.81])
+class AINanGuardTests(unittest.TestCase):
+    def test_ai_predict_accepts_finite_probabilities(self):
+        brain = fake_brain([0.62, 0.81])
+        result = brain.predict(np.zeros((2, zq.N_FEATURES), dtype=float))
+        self.assertTrue(np.allclose(result, [0.62, 0.81]))
+
+    def test_ai_predict_rejects_invalid_probabilities(self):
+        for bad in ([np.nan], [np.inf], [-0.01], [1.01]):
+            with self.subTest(bad=bad):
+                brain = fake_brain(bad)
+                with self.assertRaises(ValueError):
+                    brain.predict(np.zeros((1, zq.N_FEATURES), dtype=float))
+
+    def test_ai_predict_rejects_nonfinite_features(self):
+        brain = fake_brain([0.7])
+        X = np.zeros((1, zq.N_FEATURES), dtype=float)
+        X[0, 0] = np.nan
+        with self.assertRaisesRegex(ValueError, "input contains"):
+            brain.predict(X)
+
+    def test_model_save_persists_only_selected_gbm_and_writes_metadata_last(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(zq.CFG, {
+                "DIR": tmp, "MODEL": os.path.join(tmp, "model.pt"),
+                "GBM": os.path.join(tmp, "gbm.pkl"),
+                "META": os.path.join(tmp, "meta.json"),
+            }):
+                brain = zq.Brain(persist=False)
+                brain.mode = "gbm"
+                brain.gbm = {"simple": "picklable test model"}
+                brain.nn = None
+                brain.mu = np.zeros(zq.N_FEATURES)
+                brain.sd = np.ones(zq.N_FEATURES)
+                brain.thrs = {"gbm": 0.6}
+                brain.auc = 0.61
+                brain.info = {"n": 900}
+                brain.save(zq.N_FEATURES)
+                with open(os.path.join(tmp, "meta.json"), encoding="utf-8") as fh:
+                    meta = json.load(fh)
+                self.assertEqual(meta["mode"], "gbm")
+                self.assertTrue(meta["has_gbm"])
+                self.assertFalse(meta["has_nn"])
+                self.assertFalse(os.path.exists(os.path.join(tmp, "model.pt")))
+                with open(os.path.join(tmp, "gbm.pkl"), "rb") as fh:
+                    self.assertEqual(pickle.load(fh), {"simple": "picklable test model"})
+                self.assertEqual([n for n in os.listdir(tmp) if n.endswith(".tmp")], [])
+
+    def test_model_save_rejects_invalid_normalization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(zq.CFG, {
+                "DIR": tmp, "MODEL": os.path.join(tmp, "model.pt"),
+                "GBM": os.path.join(tmp, "gbm.pkl"),
+                "META": os.path.join(tmp, "meta.json"),
+            }):
+                brain = zq.Brain(persist=False)
+                brain.mode = "gbm"
+                brain.gbm = {"simple": "test"}
+                brain.mu = np.zeros(2)
+                brain.sd = np.ones(2)
+                with self.assertRaisesRegex(RuntimeError, "normalization"):
+                    brain.save(zq.N_FEATURES)
+                self.assertFalse(os.path.exists(os.path.join(tmp, "meta.json")))
+
+    def test_load_removes_orphan_model_files_without_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(zq.CFG, {
+                "DIR": tmp, "MODEL": os.path.join(tmp, "model.pt"),
+                "GBM": os.path.join(tmp, "gbm.pkl"),
+                "META": os.path.join(tmp, "meta.json"),
+            }):
+                with open(os.path.join(tmp, "model.pt"), "wb") as fh:
+                    fh.write(b"stale model")
+                with open(os.path.join(tmp, "gbm.pkl"), "wb") as fh:
+                    fh.write(b"stale gbm")
+                brain = zq.Brain(persist=True)
+                self.assertFalse(brain.ready)
+                self.assertFalse(os.path.exists(os.path.join(tmp, "model.pt")))
+                self.assertFalse(os.path.exists(os.path.join(tmp, "gbm.pkl")))
+                self.assertFalse(os.path.exists(os.path.join(tmp, "meta.json")))
 
 
-@pytest.mark.parametrize("bad", [[np.nan], [np.inf], [-0.01], [1.01]])
-def test_ai_predict_rejects_invalid_probabilities(bad):
-    brain = fake_brain(bad)
-    with pytest.raises(ValueError):
-        brain.predict(np.zeros((1, zq.N_FEATURES), dtype=float))
-
-
-def test_ai_predict_rejects_nonfinite_features():
-    brain = fake_brain([0.7])
-    X = np.zeros((1, zq.N_FEATURES), dtype=float)
-    X[0, 0] = np.nan
-    with pytest.raises(ValueError, match="input contains"):
-        brain.predict(X)
-
-
-
-def test_model_save_persists_only_selected_gbm_and_writes_metadata_last(tmp_path, monkeypatch):
-    monkeypatch.setitem(zq.CFG, "DIR", str(tmp_path))
-    monkeypatch.setitem(zq.CFG, "MODEL", str(tmp_path / "model.pt"))
-    monkeypatch.setitem(zq.CFG, "GBM", str(tmp_path / "gbm.pkl"))
-    monkeypatch.setitem(zq.CFG, "META", str(tmp_path / "meta.json"))
-
-    brain = zq.Brain(persist=False)
-    brain.mode = "gbm"
-    brain.gbm = {"simple": "picklable test model"}
-    brain.nn = None
-    brain.mu = np.zeros(zq.N_FEATURES)
-    brain.sd = np.ones(zq.N_FEATURES)
-    brain.thrs = {"gbm": 0.6}
-    brain.auc = 0.61
-    brain.info = {"n": 900}
-
-    brain.save(zq.N_FEATURES)
-
-    import json
-    import pickle
-    meta = json.loads((tmp_path / "meta.json").read_text())
-    assert meta["mode"] == "gbm"
-    assert meta["has_gbm"] is True
-    assert meta["has_nn"] is False
-    assert not (tmp_path / "model.pt").exists()
-    with (tmp_path / "gbm.pkl").open("rb") as fh:
-        assert pickle.load(fh) == {"simple": "picklable test model"}
-    assert not list(tmp_path.glob("*.tmp"))
-
-
-def test_model_save_rejects_invalid_normalization(tmp_path, monkeypatch):
-    monkeypatch.setitem(zq.CFG, "DIR", str(tmp_path))
-    monkeypatch.setitem(zq.CFG, "MODEL", str(tmp_path / "model.pt"))
-    monkeypatch.setitem(zq.CFG, "GBM", str(tmp_path / "gbm.pkl"))
-    monkeypatch.setitem(zq.CFG, "META", str(tmp_path / "meta.json"))
-    brain = zq.Brain(persist=False)
-    brain.mode = "gbm"
-    brain.gbm = {"simple": "test"}
-    brain.mu = np.zeros(2)
-    brain.sd = np.ones(2)
-    with pytest.raises(RuntimeError, match="normalization"):
-        brain.save(zq.N_FEATURES)
-    assert not (tmp_path / "meta.json").exists()
-
-
-
-def test_load_removes_orphan_model_files_without_metadata(tmp_path, monkeypatch):
-    monkeypatch.setitem(zq.CFG, "DIR", str(tmp_path))
-    monkeypatch.setitem(zq.CFG, "MODEL", str(tmp_path / "model.pt"))
-    monkeypatch.setitem(zq.CFG, "GBM", str(tmp_path / "gbm.pkl"))
-    monkeypatch.setitem(zq.CFG, "META", str(tmp_path / "meta.json"))
-    (tmp_path / "model.pt").write_bytes(b"stale model")
-    (tmp_path / "gbm.pkl").write_bytes(b"stale gbm")
-
-    brain = zq.Brain(persist=True)
-
-    assert not brain.ready
-    assert not (tmp_path / "model.pt").exists()
-    assert not (tmp_path / "gbm.pkl").exists()
-    assert not (tmp_path / "meta.json").exists()
+if __name__ == "__main__":
+    unittest.main()
