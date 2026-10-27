@@ -6,8 +6,9 @@
 <div class="tabs"><button class="active" data-tab="overview">نظرة عامة</button><button data-tab="positions">المراكز</button><button data-tab="signals">الإشارات</button><button data-tab="strategies">الاستراتيجيات</button><button data-tab="ai">تعلم AI</button><button data-tab="backtest">الاختبار التاريخي</button><button data-tab="files">حالة الملفات</button></div>
 <section id="page-overview"><div id="metrics" class="grid"></div><div class="cols"><div class="card"><h2>حالة النظام</h2><div id="system"></div></div><div class="card"><h2>ملخص الذكاء الاصطناعي</h2><div id="aiSummary"></div></div></div><div class="card section"><h2>آخر المراكز</h2><div id="recent" class="tablewrap"><div class="empty">اتصل بالمستودع لعرض البيانات.</div></div></div></section>
 <section id="page-positions" class="hide section"><h2>المراكز المفتوحة</h2><div id="positions" class="tablewrap"></div></section><section id="page-signals" class="hide section"><h2>الإشارات الأخيرة</h2><div id="signals" class="tablewrap"></div></section><section id="page-strategies" class="hide section"><h2>أداء الاستراتيجيات</h2><div id="strategies" class="tablewrap"></div><div class="card section"><h2>اكتشاف أنماط الشموع</h2><div id="candles" class="tablewrap"></div></div></section><section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>ملفات ذاكرة التعلم</h2><div id="learning" class="tablewrap"></div></div></section><section id="page-backtest" class="hide section"><div id="btMetrics" class="grid"></div><div class="card section"><h2>نتائج الاختبار التاريخي</h2><div id="backtest" class="tablewrap"></div></div></section><section id="page-files" class="hide section"><h2>حالة الملفات</h2><div id="files" class="tablewrap"></div><p id="errors" class="bad"></p></section><div class="foot">Zied Quant Dashboard · GitHub API · قراءة فقط</div></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
 <script>
-const names=["portfolio.json","signal_history.json","strategy_stats.json","backtest_results.json","ml_model_memory.json","analysis_memory.json","top_gainer_learning.json","candle_strategy_discovery.json","entry_method_memory.json"];let d={},raw={};
+const names=["paper.db","ranking.csv","strategy_evolution.json","train.npz"];let d={},raw={},dbMeta={};
 const $=x=>document.getElementById(x),esc=x=>String(x??"—").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),pick=(o,ks,fb="—")=>{for(let k of ks)if(o&&o[k]!=null)return o[k];return fb},list=(o,ks)=>{for(let k of ks)if(Array.isArray(o?.[k]))return o[k];return Array.isArray(o)?o:[]},num=(o,ks)=>{let x=pick(o,ks,null);return x!==null&&Number.isFinite(Number(x))?Number(x):null},money=x=>x==null?"—":Number(x).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}),fmt=x=>x==null?"—":Number(x).toLocaleString("en-US",{maximumFractionDigits:2});
 function table(rows,cols){if(!rows.length)return '<div class="empty">لا توجد بيانات في الملف.</div>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td>'+esc(typeof c[1]==="function"?c[1](r):pick(r,c[1]))+'</td>').join("")+'</tr>').join("")+'</tbody></table>'}
 function metric(a,b,c=""){return `<div class="card"><div class="label">${esc(a)}</div><div class="value">${esc(b)}</div><div class="sub">${esc(c)}</div></div>`}function rowsObj(o,ks){return list(o,ks).filter(x=>x&&typeof x==="object")}function render(){
@@ -30,8 +31,57 @@ $("btMetrics").innerHTML=metric("سجلات الاختبار",bt.length)+metric(
 $("backtest").innerHTML=table(bt,[["الاستراتيجية",r=>pick(r,["strategy","name","fold"])],["الصفقات",r=>pick(r,["trades","total_trades","n"])],["نسبة الفوز",r=>pick(r,["win_rate","wr"])],["صافي الربح",r=>pick(r,["net_return","pnl","return"])],["PF",r=>pick(r,["profit_factor","pf"])],["النتيجة",r=>pick(r,["status","result"])]]);
 $("files").innerHTML=table(names.map(f=>({file:f,status:raw[f]?"متوفر":"غير موجود/غير قابل للقراءة",size:raw[f]?.length||0})),[["الملف",r=>r.file],["الحالة",r=>r.status],["الحجم",r=>r.size]]);
 }
-async function connect(){let owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"main",token=$("token").value.trim();if(!owner||!repo)return alert("أدخل مالك المستودع واسم المستودع");$("status").textContent="جار الاتصال…";$("dot").style.background="#e8bb54";d={};raw={};let errors=[],loaded=0,headers={Accept:"application/vnd.github+json"};if(token)headers.Authorization="Bearer "+token;
-await Promise.all(names.map(async f=>{try{let u=`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(f)}?ref=${encodeURIComponent(branch)}`,res=await fetch(u,{headers});if(!res.ok)throw Error(res.status===404?"غير موجود أو مستودع خاص":"HTTP "+res.status);let j=await res.json(),bin=atob((j.content||"").replace(/\n/g,"")),bytes=Uint8Array.from(bin,c=>c.charCodeAt(0)),txt=new TextDecoder().decode(bytes);raw[f]=txt;d[f]=JSON.parse(txt);loaded++}catch(e){errors.push(f+": "+e.message)}}));
-$("status").textContent=loaded?`تم تحميل ${loaded}/${names.length} ملف`:"فشل الاتصال";$("dot").style.background=loaded?"#4cdaa4":"#ff788b";$("errors").textContent=errors.join("\n");render()}
+async function connect(){
+ const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data",token=$("token").value.trim();
+ if(!owner||!repo)return alert("أدخل مالك المستودع واسم المستودع");
+ $("status").textContent="جار الاتصال بفرع البيانات…";$("dot").style.background="#e8bb54";d={};raw={};dbMeta={};
+ const errors=[],headers={Accept:"application/vnd.github+json"};if(token)headers.Authorization="Bearer "+token;
+ const apiBase="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/";
+ const rawBase="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/";
+ async function getJson(path){const r=await fetch(apiBase+path.split("/").map(encodeURIComponent).join("/")+"?ref="+encodeURIComponent(branch),{headers});if(!r.ok)throw Error(path+": HTTP "+r.status);const j=await r.json();const bin=atob((j.content||"").replace(/\n/g,""));const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));return JSON.parse(new TextDecoder().decode(bytes))}
+ try {
+   const manifest=await getJson("zied_data_store/manifest.json");
+   const dbInfo=manifest.files.find(x=>x.path==="paper.db");
+   if(!dbInfo)throw Error("paper.db غير موجود في manifest");
+   const parts=[];
+   for(const part of dbInfo.chunks){
+     const url=rawBase+"zied_data_store/"+part;
+     const response=await fetch(url);if(!response.ok)throw Error("تعذر تحميل جزء قاعدة البيانات: "+part);
+     parts.push(new Uint8Array(await response.arrayBuffer()));
+   }
+   const total=parts.reduce((n,p)=>n+p.length,0),bytes=new Uint8Array(total);let offset=0;
+   for(const p of parts){bytes.set(p,offset);offset+=p.length}
+   if(typeof initSqlJs!=="function")throw Error("تعذر تحميل محرك قراءة SQLite؛ تحقق من الاتصال بالإنترنت ثم أعد المحاولة");
+   const SQL=await initSqlJs({locateFile:f=>"https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/"+f});
+   const db=new SQL.Database(bytes);
+   const query=(sql)=>{try{const result=db.exec(sql);if(!result.length)return [];const {columns,values}=result[0];return values.map(row=>Object.fromEntries(columns.map((c,i)=>[c,row[i]])))}catch(e){return []}};
+   const metaRows=query("SELECT k,v FROM meta"),meta=Object.fromEntries(metaRows.map(x=>[x.k,x.v]));dbMeta=meta;
+   const open=query("SELECT * FROM trades WHERE status='OPEN' ORDER BY open_ts DESC");
+   const closed=query("SELECT * FROM trades WHERE status='CLOSED' ORDER BY close_ts DESC");
+   const pending=query("SELECT * FROM pending_orders WHERE status='PENDING' ORDER BY created_ts DESC");
+   const signals=query("SELECT * FROM signals ORDER BY ts DESC LIMIT 200");
+   const experience=query("SELECT * FROM experience ORDER BY ts DESC LIMIT 500");
+   const sum=(arr,key)=>arr.reduce((a,x)=>a+(Number(x[key])||0),0);
+   const cash=Number(meta.cash||0),reserved=sum(pending,"reserved_usdt");
+   const equity=cash+reserved+sum(open,"usdt_in");
+   d["portfolio.json"]={cash,equity,initialCapital:Number(meta.start_balance||meta.initial_capital||1000),openPositions:open.map(t=>({instId:t.inst,entryPrice:t.entry,currentPrice:t.entry,usdt:t.usdt_in,sl:t.sl,tp:t.tp,status:t.status,qty:t.qty,prob:t.prob,rank:t.rank})),pendingOrders:pending,closedPositions:closed};
+   d["signal_history.json"]={signals:signals.map(s=>({timestamp:s.ts,instId:s.inst,score:s.prob,probability:s.prob,rank:s.rank,price:s.price,labeled:s.labeled,outcome:s.label,return:s.ret}))};
+   const stats={};for(const t of closed){const k=t.reason||"CLOSED";if(!stats[k])stats[k]={name:k,trades:0,wins:0,losses:0,pnl:0};stats[k].trades++;stats[k].pnl+=Number(t.pnl)||0;if((Number(t.pnl)||0)>0)stats[k].wins++;else stats[k].losses++}
+   d["strategy_stats.json"]=Object.values(stats).map(s=>({...s,win_rate:s.trades?100*s.wins/s.trades:0}));
+   d["backtest_results.json"]={results:[]};
+   d["ml_model_memory.json"]={approved:meta.model_approved==="1"||meta.model_approved==="true",labelled_samples:experience.length,auc:meta.auc||meta.validation_auc||null,threshold:meta.prob_min||null};
+   d["analysis_memory.json"]={meta};
+   d["top_gainer_learning.json"]={items:experience};
+   d["candle_strategy_discovery.json"]={patterns:[]};
+   d["entry_method_memory.json"]={items:pending};
+   raw["paper.db"]="loaded";raw["ranking.csv"]="";raw["strategy_evolution.json"]="";raw["train.npz"]="stored (not rendered)";
+   try{const csv=await fetch(rawBase+"zied_data_store/parts/00000001.part");if(csv.ok)raw["ranking.csv"]=await csv.text()}catch(e){}
+   try{const evolution=await fetch(rawBase+"zied_data_store/parts/00000002.part");if(evolution.ok){const txt=await evolution.text();raw["strategy_evolution.json"]=txt;d["candle_strategy_discovery.json"]=JSON.parse(txt)}}catch(e){}
+   db.close();
+   $("status").textContent="اتصال ناجح — قاعدة البيانات محمّلة";$("dot").style.background="#4cdaa4";
+ } catch(e){errors.push(e.message);$("status").textContent="تعذر تحميل بيانات state-data";$("dot").style.background="#ff788b"}
+ $("errors").textContent=errors.join("\n");
+ render();
+}
 $("connect").onclick=connect;$("clear").onclick=()=>{$("token").value="";$("token").focus()};document.querySelector(".tabs").onclick=e=>{let b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(s=>s.classList.toggle("hide",s.id!=="page-"+b.dataset.tab))};render();
 </script></body></html>
