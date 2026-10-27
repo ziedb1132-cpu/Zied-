@@ -781,7 +781,38 @@ class Brain:
             ps["ens"] = (ps["nn"] + ps["gbm"]) / 2
         selection_aucs = {k: auc_score(ys, p) for k, p in ps.items()}
         mode = max(selection_aucs, key=selection_aucs.get)
-        thrs = {k: float(np.quantile(p, 0.90)) for k, p in ps.items()}
+        # Choose the probability threshold on the selection block using net returns,
+        # never on the untouched gate. The gate remains the final acceptance test.
+        def select_threshold(probabilities):
+            probabilities = np.asarray(probabilities, dtype=np.float64).reshape(-1)
+            if ret is None:
+                return float(np.quantile(probabilities, 0.90))
+            selection_ret = ret[selection_start:gate_start]
+            best = None
+            # Conservative grid: test a few high-confidence tails, with enough samples
+            # to avoid choosing a threshold from only a handful of lucky observations.
+            for q in (0.70, 0.75, 0.80, 0.85, 0.90, 0.925, 0.95, 0.975):
+                threshold = float(np.quantile(probabilities, q))
+                mask = probabilities >= threshold
+                count = int(mask.sum())
+                if count < 20:
+                    continue
+                mean_net = float(np.nanmean(selection_ret[mask]))
+                if not np.isfinite(mean_net):
+                    continue
+                candidate = (mean_net, count, threshold)
+                if best is None or candidate[0] > best[0] or (
+                    candidate[0] == best[0] and candidate[2] > best[2]
+                ):
+                    best = candidate
+            return best[2] if best is not None else float(np.quantile(probabilities, 0.90))
+
+        thrs = {k: select_threshold(p) for k, p in ps.items()}
+        log.info("selection thresholds: %s", {
+            k: {"threshold": round(v, 4),
+                "selected": int(np.sum(ps[k] >= v))}
+            for k, v in thrs.items()
+        })
         # The later gate evaluates the selected model once; it cannot tune the threshold.
         pg_all = {}
         if "gbm" in models:
