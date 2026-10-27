@@ -22,6 +22,28 @@ def fake_brain(probabilities):
 
 
 class AINanGuardTests(unittest.TestCase):
+    def test_get_universe_skips_tickers_with_invalid_prices(self):
+        instruments = [
+            {"instId": "BTC-USDT", "quoteCcy": "USDT", "baseCcy": "BTC", "state": "live"},
+            {"instId": "EMPTY-USDT", "quoteCcy": "USDT", "baseCcy": "EMPTY", "state": "live"},
+            {"instId": "BAD-USDT", "quoteCcy": "USDT", "baseCcy": "BAD", "state": "live"},
+        ]
+        tickers = [
+            {"instId": "BTC-USDT", "volCcy24h": "5000000", "last": "65000", "askPx": "65001", "bidPx": "64999"},
+            {"instId": "EMPTY-USDT", "volCcy24h": "5000000", "last": "", "askPx": "", "bidPx": ""},
+            {"instId": "BAD-USDT", "volCcy24h": "nan", "last": "1", "askPx": "1", "bidPx": "1"},
+        ]
+        def fake_okx(path, params=None, **kwargs):
+            if path.endswith("/public/instruments"):
+                return instruments
+            if path.endswith("/market/tickers"):
+                return tickers
+            return []
+        with patch.object(zq, "okx_get", side_effect=fake_okx), patch.dict(zq.CFG, {"MIN_VOL_USDT": 300000}):
+            result = zq.get_universe()
+        self.assertEqual(list(result.index), ["BTC-USDT"])
+        self.assertEqual(result.loc["BTC-USDT", "last"], 65000.0)
+
     def test_get_prices_skips_empty_and_invalid_okx_tickers(self):
         tickers = [
             {"instId": "BTC-USDT", "last": "65000"},
