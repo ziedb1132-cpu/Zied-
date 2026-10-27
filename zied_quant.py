@@ -830,6 +830,16 @@ class Paper:
             for c, t in cols.items():
                 if c not in have:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {c} {t}")
+        # Historical experience rows were timestamped at trade close, although their
+        # feature vectors were captured at entry. Re-anchor them to entry time so the
+        # chronological train/tune/holdout split follows when features were observable.
+        self.db.execute(
+            "UPDATE experience SET ts=(SELECT t.open_ts FROM trades t "
+            "WHERE t.inst=experience.inst AND t.feats=experience.feats "
+            "AND t.close_ts=experience.ts ORDER BY t.id DESC LIMIT 1) "
+            "WHERE EXISTS (SELECT 1 FROM trades t WHERE t.inst=experience.inst "
+            "AND t.feats=experience.feats AND t.close_ts=experience.ts)"
+        )
         self.db.commit()
 
     @locked
@@ -1003,8 +1013,10 @@ class Paper:
         now = time.time()
         self.db.execute("UPDATE trades SET status='CLOSED',close_ts=?,exit=?,pnl=?,pnl_pct=?,reason=? WHERE id=?",
                         (now, exit_px, pnl, pct, reason, t["id"]))
+        # Timestamp the sample when its entry features were observed, not when its
+        # outcome became known; the time split applies a barrier-horizon embargo.
         self.db.execute("INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
-                        (now, t["inst"], t["feats"], int(pnl > 0), pnl, pct))
+                        (float(t["open_ts"]), t["inst"], t["feats"], int(pnl > 0), pnl, pct))
         self._set("cash", self.cash() + proceeds); self.db.commit()
         tg(f"{'✅' if pnl > 0 else '🔴'} إغلاق صفقة ورقية {t['inst']}\nالسبب: {reason}\n"
            f"دخول {t['entry']:.6g} ← خروج {exit_px:.6g}\nالربح: {pnl:+.2f} USDT ({pct * 100:+.2f}%)")
