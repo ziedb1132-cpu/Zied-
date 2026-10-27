@@ -1668,16 +1668,39 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     return R
 
 def bootstrap_training_due(paper, now=None):
-    """Throttle rejected/unavailable bootstrap models; retry on new data or after 24h."""
+    """Retry model bootstrap when new outcomes arrive, or periodically if durable history is trainable."""
     now = time.time() if now is None else float(now)
     last = float(paper._get("bootstrap_train_attempt_ts") or 0)
     if last <= 0:
         return True
     new_trades = paper.count("experience") - int(paper._get("bootstrap_attempt_exp") or 0)
     new_labels = paper.count("signals", "labeled=1") - int(paper._get("bootstrap_attempt_labels") or 0)
+
+    # The GitHub Actions runner is ephemeral: train.npz is the durable historical
+    # cache restored from state-data. If it already contains enough usable rows,
+    # don't leave a missing model idle for a full day while waiting for new labels.
+    # Keep a six-hour retry interval to avoid retraining on every hourly run.
+    cached_rows = 0
+    try:
+        cached = load_trainset()
+        if cached is not None:
+            X = np.asarray(cached["X"], dtype=np.float64)
+            y = np.asarray(cached["y"], dtype=np.float64)
+            ts = np.asarray(cached["ts"], dtype=np.float64)
+            valid = (np.isfinite(X).all(axis=1) & np.isfinite(y)
+                     & np.isfinite(ts) & np.isin(y, [0, 1]))
+            cached_rows = int(valid.sum())
+    except Exception as exc:
+        log.warning("bootstrap cache check failed: %s", exc)
+
+    cache_retry_due = cached_rows >= 1200 and now - last >= 21600
+    if cached_rows:
+        log.info("bootstrap memory cache: usable_rows=%d; accelerated_retry=%s",
+                 cached_rows, cache_retry_due)
     return (now - last >= 86400
             or new_trades >= int(CFG["RETRAIN_EVERY"])
-            or new_labels >= int(CFG["RETRAIN_SIGNALS"]))
+            or new_labels >= int(CFG["RETRAIN_SIGNALS"])
+            or cache_retry_due)
 
 
 def mark_bootstrap_training_attempt(paper, now=None):
