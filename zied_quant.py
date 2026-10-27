@@ -63,7 +63,6 @@ CFG = dict(
     # scanning / signals
     TOP_AI=30, LOG_TOP=20,
     SCAN_EVERY_SEC=900, MONITOR_EVERY_SEC=30, RANK_MSG_EVERY=4,
-    BTC_FILTER=-0.04,                  # no new entries if BTC 4H dist to EMA50 < this
     PROB_MIN=None,                     # None = auto threshold from validation
     # paper trading + risk
     START_BALANCE=1000.0,
@@ -1550,8 +1549,6 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     gate = paper.risk_gate(paper.equity(uni["last"].to_dict()))
     if gate:
         log.info("entries blocked: %s", gate); return R
-    if float(X["ctx_btc_regime"].iloc[0]) < CFG["BTC_FILTER"]:
-        log.info("BTC bearish -> no new entries"); return R
     thr = CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else brain.thr
     sig = R[R["prob"] >= thr].sort_values("prob", ascending=False)
     cache = {}
