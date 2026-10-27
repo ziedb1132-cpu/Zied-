@@ -259,7 +259,9 @@ def test_chronological_boundary_keeps_equal_timestamps_together():
     assert zq.chronological_boundary(ts, len(ts)) == len(ts)
 
 
-def test_bootstrap_training_retry_is_persistently_throttled():
+def test_bootstrap_training_retry_is_persistently_throttled(monkeypatch):
+    # With no durable cache, retain the normal 24-hour cooldown.
+    monkeypatch.setattr(zq, "load_trainset", lambda: None)
     paper = _BootstrapPaper()
     assert zq.bootstrap_training_due(paper, now=1000)
     zq.mark_bootstrap_training_attempt(paper, now=1000)
