@@ -246,6 +246,19 @@ class _BootstrapPaper:
         raise AssertionError((table, where))
 
 
+
+def test_chronological_boundary_keeps_equal_timestamps_together():
+    ts = np.array([1, 2, 3, 3, 3, 4, 5, 5, 6], dtype=float)
+    # A nominal row split in the middle of timestamp 3 must move to its first row.
+    boundary = zq.chronological_boundary(ts, 4)
+    assert boundary == 2
+    assert ts[boundary - 1] < ts[boundary]
+    # A boundary at the start of a timestamp group remains unchanged.
+    assert zq.chronological_boundary(ts, 5) == 5
+    # The end boundary is valid and does not index beyond the array.
+    assert zq.chronological_boundary(ts, len(ts)) == len(ts)
+
+
 def test_bootstrap_training_retry_is_persistently_throttled():
     paper = _BootstrapPaper()
     assert zq.bootstrap_training_due(paper, now=1000)

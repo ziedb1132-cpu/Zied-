@@ -533,6 +533,22 @@ class GBM:
     def predict(self, X):
         return self.m.predict_proba(X)[:, 1]
 
+def chronological_boundary(ts, target_index):
+    """Move a chronological split to the first row of its timestamp group.
+
+    This prevents observations sharing the same market timestamp (often different
+    coins from the same candle) from leaking across train/validation boundaries.
+    ts must already be sorted in ascending order.
+    """
+    ts = np.asarray(ts, dtype=np.float64).reshape(-1)
+    if not len(ts):
+        return 0
+    i = min(max(int(target_index), 0), len(ts))
+    if i == len(ts):
+        return len(ts)
+    return int(np.searchsorted(ts, ts[i], side="left"))
+
+
 def auc_score(y, p):
     """Tie-correct ROC AUC using average ranks (Mann-Whitney definition)."""
     y = np.asarray(y).reshape(-1)
@@ -720,22 +736,24 @@ class Brain:
         n = len(X)
         if n < 600:
             raise ValueError(f"not enough samples ({n})")
-        nv = max(int(n * 0.2), 200)
+        nv_target = max(int(n * 0.2), 200)
         # The recent tail is split chronologically: the first block selects the model
         # and probability threshold; the later block is an untouched quality gate.
-        ng = max(100, nv // 2)
-        ns = nv - ng
-        if ns < 50:
-            raise ValueError("selection validation block too small")
-        selection_start = n - nv
-        gate_start = n - ng
-        ntr = int(np.searchsorted(ts, ts[selection_start] - CFG["BARRIER_H"] * 3600))
+        ng_target = max(100, nv_target // 2)
+        # Move both boundaries to the first row for that timestamp. A timestamp can
+        # contain many coins, so row-count splits alone can put the same candle time
+        # in both selection and gate blocks.
+        selection_start = chronological_boundary(ts, n - nv_target)
+        gate_start = chronological_boundary(ts, n - ng_target)
+        ns, ng, nv = gate_start - selection_start, n - gate_start, n - selection_start
+        if ns < 50 or ng < 100:
+            raise ValueError("selection or untouched gate block too small after timestamp grouping")
+        ntr = int(np.searchsorted(ts, ts[selection_start] - CFG["BARRIER_H"] * 3600, side="left"))
         if ntr < 400:
             raise ValueError("training part too small after embargo")
         # Purge the inner fit/early-stop boundary by the full outcome horizon.
-        # Labels at time t use candles through t + BARRIER_H, so training rows
-        # whose outcomes overlap the early-stop block must not enter model fitting.
-        nf = int(ntr * 0.85)
+        # Keep all rows with a shared timestamp together at this boundary as well.
+        nf = chronological_boundary(ts, int(ntr * 0.85))
         inner_train_end = int(np.searchsorted(
             ts, ts[nf] - CFG["BARRIER_H"] * 3600, side="left"))
         if inner_train_end < 400 or ntr - nf < 50:
