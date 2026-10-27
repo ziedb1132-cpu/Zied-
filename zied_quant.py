@@ -732,19 +732,30 @@ class Brain:
         ntr = int(np.searchsorted(ts, ts[selection_start] - CFG["BARRIER_H"] * 3600))
         if ntr < 400:
             raise ValueError("training part too small after embargo")
-        # Preprocessing statistics use only the model-fit segment.
+        # Purge the inner fit/early-stop boundary by the full outcome horizon.
+        # Labels at time t use candles through t + BARRIER_H, so training rows
+        # whose outcomes overlap the early-stop block must not enter model fitting.
         nf = int(ntr * 0.85)
-        mu = X[:nf].mean(0); sd = X[:nf].std(0) + 1e-8
+        inner_train_end = int(np.searchsorted(
+            ts, ts[nf] - CFG["BARRIER_H"] * 3600, side="left"))
+        if inner_train_end < 400 or ntr - nf < 50:
+            raise ValueError("training part too small after inner validation embargo")
+        # Fit normalization only on the purged model-fit rows.
+        mu = X[:inner_train_end].mean(0); sd = X[:inner_train_end].std(0) + 1e-8
         tmp = Brain.__new__(Brain); tmp.mu, tmp.sd = mu, sd
         Xtr = tmp._norm(X[:ntr])
         Xs, Xg = tmp._norm(X[selection_start:gate_start]), tmp._norm(X[gate_start:])
         ys, yg = y[selection_start:gate_start], y[gate_start:]
+        Xfit, yfit = Xtr[:inner_train_end], y[:inner_train_end]
+        Xearly, yearly = Xtr[nf:ntr], y[nf:ntr]
+        log.info("training split: fit=%d embargo=%d early_stop=%d selection=%d untouched_gate=%d",
+                 len(Xfit), nf - inner_train_end, len(Xearly), len(Xs), len(Xg))
         models, ps = {}, {}
         g = GBM()
-        if g.fit(Xtr[:nf], y[:nf], Xtr[nf:], y[nf:ntr]):
+        if g.fit(Xfit, yfit, Xearly, yearly):
             models["gbm"] = g; ps["gbm"] = g.predict(Xs)
         if torch is not None:
-            net = _train_net(Xtr[:nf], y[:nf], Xtr[nf:], y[nf:ntr], epochs)
+            net = _train_net(Xfit, yfit, Xearly, yearly, epochs)
             models["nn"] = net; ps["nn"] = _nn_predict(net, Xs)
         if not ps:
             raise RuntimeError("no model available: install torch and/or lightgbm / scikit-learn")
