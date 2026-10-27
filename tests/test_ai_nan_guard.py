@@ -39,6 +39,28 @@ class AINanGuardTests(unittest.TestCase):
                 self.assertEqual(row["ts"], 1000.0)
                 paper.db.close()
 
+    def test_limit_experience_uses_feature_observation_timestamp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(zq.CFG, {"DB": os.path.join(tmp, "paper.db")}):
+                paper = zq.Paper()
+                feats = json.dumps([0.0] * zq.N_FEATURES)
+                paper.db.execute(
+                    "INSERT INTO trades(inst,open_ts,feats,close_ts,status) VALUES(?,?,?,?,?)",
+                    ("BTC-USDT", 1000.0, feats, 5000.0, "CLOSED"))
+                paper.db.execute(
+                    "INSERT INTO pending_orders(inst,created_ts,feats,status) VALUES(?,?,?,'FILLED')",
+                    ("BTC-USDT", 900.0, feats))
+                paper.db.execute(
+                    "INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
+                    (5000.0, "BTC-USDT", feats, 1, 2.0, 0.02))
+                paper.db.commit()
+                paper._migrate()
+                trade = paper.db.execute("SELECT feature_ts FROM trades").fetchone()
+                experience = paper.db.execute("SELECT ts FROM experience").fetchone()
+                self.assertEqual(trade["feature_ts"], 900.0)
+                self.assertEqual(experience["ts"], 900.0)
+                paper.db.close()
+
     def test_get_universe_skips_tickers_with_invalid_prices(self):
         instruments = [
             {"instId": "BTC-USDT", "quoteCcy": "USDT", "baseCcy": "BTC", "state": "live"},
