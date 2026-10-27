@@ -157,8 +157,21 @@ def get_universe():
     return pd.DataFrame(rows).set_index("inst").sort_values("vol", ascending=False)
 
 def get_prices():
-    return {t["instId"]: float(t["last"]) for t in
-            okx_get("/api/v5/market/tickers", {"instType": "SPOT"})}
+    """Return only valid positive last prices; OKX may include empty fields."""
+    prices = {}
+    for t in okx_get("/api/v5/market/tickers", {"instType": "SPOT"}):
+        inst = t.get("instId")
+        raw = t.get("last")
+        if not inst or raw in (None, ""):
+            continue
+        try:
+            price = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(price) or price <= 0:
+            continue
+        prices[inst] = price
+    return prices
 
 def get_candles(inst, bar, depth):
     """Closed candles, oldest first. depth > 1400 switches to the history endpoint."""
