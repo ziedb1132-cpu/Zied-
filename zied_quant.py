@@ -1679,7 +1679,9 @@ def bootstrap_training_due(paper, now=None):
     # The GitHub Actions runner is ephemeral: train.npz is the durable historical
     # cache restored from state-data. If it already contains enough usable rows,
     # don't leave a missing model idle for a full day while waiting for new labels.
-    # Keep a six-hour retry interval to avoid retraining on every hourly run.
+    # GitHub Actions runs hourly. When the model is missing, retry from the
+    # durable cache after one workflow interval instead of waiting six hours.
+    # This only schedules another validation attempt; it never bypasses promotion gates.
     cached_rows = 0
     try:
         cached = load_trainset()
@@ -1693,7 +1695,7 @@ def bootstrap_training_due(paper, now=None):
     except Exception as exc:
         log.warning("bootstrap cache check failed: %s", exc)
 
-    cache_retry_due = cached_rows >= 1200 and now - last >= 21600
+    cache_retry_due = cached_rows >= 1200 and now - last >= 3600
     if cached_rows:
         log.info("bootstrap memory cache: usable_rows=%d; accelerated_retry=%s",
                  cached_rows, cache_retry_due)
