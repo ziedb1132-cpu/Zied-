@@ -1,10 +1,28 @@
 import math
 import unittest
 import numpy as np
-from evolution_engine import trade_metrics
+from evolution_engine import trade_metrics, chronological_train_tune_holdout_masks
 
 
 class TradeMetricsTests(unittest.TestCase):
+    def test_chronological_split_keeps_equal_timestamps_together(self):
+        # Each timestamp represents multiple coins observed on the same candle.
+        ts = np.repeat(np.arange(1600, dtype=float) * 3600, 3)
+        train, tune, test = chronological_train_tune_holdout_masks(ts, 240, 24 * 3600)
+        for timestamp in np.unique(ts):
+            mask = ts == timestamp
+            memberships = [bool(train[mask].any()), bool(tune[mask].any()), bool(test[mask].any())]
+            self.assertLessEqual(sum(memberships), 1)
+        self.assertGreater(train.sum(), 400)
+        self.assertGreater(tune.sum(), 100)
+        self.assertGreater(test.sum(), 100)
+
+    def test_chronological_split_rejects_unsorted_or_invalid_timestamps(self):
+        with self.assertRaisesRegex(ValueError, "finite and sorted"):
+            chronological_train_tune_holdout_masks(np.array([1.0, 3.0, 2.0]), 1, 0)
+        with self.assertRaisesRegex(ValueError, "finite and sorted"):
+            chronological_train_tune_holdout_masks(np.array([1.0, np.nan]), 1, 0)
+
     def test_metrics_ignore_missing_returns(self):
         m = trade_metrics(np.array([0.02, -0.01, np.nan, 0.03]), np.array([1, 1, 1, 0]))
         self.assertEqual(m["n"], 2)
