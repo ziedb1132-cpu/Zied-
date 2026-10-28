@@ -14,6 +14,23 @@ def trade_metrics(returns, selected):
     return {"n": int(len(x)), "avg": float(x.mean()), "pf": float(pf),
             "win": float((x > 0).mean())}
 
+def chronological_train_tune_holdout_masks(ts, block, embargo):
+    """Build chronological masks without splitting rows sharing one market timestamp."""
+    zq = __import__("zied_quant")
+    ts = np.asarray(ts, dtype=np.float64).reshape(-1)
+    if not len(ts) or not np.isfinite(ts).all() or np.any(np.diff(ts) < 0):
+        raise ValueError("timestamps must be finite and sorted")
+    # Use timestamp-group boundaries: different coins from the same candle must
+    # stay in the same partition, otherwise the holdout is not independent.
+    test_start_i = zq.chronological_boundary(ts, len(ts) - block)
+    tune_start_i = zq.chronological_boundary(ts, test_start_i - block)
+    tune_start, test_start = ts[tune_start_i], ts[test_start_i]
+    train_mask = ts < tune_start - embargo
+    tune_mask = (ts >= tune_start) & (ts < test_start - embargo)
+    test_mask = ts >= test_start
+    return train_mask, tune_mask, test_mask
+
+
 def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     """Train on past data; tune on a later block; promote only after a holdout passes."""
     zq = __import__("zied_quant")
@@ -27,11 +44,8 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     if n < 1200:
         raise ValueError(f"not enough samples for train/tune/holdout ({n}; need 1200)")
     block = max(int(n * 0.15), 200)
-    tune_start, test_start = ts[n - 2 * block], ts[n - block]
     embargo = zq.CFG["BARRIER_H"] * 3600
-    train_mask = ts < tune_start - embargo
-    tune_mask = (ts >= tune_start) & (ts < test_start - embargo)
-    test_mask = ts >= test_start
+    train_mask, tune_mask, test_mask = chronological_train_tune_holdout_masks(ts, block, embargo)
     if train_mask.sum() < 400 or tune_mask.sum() < 100 or test_mask.sum() < 100:
         raise ValueError("train/tune/holdout block too small after time embargo")
     Xraw, ytr = X[train_mask], y[train_mask]
