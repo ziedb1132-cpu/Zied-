@@ -873,7 +873,8 @@ CREATE TABLE IF NOT EXISTS experience(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, feats TEXT, label INTEGER, pnl REAL, ret REAL);
 CREATE TABLE IF NOT EXISTS signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, price REAL, atr REAL, feats TEXT,
-  prob REAL, rank INTEGER, labeled INTEGER DEFAULT 0, label INTEGER, ret REAL, hold REAL);
+  prob REAL, rank INTEGER, labeled INTEGER DEFAULT 0, label INTEGER, ret REAL, hold REAL,
+  feature_ts REAL);
 CREATE TABLE IF NOT EXISTS pending_orders(
   id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, created_ts REAL, expires_ts REAL,
   limit_px REAL, qty REAL, reserved_usdt REAL, sl REAL, tp REAL, prob REAL, rank INTEGER,
@@ -917,7 +918,8 @@ class Paper:
             self._set("cash", CFG["START_BALANCE"])
 
     def _migrate(self):
-        for table, cols in {"trades": {"spread": "REAL", "vol24": "REAL", "feature_ts": "REAL"}, "experience": {"ret": "REAL"}}.items():
+        for table, cols in {"trades": {"spread": "REAL", "vol24": "REAL", "feature_ts": "REAL"},
+                            "experience": {"ret": "REAL"}, "signals": {"feature_ts": "REAL"}}.items():
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
             for c, t in cols.items():
                 if c not in have:
@@ -939,6 +941,9 @@ class Paper:
             "WHERE EXISTS (SELECT 1 FROM trades t WHERE t.inst=experience.inst "
             "AND t.feats=experience.feats AND t.close_ts=experience.ts)"
         )
+        # Legacy signals only stored scan wall-clock time. Preserve those rows as a
+        # best-effort fallback; new rows record the actual latest closed 1H feature time.
+        self.db.execute("UPDATE signals SET feature_ts=ts WHERE feature_ts IS NULL")
         self.db.commit()
 
     @locked
@@ -1175,16 +1180,17 @@ class Paper:
     @locked
     def log_signals(self, rows):
         now = time.time()
-        self.db.executemany("INSERT INTO signals(ts,inst,price,atr,feats,prob,rank) VALUES(?,?,?,?,?,?,?)",
+        self.db.executemany("INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts) VALUES(?,?,?,?,?,?,?,?)",
                             [(now, r["inst"], r["price"], r["atr"], json.dumps([float(x) for x in r["feats"]]),
-                              None if r["prob"] is None or np.isnan(r["prob"]) else float(r["prob"]), r["rank"])
-                             for r in rows])
+                              None if r["prob"] is None or np.isnan(r["prob"]) else float(r["prob"]), r["rank"],
+                              float(r.get("feature_ts", now))) for r in rows])
         self.db.commit()
 
     @locked
     def pending_signals(self, cutoff_ts):
         return [dict(r) for r in self.db.execute(
-            "SELECT id,ts,inst,price,atr FROM signals WHERE labeled=0 AND ts<=? ORDER BY ts", (cutoff_ts,))]
+            "SELECT id,ts,COALESCE(feature_ts,ts) AS feature_ts,inst,price,atr "
+            "FROM signals WHERE labeled=0 AND ts<=? ORDER BY ts", (cutoff_ts,))]
 
     @locked
     def set_label(self, sid, label, ret, hold):
@@ -1194,7 +1200,8 @@ class Paper:
     @locked
     def signal_dataset(self):
         return _rows_to_ds(self.db.execute(
-            "SELECT ts,inst,feats,label,ret,hold FROM signals WHERE labeled=1 ORDER BY ts").fetchall())
+            "SELECT COALESCE(feature_ts,ts) AS ts,inst,feats,label,ret,hold "
+            "FROM signals WHERE labeled=1 ORDER BY feature_ts,ts").fetchall())
 
     @locked
     def experience_dataset(self):
@@ -1244,7 +1251,9 @@ def label_signals(paper):
             log.warning("signal labelling: no 1H candles for %s (%d mature signals)", inst, len(rs))
             continue
         for r in rs:
-            path = d[d["ts"] >= r["ts"] * 1000]
+            # Label from candles strictly after the candle used to build the features.
+            # ts is signal creation time; feature_ts is the actual 1H candle close time.
+            path = d[d["ts"] >= r["feature_ts"] * 1000]
             if len(path) < H:
                 insufficient += 1
                 continue
@@ -1596,12 +1605,18 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     def one(inst):
         try:
             fr = fetch_frames(inst, CFG["SCAN_DEPTH"])
-            return inst, (None if fr is None else live_vector(fr, btc))
+            if fr is None:
+                return inst, None
+            # Historical rows use the 1H candle availability/close timestamp.
+            # Store the same timestamp for live features instead of scan wall-clock time.
+            feature_ts = float(pd.Timestamp(fr[BASE]["avail"].iloc[-1]).timestamp())
+            return inst, (live_vector(fr, btc), feature_ts)
         except Exception as e:
             log.warning("%s: %s", inst, e); return inst, None
     with ThreadPoolExecutor(4) as ex:
         res = dict(ex.map(one, uni.index))
-    X = pd.DataFrame({k: v for k, v in res.items() if v is not None}).T.dropna()
+    X = pd.DataFrame({k: v[0] for k, v in res.items() if v is not None}).T.dropna()
+    feature_ts = {k: v[1] for k, v in res.items() if v is not None}
     if X.empty:
         log.warning("no data"); return None
     score = rank_universe(X, uni["vol"])
@@ -1622,7 +1637,8 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         return R
     # log the top coins of every scan: they become labelled training examples later
     paper.log_signals([dict(inst=i, price=float(uni.loc[i, "last"]), atr=float(X.loc[i, "1H_atr_pct"]),
-                            feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]))
+                            feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]),
+                            feature_ts=feature_ts[i])
                        for i in R.index[:CFG["LOG_TOP"]]])
     if not brain.ready:
         log.error("AI model unavailable; scan is ranking-only and no entries are allowed")
