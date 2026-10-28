@@ -281,3 +281,17 @@ def test_bootstrap_training_retries_after_enough_new_labels_or_trades():
     paper.experience = int(zq.CFG["RETRAIN_EVERY"])
     assert zq.bootstrap_training_due(paper, now=1001)
 
+def test_bootstrap_training_retries_hourly_with_sufficient_durable_cache(monkeypatch):
+    rows = 1200
+    cache = {
+        "X": np.zeros((rows, zq.N_FEATURES), dtype=np.float32),
+        "y": np.array([0, 1] * (rows // 2), dtype=np.float32),
+        "ts": np.arange(rows, dtype=np.float64),
+    }
+    monkeypatch.setattr(zq, "load_trainset", lambda: cache)
+    paper = _BootstrapPaper()
+    zq.mark_bootstrap_training_attempt(paper, now=1000)
+
+    assert not zq.bootstrap_training_due(paper, now=1000 + 3599)
+    assert zq.bootstrap_training_due(paper, now=1000 + 3600)
+
