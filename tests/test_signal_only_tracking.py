@@ -22,7 +22,7 @@ class SignalOnlyTrackingTests(unittest.TestCase):
         self.paper.log_signals([{
             "inst": "TEST-USDT", "price": 100.0, "atr": 0.02,
             "feats": np.zeros(zq.N_FEATURES), "prob": 0.75,
-            "rank": 1, "feature_ts": 1000.0,
+            "rank": 1, "ts": 1000.0, "feature_ts": 1000.0,
         }])
         self.assertEqual(self.paper.count("signals"), 1)
         self.assertEqual(self.paper.count("signals", "labeled=0"), 1)
@@ -36,7 +36,7 @@ class SignalOnlyTrackingTests(unittest.TestCase):
         self.paper.log_signals([{
             "inst": "TEST-USDT", "price": 100.0, "atr": 0.02,
             "feats": np.zeros(zq.N_FEATURES), "prob": 0.75,
-            "rank": 1, "feature_ts": 1000.0,
+            "rank": 1, "ts": 1000.0, "feature_ts": 1000.0,
         }])
         pending = self.paper.pending_signals(2000.0)
         self.assertEqual(len(pending), 1)
