@@ -968,6 +968,27 @@ class Paper:
             "FROM signals WHERE labeled=1 ORDER BY feature_ts,ts").fetchall())
 
     @locked
+    def closed_signal_dataset(self):
+        """Training rows from tracked signals only, and only after their closure."""
+        return _rows_to_ds(self.db.execute(
+            "SELECT COALESCE(s.feature_ts,s.ts) AS ts,s.inst,s.feats,"
+            "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label,s.ret,s.hold "
+            "FROM signals s JOIN tracked_signals t ON t.signal_id=s.id "
+            "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL "
+            "AND s.ret != 0 ORDER BY t.closed_ts,s.id").fetchall())
+
+    @locked
+    def closed_outcome_counts(self):
+        row = self.db.execute(
+            "SELECT SUM(CASE WHEN s.ret>0 THEN 1 ELSE 0 END) AS wins,"
+            "SUM(CASE WHEN s.ret<0 THEN 1 ELSE 0 END) AS losses,"
+            "COUNT(*) AS total "
+            "FROM tracked_signals t JOIN signals s ON s.id=t.signal_id "
+            "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL").fetchone()
+        return dict(wins=int(row["wins"] or 0), losses=int(row["losses"] or 0),
+                    total=int(row["total"] or 0))
+
+    @locked
     def create_tracked_signal(self, row):
         now = float(row.get("ts", time.time()))
         inst = str(row["inst"])
@@ -1289,26 +1310,49 @@ def poll_commands(paper, brain, timeout=0):
 # =====================================================================
 # PIPELINE
 # =====================================================================
+def learning_gate_status(paper):
+    counts = paper.closed_outcome_counts()
+    ready = counts["wins"] >= 500 and counts["losses"] >= 500
+    return dict(**counts, ready=ready)
+
+
+def enforce_closed_outcome_gate(brain, paper):
+    """Never use a legacy or historical-candle model before the closed-signal gate."""
+    status = learning_gate_status(paper)
+    if not status["ready"]:
+        brain.nn = brain.gbm = None
+        brain.mu = brain.sd = None
+        brain.thrs, brain.mode, brain.auc, brain.info = {}, None, None, {}
+    return status
+
+
 def collect_training_data(paper, universe=None, refresh=False, with_trades=False):
-    base = None if refresh else load_trainset()
-    if base is None:
-        universe = universe if universe is not None else get_universe()
-        base = build_trainset(universe)
-    signals = paper.signal_dataset()
-    log.info("training sources: historical=%d labelled_signals=%d; closed-trade outcomes excluded",
-             len(base["y"]), len(signals["y"]))
-    merged = ds_concat([base, signals])
-    valid = (np.isfinite(merged["X"]).all(axis=1)
-             & np.isfinite(merged["y"])
-             & np.isin(merged["y"], [0, 1])
-             & np.isfinite(merged["ts"])
-             & np.isfinite(merged["ret"]))
-    if not valid.all():
-        log.warning("training integrity: dropping %d invalid rows", int((~valid).sum()))
-        merged = {k: v[valid] for k, v in merged.items()}
-    return merged
+    # The AI learns only from completed tracked signals, never raw historical candles.
+    status = learning_gate_status(paper)
+    if not status["ready"]:
+        raise RuntimeError(
+            f"learning gate not reached: closed winners={status['wins']}/500, "
+            f"closed losers={status['losses']}/500; training is disabled")
+    ds = paper.closed_signal_dataset()
+    valid = (np.isfinite(ds["X"]).all(axis=1)
+             & np.isfinite(ds["y"])
+             & np.isin(ds["y"], [0, 1])
+             & np.isfinite(ds["ts"])
+             & np.isfinite(ds["ret"]))
+    ds = {k: v[valid] for k, v in ds.items()}
+    log.info("closed-signal-only training: winners=%d/500 losers=%d/500 samples=%d",
+             status["wins"], status["losses"], len(ds["y"]))
+    if len(ds["y"]) < 1000:
+        raise RuntimeError("closed-signal training requires at least 1000 completed outcomes")
+    return ds
 
 def retrain(brain, paper, universe=None, reason="manual", refresh=False):
+    status = learning_gate_status(paper)
+    if not status["ready"]:
+        log.info("AI learning paused until 500 closed winners and 500 closed losers: %d/500 wins, %d/500 losses",
+                 status["wins"], status["losses"])
+        return {"accepted": False, "skipped": True, "reason": "closed_outcome_gate",
+                "wins": status["wins"], "losses": status["losses"], "n": status["total"]}
     ds = collect_training_data(paper, universe, refresh)
     info = brain.fit(ds["X"], ds["y"], ds["ts"], ds["ret"])
     paper._set("last_train_sig", paper.count("signals", "labeled=1"))
@@ -1333,9 +1377,11 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     return info
 
 def need_retrain(paper):
-    wins = paper.tracked_count("status='CLOSED' AND outcome='TP'")
-    previous = int(paper._get("last_train_wins") or 0)
-    return wins - previous >= 500
+    status = learning_gate_status(paper)
+    if not status["ready"]:
+        return False
+    previous = int(paper._get("last_learning_attempt_closed_count") or 0)
+    return status["total"] > previous
 
 def _hourly_returns(inst):
     d = get_candles(inst, "1H", 100)
@@ -1496,30 +1542,31 @@ def once():
     if uni.empty:
         raise RuntimeError("OKX returned no tradable pairs (blocked? try OKX_BASE=https://aws.okx.com)")
     poll_commands(paper, brain)
-    # Label matured feature samples for AI training independently of signal-trade closure.
     monitor_tracked_signals(paper)
     label_signals(paper)
-    if not brain.ready and bootstrap_training_due(paper):
-        first_attempt = not paper._get("bootstrap_train_attempt_ts")
-        mark_bootstrap_training_attempt(paper)
+    status = enforce_closed_outcome_gate(brain, paper)
+    if status["ready"] and (not brain.ready or need_retrain(paper)):
         try:
-            retrain(brain, paper, uni,
-                    "أول تدريب" if first_attempt else "إعادة محاولة اعتماد النموذج")
+            retrain(brain, paper, uni, "تعلّم من الإشارات المغلقة")
         except Exception as e:
-            log.exception("bootstrap training failed: %s", e)
-            tg(f"⚠️ فشل تدريب النموذج: {e}")
-    elif not brain.ready:
-        log.info("AI model not approved; bootstrap retry deferred until enough new signal labels or 24 hours")
+            log.exception("closed-signal retraining failed: %s", e)
+            tg(f"⚠️ فشل تحديث التعلم من الإشارات المغلقة: {e}")
+        finally:
+            paper._set("last_learning_attempt_closed_count", status["total"])
+    elif not status["ready"]:
+        log.info("AI learning gate: closed wins=%d/500 losses=%d/500; model disabled",
+                 status["wins"], status["losses"])
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
     paper._set("cycle", cycle + 1)
-    # When no model has passed validation, bootstrap cooldown is the only retry path.
-    if brain.ready and need_retrain(paper):
+    status = learning_gate_status(paper)
+    if status["ready"] and need_retrain(paper):
         try:
-            retrain(brain, paper, uni, "تعلّم ذاتي")
-            paper._set("last_train_wins", paper.tracked_count("status='CLOSED' AND outcome IN ('TP','WIN')"))
+            retrain(brain, paper, uni, "تحديث بعد إشارة مغلقة")
         except Exception as e:
-            log.warning("retrain: %s", e)
+            log.exception("post-closure learning failed: %s", e)
+        finally:
+            paper._set("last_learning_attempt_closed_count", status["total"])
     # Statistics are available on demand via /stats; no wallet or exchange orders.
 
 def telegram_loop(paper, brain, stop):
@@ -1535,50 +1582,46 @@ def run():
     brain, paper = Brain(), Paper()
     stop = threading.Event()
     uni = get_universe()
-    label_signals(paper)
-    if not brain.ready and bootstrap_training_due(paper):
-        first_attempt = not paper._get("bootstrap_train_attempt_ts")
-        mark_bootstrap_training_attempt(paper)
-        try:
-            retrain(brain, paper, uni,
-                    "أول تدريب" if first_attempt else "إعادة محاولة اعتماد النموذج")
-        except Exception as e:
-            log.exception("bootstrap training failed: %s", e)
-            tg(f"⚠️ فشل تدريب النموذج: {e}")
-    elif not brain.ready:
-        log.info("AI model not approved; bootstrap retry deferred until enough new signal labels or 24 hours")
+    if uni.empty:
+        raise RuntimeError("OKX returned no tradable pairs (OKX unreachable?)")
     threading.Thread(target=telegram_loop, args=(paper, brain, stop), daemon=True).start()
-    tg("🚀 Zied Quant v2 بدأ العمل (تسجيل إشارات وتعلّم من الشموع فقط، دون محفظة افتراضية). أرسل /help للأوامر.")
-    cycle, last_daily = 0, time.time()
+    tg("🚀 Zied Quant بدأ العمل: التعلم محصور في الإشارات المغلقة، ويبدأ بعد 500 رابحة و500 خاسرة.")
+    cycle = 0
     try:
         while True:
             t0 = time.time()
             try:
                 monitor_tracked_signals(paper)
                 label_signals(paper)
-                if not brain.ready and bootstrap_training_due(paper):
-                    first_attempt = not paper._get("bootstrap_train_attempt_ts")
-                    mark_bootstrap_training_attempt(paper)
+                status = enforce_closed_outcome_gate(brain, paper)
+                if status["ready"] and (not brain.ready or need_retrain(paper)):
                     try:
-                        retrain(brain, paper, None,
-                                "أول تدريب" if first_attempt else "إعادة محاولة اعتماد النموذج")
+                        retrain(brain, paper, None, "تعلّم من الإشارات المغلقة")
                     except Exception as e:
-                        log.exception("bootstrap training failed: %s", e)
-                        tg(f"⚠️ فشل تدريب النموذج: {e}")
+                        log.exception("closed-signal retraining failed: %s", e)
+                        tg(f"⚠️ فشل تحديث التعلم: {e}")
+                    finally:
+                        paper._set("last_learning_attempt_closed_count", status["total"])
+                elif not status["ready"]:
+                    log.info("AI learning gate: wins=%d/500 losses=%d/500; model disabled",
+                             status["wins"], status["losses"])
                 scan(brain, paper, None, cycle)
+                cycle += 1
             except Exception as e:
-                log.exception("scan failed: %s", e); tg(f"⚠️ خطأ في المسح: {e}")
-            cycle += 1
-            if brain.ready and need_retrain(paper):
+                log.exception("scan failed: %s", e)
+                tg(f"⚠️ خطأ في المسح: {e}")
+            status = learning_gate_status(paper)
+            if status["ready"] and need_retrain(paper):
                 try:
-                    retrain(brain, paper, None, "تعلّم ذاتي")
-                    paper._set("last_train_wins", paper.tracked_count("status='CLOSED' AND outcome IN ('TP','WIN')"))
+                    retrain(brain, paper, None, "تحديث بعد إشارة مغلقة")
                 except Exception as e:
-                    log.warning("retrain: %s", e)
-            # No virtual trades are opened or closed; only signal outcomes are labelled from candles.
+                    log.exception("post-closure learning failed: %s", e)
+                finally:
+                    paper._set("last_learning_attempt_closed_count", status["total"])
             time.sleep(max(5, CFG["SCAN_EVERY_SEC"] - (time.time() - t0)))
     except KeyboardInterrupt:
-        stop.set(); tg("⏹ Zied Quant توقف")
+        stop.set()
+        tg("⏹ Zied Quant توقف")
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else "run"
@@ -1589,7 +1632,9 @@ def main(argv):
         except ImportError:
             sys.exit("pip install torch scikit-learn lightgbm  (at least one model library is required)")
     if cmd in ("train", "refresh"):
-        b, p = Brain(), Paper(); print(retrain(b, p, get_universe(), "يدوي", refresh=(cmd == "refresh")))
+        b, p = Brain(), Paper()
+        enforce_closed_outcome_gate(b, p)
+        print(retrain(b, p, get_universe(), "تدريب يدوي", refresh=(cmd == "refresh")))
     elif cmd == "backtest":
         p = Paper(); folds = int(argv[2]) if len(argv) > 2 else 5
         ds = collect_training_data(p, with_trades=False)
@@ -1598,7 +1643,9 @@ def main(argv):
         json.dump(rep, open(os.path.join(CFG["DIR"], "backtest.json"), "w"), indent=2)
         tg(txt)
     elif cmd == "scan":
-        b, p = Brain(), Paper(); print(scan(b, p, trade=False).head(30))
+        b, p = Brain(), Paper()
+        enforce_closed_outcome_gate(b, p)
+        print(scan(b, p, trade=False).head(30))
     elif cmd == "once":
         once()
     elif cmd == "label":
