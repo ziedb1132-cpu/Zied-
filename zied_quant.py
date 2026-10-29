@@ -909,6 +909,9 @@ class Paper:
         # Delete legacy ledgers; learning must never use their closed outcomes.
         for legacy_table in ("trades", "pending_orders", "experience", "tracked_signals"):
             self.db.execute(f"DROP TABLE IF EXISTS {legacy_table}")
+        signal_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(signals)")}
+        if "feature_ts" not in signal_columns:
+            self.db.execute("ALTER TABLE signals ADD COLUMN feature_ts REAL")
         self.db.execute("UPDATE signals SET feature_ts=ts WHERE feature_ts IS NULL")
         self.db.commit()
 
@@ -1416,9 +1419,9 @@ def run():
             log.exception("bootstrap training failed: %s", e)
             tg(f"⚠️ فشل تدريب النموذج: {e}")
     elif not brain.ready:
-        log.info("AI model not approved; bootstrap retry deferred until enough new labels/trades or 24 hours")
+        log.info("AI model not approved; bootstrap retry deferred until enough new signal labels or 24 hours")
     threading.Thread(target=telegram_loop, args=(paper, brain, stop), daemon=True).start()
-    tg("🚀 Zied Quant v2 بدأ العمل (Paper Trading فقط). أرسل /help للأوامر.")
+    tg("🚀 Zied Quant v2 بدأ العمل (تسجيل إشارات وتعلّم من الشموع فقط، دون محفظة افتراضية). أرسل /help للأوامر.")
     cycle, last_daily = 0, time.time()
     try:
         while True:
@@ -1443,7 +1446,7 @@ def run():
                     retrain(brain, paper, None, "تعلّم ذاتي")
                 except Exception as e:
                     log.warning("retrain: %s", e)
-            # Only open/close signal alerts are pushed; statistics remain available by /stats.
+            # No virtual trades are opened or closed; only signal outcomes are labelled from candles.
             time.sleep(max(5, CFG["SCAN_EVERY_SEC"] - (time.time() - t0)))
     except KeyboardInterrupt:
         stop.set(); tg("⏹ Zied Quant توقف")
