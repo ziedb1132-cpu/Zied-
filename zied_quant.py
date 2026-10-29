@@ -1218,11 +1218,11 @@ class Paper:
         if existing:
             return None
         a = float(np.clip(atr_pct, 0.004, 0.06))
-        # Entry zone is 25% of ATR on either side of the signal price.
-        zone_half = float(entry) * a * 0.25
-        entry_low, entry_high = float(entry) - zone_half, float(entry) + zone_half
-        sl = float(entry) * (1 - CFG["SL_ATR"] * a)
-        tp = float(entry) * (1 + CFG["TP_ATR"] * a)
+        # Spot-long pullback zone sits below the observed price, so it cannot fill immediately.
+        entry_low = float(entry) * (1 - a * 0.50)
+        entry_high = float(entry) * (1 - a * 0.15)
+        sl = float(entry_low) * (1 - CFG["SL_ATR"] * a)
+        tp = float(entry_low) * (1 + CFG["TP_ATR"] * a)
         feature_json = None
         if feats is not None:
             fv = np.asarray(feats, dtype=np.float32).reshape(-1)
@@ -1419,19 +1419,37 @@ def update_tracked_signals(paper, prices=None):
     prices = prices if prices is not None else get_prices()
     closed = 0
     now = time.time()
+    check_candles = now - float(paper._get("last_5m_check_ts") or 0) >= 240
 
-    # A waiting signal is not a trade yet. It becomes OPEN only when live price enters its entry zone.
+    # A waiting signal is not a trade yet. Spot-long entries wait for a pullback into the zone.
     for s in paper.waiting_tracked_signals():
         price = prices.get(s["inst"])
         if price is None or not np.isfinite(price) or price <= 0:
             continue
-        if float(s["entry_low"]) <= float(price) <= float(s["entry_high"]):
-            filled = paper.activate_tracked_signal(s["id"], float(price))
+        touched = float(s["entry_low"]) <= float(price) <= float(s["entry_high"])
+        if not touched and check_candles:
+            try:
+                candles = get_candles(s["inst"], "5m", 300)
+                if candles is not None and not candles.empty:
+                    created_ms = int(float(s["open_ts"]) * 1000)
+                    later = candles[candles["avail"].map(lambda x: x.timestamp() * 1000 > created_ms)]
+                    touched = any(float(b["l"]) <= float(s["entry_high"]) and
+                                  float(b["h"]) >= float(s["entry_low"])
+                                  for _, b in later.iterrows())
+                    # Historical wick touch is simulated at the planned zone midpoint.
+                    if touched:
+                        price = (float(s["entry_low"]) + float(s["entry_high"])) / 2.0
+            except Exception as exc:
+                log.warning("5m entry-zone check failed for %s: %s", s["inst"], exc)
+        if touched:
+            fill = float(price)
+            fill = min(float(s["entry_high"]), max(float(s["entry_low"]), fill))
+            filled = paper.activate_tracked_signal(s["id"], fill)
             if filled:
                 tg(f"🟢 تفعيل إشارة ورقية #{filled['id']} — {filled['inst']}\n"
                    f"وصل السعر إلى منطقة الدخول\n"
                    f"منطقة الدخول: {filled['entry_low']:.8g} – {filled['entry_high']:.8g}\n"
-                   f"سعر الدخول الفعلي: {filled['entry']:.8g}\n"
+                   f"سعر الدخول الافتراضي: {filled['entry']:.8g}\n"
                    f"وقف الخسارة: {filled['sl']:.8g} | الهدف: {filled['tp']:.8g}")
 
     for s in paper.active_tracked_signals():
@@ -1439,7 +1457,7 @@ def update_tracked_signals(paper, prices=None):
         reason, exit_price = None, None
         # Closed 5m candles help catch TP/SL touches between hourly GitHub Actions runs.
         try:
-            candles = get_candles(s["inst"], "5m", 300)
+            candles = get_candles(s["inst"], "5m", 300) if check_candles else None
         except Exception as exc:
             candles = None
             log.warning("5m monitoring failed for %s: %s", s["inst"], exc)
@@ -1473,6 +1491,8 @@ def update_tracked_signals(paper, prices=None):
                    f"العائد الصافي بعد التكاليف: {result['ret_pct']:+.2f}%\n"
                    f"مدة الإشارة: {result['hold_hours']:.1f} ساعة")
                 closed += 1
+    if check_candles:
+        paper._set("last_5m_check_ts", now)
     return closed
 
 
