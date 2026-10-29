@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Run Zied Quant with guarded model evolution and daily strategy discovery."""
+"""Run Zied Quant with 300-feature deep learning and guarded model evolution."""
 import sys
 import zied_quant
+import deep_learning_evolution
 import evolution_engine
 import strategy_evolver
 
+# Expand the schema/model before installing guarded train/tune/holdout promotion.
+deep_learning_evolution.install(zied_quant)
 evolution_engine.install(zied_quant)
 
-# Discovery is research-only and throttled to once per 23 hours by persistent state.
+# Research-only strategy discovery is throttled to once per 23 hours by persistent state.
 _original_scan = zied_quant.scan
 def _scan_with_strategy_discovery(brain, paper, universe=None, cycle=0, trade=True):
     result = _original_scan(brain, paper, universe, cycle, trade)
