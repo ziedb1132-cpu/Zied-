@@ -5,9 +5,13 @@ import zied_quant
 import deep_learning_evolution
 import evolution_engine
 import strategy_evolver
+import candle_news_intelligence
 
 # Expand the schema/model before installing guarded train/tune/holdout promotion.
 deep_learning_evolution.install(zied_quant)
+# Candlestick patterns and cached RSS headline sentiment adjust ranking only;
+# the 300-feature model schema and portfolio risk controls remain unchanged.
+candle_news_intelligence.install(zied_quant)
 # EMA-200 on the daily timeframe needs at least 200 daily candles in bootstrap data.
 _original_hist_depth = zied_quant.hist_depth
 def _expanded_hist_depth():
