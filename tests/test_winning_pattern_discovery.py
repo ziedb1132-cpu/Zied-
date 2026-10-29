@@ -37,63 +37,74 @@ class WinningPatternDiscoveryTests(unittest.TestCase):
         with sqlite3.connect(self.db_path) as db:
             db.execute("""
                 CREATE TABLE signals(
-                    id INTEGER PRIMARY KEY, ts REAL, feature_ts REAL,
+                    id INTEGER PRIMARY KEY, ts REAL, feature_ts REAL, inst TEXT,
                     feats TEXT, labeled INTEGER, label INTEGER, ret REAL
+                )
+            """)
+            db.execute("""
+                CREATE TABLE tracked_signals(
+                    signal_id INTEGER, status TEXT, closed_ts REAL
                 )
             """)
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _insert_samples(self, winners=200, losers=30):
+    def _insert_samples(self, winners=500, losers=500):
         rows = []
         for i in range(winners):
             x = np.zeros(300, dtype=float)
             x[0] = 2.0 + (i % 5) * 0.01
-            rows.append((i + 1, i + 1, json.dumps(x.tolist()), 1, 1, 0.02))
+            rows.append((i + 1, i + 1, i + 1, f"WIN{i}-USDT",
+                         json.dumps(x.tolist()), 1, 1, 0.02))
         for i in range(losers):
             x = np.zeros(300, dtype=float)
             x[0] = -2.0 - (i % 5) * 0.01
-            rows.append((winners + i + 1, winners + i + 1,
+            sid = winners + i + 1
+            rows.append((sid, sid, sid, f"LOSS{i}-USDT",
                          json.dumps(x.tolist()), 1, 0, -0.02))
         with sqlite3.connect(self.db_path) as db:
             db.executemany(
-                "INSERT INTO signals(ts, feature_ts, feats, labeled, label, ret) "
-                "VALUES(?,?,?,?,?,?)", rows
+                "INSERT INTO signals(id, ts, feature_ts, inst, feats, labeled, label, ret) "
+                "VALUES(?,?,?,?,?,?,?,?)", rows
+            )
+            db.executemany(
+                "INSERT INTO tracked_signals(signal_id, status, closed_ts) VALUES(?,?,?)",
+                [(row[0], "CLOSED", row[1]) for row in rows]
             )
 
-    def test_reads_labelled_signals_and_writes_patterns(self):
+    def test_reads_only_closed_signals_and_writes_patterns(self):
         self._insert_samples()
         result = dle.discover_winning_patterns(self.zq, self.paper)
         self.assertEqual(result["status"], "patterns_updated")
-        self.assertEqual(result["winning_samples"], 200)
-        self.assertEqual(result["losing_samples"], 30)
+        self.assertEqual(result["winning_samples"], 500)
+        self.assertEqual(result["losing_samples"], 500)
         with open(os.path.join(self.tmp.name, "winning_patterns.json"), encoding="utf-8") as fh:
             data = json.load(fh)
         self.assertEqual(data["feature_count"], 300)
-        self.assertEqual(data["source"], "signals WHERE labeled=1; outcomes and net returns from later-candle evaluation")
+        self.assertEqual(data["source"], "closed tracked signals only; outcomes and net returns from later-candle evaluation")
         self.assertTrue(data["top_recurring_features"])
         self.assertEqual(data["top_recurring_features"][0]["feature"], "feature_0")
 
-    def test_waits_for_required_winners(self):
-        self._insert_samples(winners=199, losers=30)
+    def test_waits_until_500_closed_winners(self):
+        self._insert_samples(winners=499, losers=500)
         result = dle.discover_winning_patterns(self.zq, self.paper)
-        self.assertEqual(result["status"], "waiting_for_200_winners")
-        self.assertEqual(result["winning_samples"], 199)
+        self.assertEqual(result["status"], "waiting_for_closed_outcomes")
+        self.assertEqual(result["winning_samples"], 499)
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "winning_patterns.json")))
 
-    def test_waits_for_loss_comparison(self):
-        self._insert_samples(winners=200, losers=29)
+    def test_waits_until_500_closed_losers(self):
+        self._insert_samples(winners=500, losers=499)
         result = dle.discover_winning_patterns(self.zq, self.paper)
-        self.assertEqual(result["status"], "waiting_for_loss_comparison")
-        self.assertEqual(result["losing_samples"], 29)
+        self.assertEqual(result["status"], "waiting_for_closed_outcomes")
+        self.assertEqual(result["losing_samples"], 499)
 
     def test_removes_stale_patterns_when_history_is_reset(self):
         stale = os.path.join(self.tmp.name, "winning_patterns.json")
         with open(stale, "w", encoding="utf-8") as fh:
             json.dump({"winning_samples": 500}, fh)
         result = dle.discover_winning_patterns(self.zq, self.paper)
-        self.assertEqual(result["status"], "waiting_for_200_winners")
+        self.assertEqual(result["status"], "waiting_for_closed_outcomes")
         self.assertFalse(os.path.exists(stale))
 
 
