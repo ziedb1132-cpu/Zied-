@@ -61,7 +61,7 @@ CFG = dict(
     SL_ATR=1.5, TP_ATR=3.0,
     BT_COST=0.0035,                    # assumed round-trip cost (fees+slippage+spread) for labels/backtest
     # scanning / signals
-    TOP_AI=30, LOG_TOP=20,
+    TOP_AI=30, LOG_TOP=30,
     SCAN_EVERY_SEC=900, MONITOR_EVERY_SEC=30, RANK_MSG_EVERY=4,
     PROB_MIN=None,                     # None = auto threshold from validation
     EXPLORATION_PROB_MIN=0.65,          # rank-based paper exploration while no validated AI model exists
