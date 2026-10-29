@@ -168,41 +168,75 @@ def _install_30_layer_net(zq):
 
 
 def discover_winning_patterns(zq, paper):
-    """Persist feature ranges associated with winners after >=200 closed winning trades."""
+    """Discover winner-associated features from the canonical, labelled signals table.
+
+    The old implementation queried an 'experience' table, but Paper.__init__
+    deliberately drops that legacy table. The canonical source is signals:
+    each row is labelled from later candles and contains the original 300-feature
+    vector plus net return. Do not count an outcome as a win unless both its
+    label and net return agree.
+    """
     db_path = zq.CFG["DB"]
     if not os.path.exists(db_path):
-        return {"status": "no_database"}
+        return {"status": "no_database", "winning_samples": 0, "losing_samples": 0}
+
     try:
         with sqlite3.connect(db_path, timeout=10) as db:
             rows = db.execute(
-                "SELECT feats,label,pnl,ret FROM experience ORDER BY ts"
+                "SELECT COALESCE(feature_ts, ts) AS feature_ts, feats, label, ret "
+                "FROM signals "
+                "WHERE labeled=1 AND label IN (0,1) AND ret IS NOT NULL "
+                "ORDER BY COALESCE(feature_ts, ts), id"
             ).fetchall()
     except sqlite3.Error as exc:
-        zq.log.warning("pattern discovery database read failed: %s", exc)
-        return {"status": "database_error"}
+        zq.log.warning("pattern discovery could not read labelled signals: %s", exc)
+        return {"status": "database_error", "error": str(exc)}
+
     parsed = []
-    for feats_json, label, pnl, ret in rows:
+    for feature_ts, feats_json, label, ret in rows:
         try:
             vector = np.asarray(json.loads(feats_json), dtype=np.float64)
-            if vector.shape == (300,) and np.isfinite(vector).all():
-                parsed.append((vector, int(label), float(pnl or 0), float(ret or 0)))
+            label, ret = int(label), float(ret)
+            if (vector.shape == (zq.N_FEATURES,)
+                    and np.isfinite(vector).all()
+                    and label in (0, 1)
+                    and np.isfinite(ret)):
+                parsed.append((float(feature_ts or 0.0), vector, label, ret))
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
-    winners = [r for r in parsed if r[1] == 1 and r[2] > 0]
-    losers = [r for r in parsed if r[1] == 0 or r[2] <= 0]
+
+    winners = [r for r in parsed if r[2] == 1 and r[3] > 0.0]
+    losers = [r for r in parsed if r[2] == 0 or r[3] <= 0.0]
     path = os.path.join(zq.CFG["DIR"], "winning_patterns.json")
+
+    # Never let an old pattern file survive a reset or become active when the
+    # current durable signal history no longer meets the evidence requirements.
     if len(winners) < WIN_THRESHOLD:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError as exc:
+                zq.log.warning("could not remove stale winning-pattern memory: %s", exc)
         return {"status": "waiting_for_200_winners", "winning_samples": len(winners),
-                "usable_samples": len(parsed)}
+                "losing_samples": len(losers), "usable_samples": len(parsed)}
     if len(losers) < 30:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError as exc:
+                zq.log.warning("could not remove stale winning-pattern memory: %s", exc)
         return {"status": "waiting_for_loss_comparison", "winning_samples": len(winners),
-                "losing_samples": len(losers)}
-    W = np.vstack([r[0] for r in winners])
-    L = np.vstack([r[0] for r in losers])
-    wm, lm = np.nanmedian(W, axis=0), np.nanmedian(L, axis=0)
-    scale = np.nanmedian(np.abs(np.vstack([W, L]) - np.nanmedian(np.vstack([W, L]), axis=0)), axis=0) * 1.4826
-    effect = np.abs(wm-lm) / np.maximum(scale, 1e-8)
-    order = np.argsort(np.nan_to_num(effect, nan=0.0))[::-1]
+                "losing_samples": len(losers), "usable_samples": len(parsed)}
+
+    W = np.vstack([r[1] for r in winners])
+    L = np.vstack([r[1] for r in losers])
+    wm, lm = np.median(W, axis=0), np.median(L, axis=0)
+    pooled = np.vstack([W, L])
+    pooled_median = np.median(pooled, axis=0)
+    scale = np.median(np.abs(pooled - pooled_median), axis=0) * 1.4826
+    effect = np.abs(wm - lm) / np.maximum(scale, 1e-8)
+    effect = np.nan_to_num(effect, nan=0.0, posinf=0.0, neginf=0.0)
+    order = np.argsort(effect)[::-1]
     patterns = []
     for j in order[:40]:
         patterns.append({
@@ -210,13 +244,15 @@ def discover_winning_patterns(zq, paper):
             "winner_median": float(wm[j]),
             "loser_median": float(lm[j]),
             "robust_effect": float(effect[j]),
-            "winner_q25_q75": [float(x) for x in np.nanquantile(W[:, j], [0.25, 0.75])],
-            "loser_q25_q75": [float(x) for x in np.nanquantile(L[:, j], [0.25, 0.75])],
+            "winner_q25_q75": [float(x) for x in np.quantile(W[:, j], [0.25, 0.75])],
+            "loser_q25_q75": [float(x) for x in np.quantile(L[:, j], [0.25, 0.75])],
         })
+
     result = {
-        "version": 1, "updated_at": time.time(), "feature_count": 300,
+        "version": 2, "updated_at": time.time(), "feature_count": int(zq.N_FEATURES),
         "winning_samples": len(winners), "losing_samples": len(losers),
         "total_usable_samples": len(parsed),
+        "source": "signals WHERE labeled=1; outcomes and net returns from later-candle evaluation",
         "method": "robust median difference scaled by pooled MAD; discovery only, not proof of predictive edge",
         "top_recurring_features": patterns,
     }
@@ -225,12 +261,13 @@ def discover_winning_patterns(zq, paper):
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(result, fh, ensure_ascii=False, allow_nan=False, indent=2)
     os.replace(tmp, path)
+
     old_count = int(paper._get("last_pattern_winners") or 0)
-    if len(winners) >= WIN_THRESHOLD and (old_count < WIN_THRESHOLD or len(winners) - old_count >= 200):
-        zq.tg("🧬 اكتشاف أنماط الصفقات الرابحة\n"
-              f"العينات الرابحة: {len(winners)} | الخاسرة للمقارنة: {len(losers)}\n"
-              "تم حفظ أهم 40 ميزة متكررة في winning_patterns.json. "
-              "لن تُعتمد كقاعدة تداول قبل اختبارها على بيانات لاحقة.")
+    if old_count < WIN_THRESHOLD or len(winners) - old_count >= 200:
+        zq.tg("🧬 اكتشاف أنماط الصفقات الرابحة\\n"
+              f"العينات الرابحة: {len(winners)} | الخاسرة للمقارنة: {len(losers)}\\n"
+              "تم حفظ أهم 40 ميزة من سجل الإشارات المكتملة في winning_patterns.json. "
+              "الأنماط مساعدة فقط ولا تُعد دليلًا على ربح مستقبلي قبل اختبار زمني مستقل.")
         paper._set("last_pattern_winners", len(winners))
     return {"status": "patterns_updated", "winning_samples": len(winners),
             "losing_samples": len(losers), "features_reported": len(patterns), "path": path}
