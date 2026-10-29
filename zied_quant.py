@@ -1496,6 +1496,107 @@ def update_tracked_signals(paper, prices=None):
     return closed
 
 
+def analyze_tracked_signal_patterns(paper, force=False):
+    """Deep-dive analysis of closed tracked signals after 500 net-positive outcomes.
+    Uses winners and losers, preserves the original decision-time feature vector,
+    and reruns after every 50 additional closed outcomes.
+    """
+    rows = paper.db.execute(
+        "SELECT id,inst,open_ts,ret_pct,reason,feats FROM tracked_signals "
+        "WHERE status='CLOSED' AND ret_pct IS NOT NULL AND feats IS NOT NULL "
+        "ORDER BY close_ts,id"
+    ).fetchall()
+    if not rows:
+        return None
+    parsed = []
+    for row in rows:
+        try:
+            fv = np.asarray(json.loads(row["feats"]), dtype=np.float64).reshape(-1)
+            ret = float(row["ret_pct"])
+            if len(fv) == N_FEATURES and np.isfinite(fv).all() and np.isfinite(ret):
+                parsed.append((dict(row), fv, ret))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            continue
+    if not parsed:
+        return None
+    wins = sum(1 for _, _, ret in parsed if ret > 0)
+    closed_n = len(parsed)
+    if wins < 500:
+        return {"ready": False, "wins": wins, "closed": closed_n}
+    last_n = int(paper._get("deep_analysis_last_closed") or 0)
+    if not force and closed_n - last_n < 50:
+        return {"ready": True, "wins": wins, "closed": closed_n, "skipped": True}
+
+    X = np.vstack([item[1] for item in parsed])
+    y = np.asarray([1 if item[2] > 0 else 0 for item in parsed], dtype=np.int8)
+    rets = np.asarray([item[2] for item in parsed], dtype=np.float64)
+    # Rank features by standardized winner-vs-loser mean separation.
+    win_x, loss_x = X[y == 1], X[y == 0]
+    rows_out = []
+    if len(win_x) and len(loss_x):
+        mu_w, mu_l = win_x.mean(axis=0), loss_x.mean(axis=0)
+        pooled = np.sqrt((win_x.var(axis=0) + loss_x.var(axis=0)) / 2.0) + 1e-9
+        effect = (mu_w - mu_l) / pooled
+        for j, name in enumerate(FEATURE_COLS):
+            rows_out.append({
+                "feature": name,
+                "winner_mean": float(mu_w[j]),
+                "loser_mean": float(mu_l[j]),
+                "effect_size": float(effect[j]),
+                "abs_effect_size": float(abs(effect[j]))
+            })
+    rows_out.sort(key=lambda item: item["abs_effect_size"], reverse=True)
+
+    # Simple candidate rules: feature quartile cutoffs with enough examples.
+    candidates = []
+    for j, name in enumerate(FEATURE_COLS):
+        vals = X[:, j]
+        if float(np.nanmax(vals) - np.nanmin(vals)) < 1e-10:
+            continue
+        for q in (0.20, 0.35, 0.50, 0.65, 0.80):
+            threshold = float(np.quantile(vals, q))
+            for op, mask in ((">=", vals >= threshold), ("<=", vals <= threshold)):
+                n = int(mask.sum())
+                if n < 30 or n >= len(y):
+                    continue
+                win_rate = float(y[mask].mean())
+                avg_ret = float(rets[mask].mean())
+                # Candidate only; do not automatically change strategy weights from in-sample rules.
+                if win_rate >= float(y.mean()) + 0.05 and avg_ret > 0:
+                    candidates.append({
+                        "feature": name, "condition": op, "threshold": threshold,
+                        "samples": n, "win_rate_pct": win_rate * 100.0,
+                        "avg_net_return_pct": avg_ret
+                    })
+    candidates.sort(key=lambda item: (item["avg_net_return_pct"], item["win_rate_pct"], item["samples"]), reverse=True)
+    report = {
+        "created_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "eligible_closed_signals": closed_n,
+        "wins": int(wins), "losses": int(closed_n - wins),
+        "win_rate_pct": float(y.mean() * 100.0),
+        "average_net_return_pct": float(rets.mean()),
+        "total_compounded_return_pct": float((np.prod(1.0 + rets / 100.0) - 1.0) * 100.0),
+        "top_winner_vs_loser_features": rows_out[:25],
+        "candidate_patterns": candidates[:50],
+        "warning": "Candidate patterns are in-sample discoveries, not proven edges; validate out-of-sample before automatic strategy changes."
+    }
+    path = os.path.join(CFG["DIR"], "deep_signal_analysis.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    paper._set("deep_analysis_last_closed", closed_n)
+    paper._set("deep_analysis_last_ts", time.time())
+    log.info("deep signal analysis complete: wins=%d closed=%d candidate_patterns=%d path=%s",
+             wins, closed_n, len(candidates), path)
+    tg(f"🧠 اكتمل التحليل العميق للإشارات\n"
+       f"الإشارات المغلقة ذات الميزات: {closed_n} | رابحة: {wins} | خاسرة: {closed_n-wins}\n"
+       f"نسبة الفوز: {y.mean()*100:.1f}% | متوسط العائد الصافي: {rets.mean():+.2f}%\n"
+       f"أفضل الميزات: {', '.join(x['feature'] for x in rows_out[:5]) or 'بيانات غير كافية'}\n"
+       f"الأنماط المرشحة: {len(candidates)}\n"
+       f"التقرير: {path}\n"
+       f"ملاحظة: الأنماط مرشحة وتحتاج اختبارًا خارج العينة قبل تغيير الأوزان تلقائيًا.")
+    return report
+
+
 def signal_performance_msg(paper):
     s = paper.tracked_signal_stats()
     return (f"📊 تقييم الإشارات الورقية\n"
@@ -1927,6 +2028,7 @@ def once():
     poll_commands(paper, brain)
     # Update every open paper signal; no wallet/virtual-position management.
     update_tracked_signals(paper)
+    analyze_tracked_signal_patterns(paper)
     # Label matured feature samples for AI training independently of signal-trade closure.
     label_signals(paper)
     if not brain.ready and bootstrap_training_due(paper):
@@ -1996,6 +2098,7 @@ def run():
             t0 = time.time()
             try:
                 update_tracked_signals(paper)
+                analyze_tracked_signal_patterns(paper)
                 label_signals(paper)
                 if not brain.ready and bootstrap_training_due(paper):
                     first_attempt = not paper._get("bootstrap_train_attempt_ts")
