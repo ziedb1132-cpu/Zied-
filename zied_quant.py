@@ -1518,43 +1518,6 @@ def portfolio_msg(paper):
     """Legacy command compatibility: report signal performance, never a virtual wallet."""
     return signal_performance_msg(paper)
 
-# Old portfolio renderer retained below only for backward compatibility.
-def _legacy_portfolio_msg_unused(paper):
-    prices = get_prices()
-    s = paper.stats(prices)
-    cash = paper.cash()
-    open_trades = paper.open_trades()
-    unrealized = 0.0
-    lines = [
-        "💼 المحفظة الافتراضية — Zied Quant",
-        "⚠️ تداول ورقي فقط؛ لا توجد أوامر حقيقية.",
-        f"💵 النقد المتاح: {cash:.2f} USDT",
-        f"⏳ أوامر LIMIT المعلّقة: {len(paper.pending_orders())} | المحجوز: {sum(float(o['reserved_usdt']) for o in paper.pending_orders()):.2f} USDT",
-        f"🛡️ المخاطر المقدّرة عند SL: {paper.portfolio_risk_used():.2f} USDT / {CFG['MAX_PORTFOLIO_RISK'] * 100:.1f}% كحد أقصى من حقوق المحفظة",
-        f"📊 قيمة المحفظة: {s['equity']:.2f} USDT ({s['ret_pct']:+.2f}%)",
-        f"📈 الربح/الخسارة الكلي مقابل رأس المال الأولي: {s['equity'] - CFG['START_BALANCE']:+.2f} USDT",
-        f"✅ الربح/الخسارة المحقق للصفقات المغلقة: {s['pnl']:+.2f} USDT",
-        f"🔓 صفقات مفتوحة: {len(open_trades)} | مغلقة: {s['trades']}",
-        f"🎯 نسبة النجاح: {s['winrate'] * 100:.1f}% | Profit Factor: {s['profit_factor']:.2f}",
-        "",
-        "📌 تفاصيل الصفقات المفتوحة:"
-    ]
-    if not open_trades:
-        lines.append("لا توجد صفقات مفتوحة حالياً.")
-    else:
-        for t in open_trades:
-            px = prices.get(t["inst"], t["entry"])
-            upnl = t["qty"] * px - t["usdt_in"]
-            unrealized += upnl
-            pct = (px / t["entry"] - 1) * 100
-            lines.append(
-                f"• {t['inst']} | دخول {t['entry']:.6g} | الآن {px:.6g}\n"
-                f"  عائم {upnl:+.2f} USDT ({pct:+.2f}%) | SL {t['sl']:.6g} | TP {t['tp']:.6g}"
-            )
-    lines.insert(7, f"🌊 الربح/الخسارة غير المحقق للصفقات المفتوحة: {unrealized:+.2f} USDT")
-    # Telegram limits messages to 4096 characters; current open-position cap is five.
-    return "\n".join(lines)[:3900]
-
 def top_msg():
     p = os.path.join(CFG["DIR"], "ranking.csv")
     if not os.path.exists(p):
@@ -1575,15 +1538,15 @@ def handle_command(text, paper, brain):
     if cmd == "/top":
         return top_msg()
     if cmd == "/pause":
-        paper._set("paused", "1"); return "⏸ تم إيقاف الصفقات الجديدة (المتابعة مستمرة)."
+        paper._set("paused", "1"); return "⏸ تم إيقاف فتح الإشارات الجديدة؛ متابعة الإشارات المفتوحة مستمرة."
     if cmd == "/resume":
-        paper._set("paused", "0"); paper._set("pause_until", "0"); return "▶️ تم استئناف الصفقات الجديدة."
+        paper._set("paused", "0"); paper._set("pause_until", "0"); return "▶️ تم استئناف فتح الإشارات الجديدة."
     if cmd == "/model":
         return "🧠 " + brain.describe()
     if cmd == "/signals":
         s = paper.tracked_signal_stats()
         return (f"📊 الإشارات: مفتوحة {s['open']} | مغلقة {s['closed']} | "
-                f"نجاح {s['winrate']:.1f}% | متوسط العائد {s['avg_pct']:+.2f}%\\n"
+                f"نجاح {s['winrate']:.1f}% | متوسط العائد {s['avg_pct']:+.2f}%\n"
                 f"سجل التعلم: {paper.count('signals')} | موسومة {paper.count('signals', 'labeled=1')}")
     return ("الأوامر: /stats /positions /portfolio /top /model /signals /pause /resume")
 
@@ -1790,6 +1753,9 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     thr = (float(CFG.get("EXPLORATION_PROB_MIN", 0.65)) if learning_mode else
            (CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else brain.thr))
     sig = R[R["prob"] >= thr].sort_values("prob", ascending=False)
+    if paper._get("paused") == "1":
+        log.info("new paper signals paused by Telegram command")
+        sig = sig.iloc[0:0]
     for inst, r in sig.iterrows():
         entry = float(uni.loc[inst, "last"])
         tracked = paper.open_tracked_signal(
