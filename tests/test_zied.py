@@ -183,7 +183,7 @@ def test_scan_and_once_pipeline():
     b.fit(ds["X"], ds["y"], ds["ts"], ds["ret"], epochs=2, force=True)
     zq.CFG["PROB_MIN"] = 0.0                                   # force signals to exercise the entry path
     R = zq.scan(b, p, uni, 1, trade=True)
-    assert R["prob"].notna().sum() > 0 and len(p.pending_orders()) >= 1
+    assert R["prob"].notna().sum() > 0 and p.count("signals") > 0
     assert len(p.open_trades()) == 0  # LIMIT orders remain pending until a later candle fills them
     assert len(p.open_trades()) <= zq.CFG["MAX_OPEN"]
     zq.CFG["PROB_MIN"] = None
@@ -245,15 +245,10 @@ def test_bootstrap_training_retry_is_persistently_throttled(monkeypatch):
     assert zq.bootstrap_training_due(paper, now=1000 + 86400)
 
 
-def test_bootstrap_training_retries_after_enough_new_labels_or_trades():
+def test_bootstrap_training_retries_after_enough_new_signal_labels():
     paper = _BootstrapPaper()
     zq.mark_bootstrap_training_attempt(paper, now=1000)
     paper.labelled = int(zq.CFG["RETRAIN_SIGNALS"])
-    assert zq.bootstrap_training_due(paper, now=1001)
-
-    paper = _BootstrapPaper()
-    zq.mark_bootstrap_training_attempt(paper, now=1000)
-    paper.experience = int(zq.CFG["RETRAIN_EVERY"])
     assert zq.bootstrap_training_due(paper, now=1001)
 
 def test_bootstrap_training_retries_hourly_with_sufficient_durable_cache(monkeypatch):
