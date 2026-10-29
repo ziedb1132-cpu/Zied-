@@ -1422,8 +1422,11 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     prob_min = CFG["PROB_MIN"]
     if prob_min is None:
         prob_min = float(CFG["EXPLORATION_PROB_MIN"]) if not brain.ready else 0.55
-    eligible = R[(R["rank"] <= 50) & R["prob"].notna() & (R["prob"] >= float(prob_min))]
-    eligible = eligible.sort_values(["prob", "score"], ascending=False).head(10)
+    # Entry universe is strictly the top 10 by cross-sectional rank.
+    # Do not backfill from rank 11+ when a top-10 coin is already open or fails
+    # the AI threshold; duplicates are skipped, never replaced by coin #11.
+    eligible = R[(R["rank"] <= 10) & R["prob"].notna() & (R["prob"] >= float(prob_min))]
+    eligible = eligible.sort_values(["prob", "score"], ascending=False)
     created = []
     for inst, rr in eligible.iterrows():
         sig = paper.create_tracked_signal(dict(
@@ -1438,8 +1441,9 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                f"الدخول الافتراضي: {sig['entry']:.8g}\n"
                f"وقف الخسارة: {sig['sl']:.8g} | الهدف: {sig['tp']:.8g}\n"
                f"متابعة تلقائية حتى TP/SL أو انتهاء {CFG['BARRIER_H']} ساعة. لا توجد أوامر حقيقية.")
-    log.info("paper signal creation: top50=%d eligible=%d created=%d threshold=%.3f",
-             min(50, len(R)), len(eligible), len(created), float(prob_min))
+    log.info("paper signal creation: ranked_top10=%d eligible_top10=%d created=%d "
+             "already-open coins skipped; rank 11+ never considered; threshold=%.3f",
+             min(10, len(R)), len(eligible), len(created), float(prob_min))
     return R
 
 def bootstrap_training_due(paper, now=None):
