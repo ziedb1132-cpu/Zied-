@@ -1,9 +1,7 @@
 name: Zied Quant hourly
 
 on:
-  schedule:
-    - cron: "7 * * * *"        # starts the continuous chain each hour (UTC)
-  workflow_dispatch:
+  workflow_dispatch: # Start once manually; successful batches dispatch the next run automatically.
 
 concurrency:
   group: zied-quant            # queue chained runs; never overlap state writers
