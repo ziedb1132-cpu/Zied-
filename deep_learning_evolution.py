@@ -211,28 +211,21 @@ def discover_winning_patterns(zq, paper):
     losers = [r for r in parsed if r[2] == 0 and r[3] < 0.0]
     path = os.path.join(zq.CFG["DIR"], "winning_patterns.json")
     if len(winners) < WIN_THRESHOLD or len(losers) < LOSS_THRESHOLD:
+        # Old patterns must not remain active before the stricter evidence gate.
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError as exc:
+                zq.log.warning("could not remove stale winning-pattern memory: %s", exc)
         return {"status": "waiting_for_closed_outcomes",
                 "winning_samples": len(winners), "losing_samples": len(losers),
                 "required_winners": WIN_THRESHOLD, "required_losers": LOSS_THRESHOLD}
 
-    # Never let an old pattern file survive a reset or become active when the
-    # current durable signal history no longer meets the evidence requirements.
-    if len(winners) < WIN_THRESHOLD:
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError as exc:
-                zq.log.warning("could not remove stale winning-pattern memory: %s", exc)
-        return {"status": "waiting_for_200_winners", "winning_samples": len(winners),
-                "losing_samples": len(losers), "usable_samples": len(parsed)}
-    if len(losers) < 30:
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError as exc:
-                zq.log.warning("could not remove stale winning-pattern memory: %s", exc)
-        return {"status": "waiting_for_loss_comparison", "winning_samples": len(winners),
-                "losing_samples": len(losers), "usable_samples": len(parsed)}
+    old_count = int(paper._get("last_pattern_closed_count") or 0)
+    closed_count = len(winners) + len(losers)
+    if closed_count <= old_count and os.path.exists(path):
+        return {"status": "no_new_closed_signal",
+                "winning_samples": len(winners), "losing_samples": len(losers)}
 
     W = np.vstack([r[1] for r in winners])
     L = np.vstack([r[1] for r in losers])
@@ -258,7 +251,7 @@ def discover_winning_patterns(zq, paper):
         "version": 2, "updated_at": time.time(), "feature_count": int(zq.N_FEATURES),
         "winning_samples": len(winners), "losing_samples": len(losers),
         "total_usable_samples": len(parsed),
-        "source": "signals WHERE labeled=1; outcomes and net returns from later-candle evaluation",
+        "source": "closed tracked signals only; outcomes and net returns from later-candle evaluation",
         "method": "robust median difference scaled by pooled MAD; discovery only, not proof of predictive edge",
         "top_recurring_features": patterns,
     }
@@ -268,8 +261,6 @@ def discover_winning_patterns(zq, paper):
         json.dump(result, fh, ensure_ascii=False, allow_nan=False, indent=2)
     os.replace(tmp, path)
 
-    old_count = int(paper._get("last_pattern_closed_count") or 0)
-    closed_count = len(winners) + len(losers)
     if closed_count > old_count:
         zq.tg("🧬 اكتشاف أنماط الصفقات الرابحة\\n"
               f"العينات الرابحة: {len(winners)} | الخاسرة للمقارنة: {len(losers)}\\n"
