@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""300-feature, 30-linear-layer deep-learning extension and winning-pattern discovery.
+
+Paper trading only. Keeps existing risk gates and temporal validation intact.
+"""
+import json
+import os
+import sqlite3
+import time
+import types
+
+import numpy as np
+import pandas as pd
+
+
+EXTRA_NAMES = [
+    "ret2", "ret8", "ret15", "ret30", "ret90",
+    "rsi21", "rsi28",
+    "ema_dist12", "ema_dist100", "ema_dist200",
+    "ema_slope50", "ema_slope100",
+    "vol_ratio5", "vol_ratio50",
+    "atr_pct7", "atr_pct28",
+    "range_pos50", "breakout_dist50", "drawdown20", "gap_pct",
+]
+WIN_THRESHOLD = 200
+
+
+def _extra_features(df):
+    o = pd.to_numeric(df["o"], errors="coerce")
+    h = pd.to_numeric(df["h"], errors="coerce")
+    l = pd.to_numeric(df["l"], errors="coerce")
+    c = pd.to_numeric(df["c"], errors="coerce")
+    v = pd.to_numeric(df["vol"], errors="coerce")
+    lc = np.log(c.where(c > 0))
+    f = {}
+    for n in (2, 8, 15, 30, 90):
+        f[f"ret{n}"] = lc.diff(n)
+    def rsi(n):
+        d = c.diff()
+        up = d.clip(lower=0).ewm(alpha=1/n, adjust=False).mean()
+        dn = (-d.clip(upper=0)).ewm(alpha=1/n, adjust=False).mean()
+        return 100 - 100 / (1 + up / (dn + 1e-12))
+    f["rsi21"], f["rsi28"] = rsi(21), rsi(28)
+    for n in (12, 100, 200):
+        ema = c.ewm(span=n, adjust=False).mean()
+        f[f"ema_dist{n}"] = c / (ema + 1e-12) - 1
+    e50 = c.ewm(span=50, adjust=False).mean()
+    e100 = c.ewm(span=100, adjust=False).mean()
+    f["ema_slope50"], f["ema_slope100"] = e50.pct_change(5), e100.pct_change(10)
+    f["vol_ratio5"] = v / (v.rolling(5).mean() + 1e-12)
+    f["vol_ratio50"] = v / (v.rolling(50).mean() + 1e-12)
+    tr = pd.concat([h-l, (h-c.shift()).abs(), (l-c.shift()).abs()], axis=1).max(axis=1)
+    f["atr_pct7"] = tr.ewm(alpha=1/7, adjust=False).mean() / (c + 1e-12)
+    f["atr_pct28"] = tr.ewm(alpha=1/28, adjust=False).mean() / (c + 1e-12)
+    lo50, hi50 = l.rolling(50).min(), h.rolling(50).max()
+    f["range_pos50"] = (c-lo50) / (hi50-lo50+1e-12)
+    prior_hi = h.shift(1).rolling(50).max()
+    f["breakout_dist50"] = c / (prior_hi + 1e-12) - 1
+    hi20 = c.rolling(20).max()
+    f["drawdown20"] = c / (hi20 + 1e-12) - 1
+    f["gap_pct"] = o / (c.shift(1) + 1e-12) - 1
+    return pd.DataFrame(f, index=df.index)[EXTRA_NAMES].replace([np.inf, -np.inf], np.nan)
+
+
+def _install_features(zq):
+    old_names = list(zq.NAMES)
+    old_tf = zq.tf_features
+    # Give the original function its own globals so expanded NAMES is thread-safe.
+    old_globals = dict(old_tf.__globals__)
+    old_globals["NAMES"] = old_names
+    old_tf_isolated = types.FunctionType(
+        old_tf.__code__, old_globals, old_tf.__name__, old_tf.__defaults__, old_tf.__closure__
+    )
+    new_names = old_names + EXTRA_NAMES
+    def expanded_tf_features(df):
+        base = old_tf_isolated(df)
+        extra = _extra_features(df)
+        extra.index = base.index
+        return pd.concat([base, extra], axis=1)[new_names]
+    zq.NAMES = new_names
+    zq.TF_COLS = [f"{tf}_{n}" for tf in zq.TFS for n in new_names]
+    zq.CTX_COLS = [f"ctx_{n}" for n in zq.CTX_NAMES]
+    zq.FEATURE_COLS = zq.TF_COLS + zq.CTX_COLS
+    zq.N_FEATURES = len(zq.FEATURE_COLS)
+    if zq.N_FEATURES != 300:
+        raise RuntimeError(f"Expected 300 features, got {zq.N_FEATURES}")
+    zq.tf_features = expanded_tf_features
+    # Old cached arrays/models use 200 columns and must be rebuilt, not padded.
+    zq.DATA_VER = 4
+    zq.CFG["TOP_AI"] = 50
+    zq.CFG["LOG_TOP"] = 50
+    zq.CFG["MAX_OPEN"] = 10
+
+
+def _install_30_layer_net(zq):
+    if zq.torch is None:
+        zq.log.warning("PyTorch unavailable: 30-layer deep network disabled; only GBM can run")
+        return
+    torch, nn = zq.torch, zq.nn
+    class Block(nn.Module):
+        def __init__(self, d, p):
+            super().__init__()
+            self.net = nn.Sequential(
+                nn.Linear(d, d), nn.LayerNorm(d), nn.GELU(), nn.Dropout(p),
+                nn.Linear(d, d), nn.LayerNorm(d)
+            )
+            self.act = nn.GELU()
+        def forward(self, x):
+            return self.act(x + self.net(x))
+    class ZiedDeepNet(nn.Module):
+        # 1 input linear + 14 residual blocks x 2 linear + 1 output linear = 30.
+        def __init__(self, n_in, d=192, p=0.15):
+            super().__init__()
+            self.inp = nn.Sequential(nn.Linear(n_in, d), nn.LayerNorm(d), nn.GELU())
+            self.blocks = nn.Sequential(*[Block(d, p) for _ in range(14)])
+            self.out = nn.Linear(d, 1)
+        def forward(self, x):
+            return self.out(self.blocks(self.inp(x)))
+    def n_linear(model):
+        return sum(isinstance(layer, nn.Linear) for layer in model.modules())
+    def train_net(Xf, yf, Xe, ye, epochs):
+        torch.manual_seed(0)
+        Xt, yt = torch.tensor(np.asarray(Xf, dtype=np.float32)), torch.tensor(np.asarray(yf, dtype=np.float32))
+        Xv, yv = torch.tensor(np.asarray(Xe, dtype=np.float32)), torch.tensor(np.asarray(ye, dtype=np.float32))
+        net = ZiedDeepNet(Xf.shape[1])
+        assert n_linear(net) == 30, n_linear(net)
+        opt = torch.optim.AdamW(net.parameters(), lr=7e-4, weight_decay=1e-3)
+        sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, max(1, epochs))
+        lossf = nn.BCEWithLogitsLoss()
+        best, state, bad = float("inf"), None, 0
+        for _ in range(epochs):
+            net.train()
+            perm = torch.randperm(len(Xt))
+            for i in range(0, len(perm), 256):
+                b = perm[i:i+256]
+                if len(b) < 2:
+                    continue
+                opt.zero_grad()
+                loss = lossf(net(Xt[b]).squeeze(1), yt[b])
+                loss.backward()
+                nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+                opt.step()
+            sch.step()
+            net.eval()
+            with torch.no_grad():
+                val_loss = lossf(net(Xv).squeeze(1), yv).item()
+            if val_loss < best - 1e-4:
+                best, bad = val_loss, 0
+                state = {k: v.detach().clone() for k, v in net.state_dict().items()}
+            else:
+                bad += 1
+                if bad >= 10:
+                    break
+        if state is None:
+            raise RuntimeError("30-layer deep network training did not produce a valid checkpoint")
+        net.load_state_dict(state)
+        net.eval()
+        return net
+    zq.ZiedNet = ZiedDeepNet
+    zq._train_net = train_net
+    old_describe = zq.Brain.describe
+    def describe(self):
+        result = old_describe(self)
+        return result.replace("شبكة 20 طبقة", "شبكة Deep Learning من 30 طبقة")
+    zq.Brain.describe = describe
+
+
+def discover_winning_patterns(zq, paper):
+    """Persist feature ranges associated with winners after >=200 closed winning trades."""
+    db_path = zq.CFG["DB"]
+    if not os.path.exists(db_path):
+        return {"status": "no_database"}
+    try:
+        with sqlite3.connect(db_path, timeout=10) as db:
+            rows = db.execute(
+                "SELECT feats,label,pnl,ret FROM experience ORDER BY ts"
+            ).fetchall()
+    except sqlite3.Error as exc:
+        zq.log.warning("pattern discovery database read failed: %s", exc)
+        return {"status": "database_error"}
+    parsed = []
+    for feats_json, label, pnl, ret in rows:
+        try:
+            vector = np.asarray(json.loads(feats_json), dtype=np.float64)
+            if vector.shape == (300,) and np.isfinite(vector).all():
+                parsed.append((vector, int(label), float(pnl or 0), float(ret or 0)))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+    winners = [r for r in parsed if r[1] == 1 and r[2] > 0]
+    losers = [r for r in parsed if r[1] == 0 or r[2] <= 0]
+    path = os.path.join(zq.CFG["DIR"], "winning_patterns.json")
+    if len(winners) < WIN_THRESHOLD:
+        return {"status": "waiting_for_200_winners", "winning_samples": len(winners),
+                "usable_samples": len(parsed)}
+    if len(losers) < 30:
+        return {"status": "waiting_for_loss_comparison", "winning_samples": len(winners),
+                "losing_samples": len(losers)}
+    W = np.vstack([r[0] for r in winners])
+    L = np.vstack([r[0] for r in losers])
+    wm, lm = np.nanmedian(W, axis=0), np.nanmedian(L, axis=0)
+    scale = np.nanmedian(np.abs(np.vstack([W, L]) - np.nanmedian(np.vstack([W, L]), axis=0)), axis=0) * 1.4826
+    effect = np.abs(wm-lm) / np.maximum(scale, 1e-8)
+    order = np.argsort(np.nan_to_num(effect, nan=0.0))[::-1]
+    patterns = []
+    for j in order[:40]:
+        patterns.append({
+            "feature": zq.FEATURE_COLS[int(j)],
+            "winner_median": float(wm[j]),
+            "loser_median": float(lm[j]),
+            "robust_effect": float(effect[j]),
+            "winner_q25_q75": [float(x) for x in np.nanquantile(W[:, j], [0.25, 0.75])],
+            "loser_q25_q75": [float(x) for x in np.nanquantile(L[:, j], [0.25, 0.75])],
+        })
+    result = {
+        "version": 1, "updated_at": time.time(), "feature_count": 300,
+        "winning_samples": len(winners), "losing_samples": len(losers),
+        "total_usable_samples": len(parsed),
+        "method": "robust median difference scaled by pooled MAD; discovery only, not proof of predictive edge",
+        "top_recurring_features": patterns,
+    }
+    os.makedirs(zq.CFG["DIR"], exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(result, fh, ensure_ascii=False, allow_nan=False, indent=2)
+    os.replace(tmp, path)
+    old_count = int(paper._get("last_pattern_winners") or 0)
+    if len(winners) >= WIN_THRESHOLD and (old_count < WIN_THRESHOLD or len(winners) - old_count >= 200):
+        zq.tg("🧬 اكتشاف أنماط الصفقات الرابحة\n"
+              f"العينات الرابحة: {len(winners)} | الخاسرة للمقارنة: {len(losers)}\n"
+              "تم حفظ أهم 40 ميزة متكررة في winning_patterns.json. "
+              "لن تُعتمد كقاعدة تداول قبل اختبارها على بيانات لاحقة.")
+        paper._set("last_pattern_winners", len(winners))
+    return {"status": "patterns_updated", "winning_samples": len(winners),
+            "losing_samples": len(losers), "features_reported": len(patterns), "path": path}
+
+
+def install(zq):
+    _install_features(zq)
+    _install_30_layer_net(zq)
+    old_scan = zq.scan
+    def scan_with_pattern_discovery(brain, paper, universe=None, cycle=0, trade=True):
+        result = old_scan(brain, paper, universe, cycle, trade)
+        if trade:
+            try:
+                outcome = discover_winning_patterns(zq, paper)
+                zq.log.info("winning-pattern discovery: %s", outcome)
+            except Exception as exc:
+                zq.log.warning("winning-pattern discovery skipped: %s", exc)
+        return result
+    zq.scan = scan_with_pattern_discovery
