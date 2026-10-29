@@ -75,7 +75,15 @@ async function fetchApi(path,owner,repo,branch,headers){
 function decodeContent(j){if(!j.content)return "";const bin=atob(j.content.replace(/\s/g,""));const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));return new TextDecoder().decode(bytes)}
 async function loadFileBytes(path,parts,owner,repo,branch,headers){
  const arrays=[];
- for(const part of (parts||[])){const j=await fetchApi("zied_data_store/"+part,owner,repo,branch,headers);const bin=atob((j.content||"").replace(/\s/g,""));arrays.push(Uint8Array.from(bin,c=>c.charCodeAt(0)))}
+ for(const part of (parts||[])){
+  const api="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/zied_data_store/"+part.split("/").map(encodeURIComponent).join("/")+"?ref="+encodeURIComponent(branch);
+  const h={...headers,Accept:"application/vnd.github.raw+json"};
+  const response=await fetch(api,{headers:h});if(!response.ok)throw new Error("تعذر تحميل جزء "+part+" — HTTP "+response.status);
+  const type=(response.headers.get("content-type")||"").toLowerCase();
+  if(type.includes("application/json")){
+   const j=await response.json();const bin=atob((j.content||"").replace(/\\s/g,""));arrays.push(Uint8Array.from(bin,c=>c.charCodeAt(0)));
+  }else arrays.push(new Uint8Array(await response.arrayBuffer()));
+ }
  const total=arrays.reduce((a,b)=>a+b.length,0),out=new Uint8Array(total);let at=0;for(const a of arrays){out.set(a,at);at+=a.length}return out;
 }
 async function connect(){
