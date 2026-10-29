@@ -27,7 +27,7 @@ Env (optional):
     TELEGRAM_TOKEN, TELEGRAM_CHAT_ID   alerts + remote commands
     OKX_BASE                           e.g. https://aws.okx.com if www.okx.com is blocked
 """
-import os, sys, time, json, math, pickle, sqlite3, logging, threading, functools
+import os, sys, time, json, math, pickle, sqlite3, logging, threading, functools, datetime
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
