@@ -46,43 +46,37 @@ class AINanGuardTests(unittest.TestCase):
         self.assertGreaterEqual(info["n_selection"], 50)
         self.assertTrue(brain.ready)
 
-    def test_paper_experience_migration_uses_entry_timestamp(self):
+    def test_signal_only_schema_does_not_create_legacy_trade_ledgers(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(zq.CFG, {"DB": os.path.join(tmp, "paper.db")}):
                 paper = zq.Paper()
-                feats = json.dumps([0.0] * zq.N_FEATURES)
-                paper.db.execute(
-                    "INSERT INTO trades(inst,open_ts,feats,close_ts,status) VALUES(?,?,?,?,?)",
-                    ("BTC-USDT", 1000.0, feats, 5000.0, "CLOSED"))
-                paper.db.execute(
-                    "INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
-                    (5000.0, "BTC-USDT", feats, 1, 2.0, 0.02))
-                paper.db.commit()
-                paper._migrate()
-                row = paper.db.execute("SELECT ts FROM experience").fetchone()
-                self.assertEqual(row["ts"], 1000.0)
+                tables = {r["name"] for r in paper.db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'")}
+                self.assertIn("signals", tables)
+                self.assertIn("meta", tables)
+                self.assertFalse({"trades", "pending_orders", "experience",
+                                  "tracked_signals"} & tables)
+                self.assertFalse(hasattr(paper, "open_tracked_signal"))
+                self.assertFalse(hasattr(paper, "cash"))
                 paper.db.close()
 
-    def test_limit_experience_uses_feature_observation_timestamp(self):
+    def test_signal_dataset_uses_feature_observation_timestamp(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(zq.CFG, {"DB": os.path.join(tmp, "paper.db")}):
                 paper = zq.Paper()
-                feats = json.dumps([0.0] * zq.N_FEATURES)
-                paper.db.execute(
-                    "INSERT INTO trades(inst,open_ts,feats,close_ts,status) VALUES(?,?,?,?,?)",
-                    ("BTC-USDT", 1000.0, feats, 5000.0, "CLOSED"))
-                paper.db.execute(
-                    "INSERT INTO pending_orders(inst,created_ts,feats,status) VALUES(?,?,?,'FILLED')",
-                    ("BTC-USDT", 900.0, feats))
-                paper.db.execute(
-                    "INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
-                    (5000.0, "BTC-USDT", feats, 1, 2.0, 0.02))
-                paper.db.commit()
-                paper._migrate()
-                trade = paper.db.execute("SELECT feature_ts FROM trades").fetchone()
-                experience = paper.db.execute("SELECT ts FROM experience").fetchone()
-                self.assertEqual(trade["feature_ts"], 900.0)
-                self.assertEqual(experience["ts"], 900.0)
+                paper.log_signals([{
+                    "inst": "BTC-USDT", "price": 65000.0, "atr": 0.01,
+                    "feats": np.zeros(zq.N_FEATURES), "prob": 0.7,
+                    "rank": 1, "feature_ts": 1000.0,
+                }])
+                pending = paper.pending_signals(2000.0)
+                self.assertEqual(len(pending), 1)
+                self.assertEqual(pending[0]["feature_ts"], 1000.0)
+                paper.set_label(pending[0]["id"], 1, 0.02, 3.0)
+                ds = paper.signal_dataset()
+                self.assertEqual(len(ds["y"]), 1)
+                self.assertEqual(ds["ts"][0], 1000.0)
+                self.assertEqual(ds["ret"][0], 0.02)
                 paper.db.close()
 
     def test_get_universe_skips_tickers_with_invalid_prices(self):
