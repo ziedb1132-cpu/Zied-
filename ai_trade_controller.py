@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Use validated winning-pattern memory in live paper-trade ranking and AI scoring.
+"""Use closed-signal pattern memory in live paper-trade ranking and AI scoring.
 
-The 200-win threshold activates pattern discovery only; it never blocks trading.
-Pattern memory is an auxiliary signal, not a substitute for model validation or risk gates.
+Pattern memory is unavailable until at least 500 net-positive and 500 net-negative closed signals.
+It is an auxiliary signal, not a substitute for model validation or risk gates.
 """
 import json
 import os
@@ -20,7 +20,7 @@ def _load_pattern_memory(zq):
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        if int(data.get("winning_samples", 0)) < 200 or int(data.get("losing_samples", 0)) < 30:
+        if int(data.get("winning_samples", 0)) < 500 or int(data.get("losing_samples", 0)) < 500:
             return []
         if int(data.get("feature_count", 0)) != int(zq.N_FEATURES):
             return []
