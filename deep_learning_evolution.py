@@ -237,6 +237,10 @@ def discover_winning_patterns(zq, paper):
 def install(zq):
     _install_features(zq)
     _install_30_layer_net(zq)
+    old_report = zq.backtest_report
+    def backtest_report_30_layers(report):
+        return old_report(report).replace("شبكة 20 طبقة", "شبكة Deep Learning من 30 طبقة")
+    zq.backtest_report = backtest_report_30_layers
     old_scan = zq.scan
     def scan_with_pattern_discovery(brain, paper, universe=None, cycle=0, trade=True):
         result = old_scan(brain, paper, universe, cycle, trade)
