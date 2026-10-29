@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as d:
     zq.CFG["DIR"] = d
     idx = zq.FEATURE_COLS.index("1H_ret1")
     payload = {
-        "feature_count": 300, "winning_samples": 200, "losing_samples": 30,
+        "feature_count": 300, "winning_samples": 500, "losing_samples": 500,
         "top_recurring_features": [{
             "feature": "1H_ret1", "winner_median": 2.0, "loser_median": -2.0,
             "winner_q25_q75": [1.0, 3.0], "loser_q25_q75": [-3.0, -1.0],
@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory() as d:
     scores = ctl.pattern_scores(zq, np.vstack([winner_like, loser_like]))
     assert scores[0] > scores[1], scores
     assert scores[0] > 0.5 and scores[1] < 0.5, scores
-    payload["winning_samples"] = 199
+    payload["winning_samples"] = 499
     with open(os.path.join(d, "winning_patterns.json"), "w") as f:
         json.dump(payload, f)
     inactive = ctl.pattern_scores(zq, np.vstack([winner_like, loser_like]))
