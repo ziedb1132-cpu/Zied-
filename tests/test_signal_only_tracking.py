@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 
+import numpy as np
 import zied_quant as zq
 
 
@@ -17,33 +18,37 @@ class SignalOnlyTrackingTests(unittest.TestCase):
         zq.CFG["DB"] = self.old_db
         self.tmp.cleanup()
 
-    def test_signal_open_does_not_allocate_virtual_cash_or_position(self):
-        cash_before = self.paper.cash()
-        signal = self.paper.open_tracked_signal(
-            "TEST-USDT", 100.0, 0.02, 0.75, 1
-        )
-        self.assertIsNotNone(signal)
-        self.assertEqual(self.paper.cash(), cash_before)
-        self.assertEqual(self.paper.open_trades(), [])
-        self.assertEqual(self.paper.pending_orders(), [])
-        self.assertEqual(len(self.paper.active_tracked_signals()), 1)
-        self.assertAlmostEqual(signal["sl"], 97.0)
-        self.assertAlmostEqual(signal["tp"], 106.0)
+    def test_logging_signal_does_not_create_virtual_wallet_or_position(self):
+        self.paper.log_signals([{
+            "inst": "TEST-USDT", "price": 100.0, "atr": 0.02,
+            "feats": np.zeros(zq.N_FEATURES), "prob": 0.75,
+            "rank": 1, "feature_ts": 1000.0,
+        }])
+        self.assertEqual(self.paper.count("signals"), 1)
+        self.assertEqual(self.paper.count("signals", "labeled=0"), 1)
+        self.assertFalse(hasattr(self.paper, "cash"))
+        self.assertFalse(hasattr(self.paper, "open_trades"))
+        self.assertFalse(hasattr(self.paper, "pending_orders"))
+        self.assertFalse(hasattr(self.paper, "open_tracked_signal"))
+        self.assertFalse(hasattr(self.paper, "close_tracked_signal"))
 
-    def test_close_records_net_percent_and_performance(self):
-        signal = self.paper.open_tracked_signal(
-            "TEST-USDT", 100.0, 0.02, 0.75, 1
-        )
-        result = self.paper.close_tracked_signal(
-            signal["id"], signal["tp"], "take profit"
-        )
-        self.assertIsNotNone(result)
-        self.assertAlmostEqual(result["ret_pct"], 5.65, places=5)
-        stats = self.paper.tracked_signal_stats()
-        self.assertEqual(stats["open"], 0)
-        self.assertEqual(stats["closed"], 1)
-        self.assertEqual(stats["wins"], 1)
-        self.assertAlmostEqual(stats["winrate"], 100.0)
+    def test_mature_signal_records_net_return_and_learning_label(self):
+        self.paper.log_signals([{
+            "inst": "TEST-USDT", "price": 100.0, "atr": 0.02,
+            "feats": np.zeros(zq.N_FEATURES), "prob": 0.75,
+            "rank": 1, "feature_ts": 1000.0,
+        }])
+        pending = self.paper.pending_signals(2000.0)
+        self.assertEqual(len(pending), 1)
+        self.paper.set_label(pending[0]["id"], 1, 0.0565, 6.0)
+
+        ds = self.paper.signal_dataset()
+        self.assertEqual(self.paper.count("signals", "labeled=1"), 1)
+        self.assertEqual(len(ds["y"]), 1)
+        self.assertEqual(ds["y"][0], 1.0)
+        self.assertAlmostEqual(ds["ret"][0], 0.0565)
+        self.assertAlmostEqual(ds["hold"][0], 6.0)
+        self.assertAlmostEqual(ds["ts"][0], 1000.0)
 
 
 if __name__ == "__main__":
