@@ -64,6 +64,7 @@ CFG = dict(
     TOP_AI=30, LOG_TOP=20,
     SCAN_EVERY_SEC=900, MONITOR_EVERY_SEC=30, RANK_MSG_EVERY=4,
     PROB_MIN=None,                     # None = auto threshold from validation
+    EXPLORATION_PROB_MIN=0.65,          # rank-based paper exploration while no validated AI model exists
     # paper trading + risk
     START_BALANCE=1000.0,
     POS_FRAC=0.15,                     # max fraction of equity per trade
@@ -1654,6 +1655,9 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     R = pd.DataFrame({"score": score}); R["rank"] = np.arange(1, len(R) + 1); R["prob"] = np.nan
     ai_prediction_error = None
     learning_mode = not brain.ready
+    if learning_mode:
+        log.warning("AI bootstrap exploration active: rank-derived exploration scores, threshold=%.2f; risk controls remain active",
+                    float(CFG.get("EXPLORATION_PROB_MIN", 0.65)))
     top = list(R.index[:CFG["TOP_AI"]])
     if brain.ready:
         try:
@@ -1683,7 +1687,10 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     gate = paper.risk_gate(paper.equity(uni["last"].to_dict()))
     if gate:
         log.info("entries blocked: %s", gate); return R
-    thr = (0.70 if learning_mode else
+    # Until a candidate model passes the independent validation gate, use a clearly
+    # labelled rank-based exploration score. This starts paper learning without treating
+    # an unapproved model as AI; portfolio, cash, correlation and stop-risk checks still apply.
+    thr = (float(CFG.get("EXPLORATION_PROB_MIN", 0.65)) if learning_mode else
            (CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else brain.thr))
     sig = R[R["prob"] >= thr].sort_values("prob", ascending=False)
     cache = {}
