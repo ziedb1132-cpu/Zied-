@@ -1006,7 +1006,7 @@ class Paper:
             "UPDATE tracked_signals SET status='CLOSED',closed_ts=?,exit_price=?,outcome=?,ret=?,hold=?,close_reason=? WHERE id=? AND status='OPEN'",
             (float(closed_ts), float(exit_price), outcome, float(ret), float(hold), reason, sid))
         self.db.execute("UPDATE signals SET labeled=1,label=?,ret=?,hold=? WHERE id=?",
-                        (1 if outcome == "TP" else 0, float(ret), float(hold), row["signal_id"]))
+                        (1 if outcome in ("TP", "WIN") else 0, float(ret), float(hold), row["signal_id"]))
         self.db.commit()
         return True
 
@@ -1112,7 +1112,7 @@ def monitor_tracked_signals(paper):
                 elif high >= s["tp"]:
                     reason, outcome, exit_price = "TP", "TP", float(s["tp"])
                 elif elapsed >= CFG["BARRIER_H"]:
-                    reason, outcome = "TIME", ("TP" if close > s["entry"] else "SL")
+                    reason, outcome = "TIME", ("WIN" if close > s["entry"] else "LOSS")
                 if reason:
                     ret = exit_price / float(s["entry"]) - 1.0 - CFG["BT_COST"]
                     if paper.close_tracked_signal(s["id"], now, exit_price, outcome, ret, elapsed, reason):
@@ -1231,7 +1231,7 @@ def stats_msg(paper, prices=None):
     avg = float(np.mean(ds["ret"]) * 100) if n else 0.0
     opened = paper.tracked_count("status='OPEN'")
     tracked = paper.tracked_count("status='CLOSED'")
-    tracked_wins = paper.tracked_count("status='CLOSED' AND outcome='TP'")
+    tracked_wins = paper.tracked_count("status='CLOSED' AND outcome IN ('TP','WIN')")
     return (f"📊 تقييم الإشارات الورقية\\n"
             f"سجل التعلم: {total} | مكتملة التقييم: {labelled} | تنتظر: {pending}\\n"
             f"مفتوحة: {opened} | مغلقة: {tracked} | أهداف TP: {tracked_wins}\\n"
