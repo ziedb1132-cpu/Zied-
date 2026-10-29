@@ -43,3 +43,20 @@ python -m unittest discover -s tests -v # offline tests
 * If `www.okx.com` is blocked from your host, set `OKX_BASE=https://aws.okx.com`.
 
 Read the backtest first: if it shows no out-of-sample edge, the signals are not worth following.
+
+## Candlestick patterns and crypto-news intelligence
+
+The runtime entry point `evolved_runner.py` installs `candle_news_intelligence.py`.
+The overlay analyzes closed 1H OHLC candles for common bullish, bearish, and neutral
+patterns (including Doji variants, Hammer/Shooting Star, Marubozu, Engulfing, Harami,
+Piercing Line, Dark Cloud Cover, Tweezer Top/Bottom, Inside/Outside Bar, Morning/Evening
+Star, Three White Soldiers, and Three Black Crows). It also reads public crypto-news RSS
+feeds, caches headlines for 15 minutes, and applies a small headline-sentiment adjustment
+to the top 40 base-ranked coins.
+
+Diagnostic output is saved in `zied_data/candle_patterns.json` and
+`zied_data/news_sentiment.json` and is preserved by the existing state persistence flow.
+The overlay does **not** change the 300-feature model schema, does not treat missing news
+as negative, and cannot bypass AI selection or portfolio risk limits. News sentiment is a
+simple keyword heuristic, and chart patterns are uncertain context—not reliable predictions.
+The strategy remains paper trading only.
