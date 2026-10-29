@@ -22,7 +22,8 @@ EXTRA_NAMES = [
     "atr_pct7", "atr_pct28",
     "range_pos50", "breakout_dist50", "drawdown20", "gap_pct",
 ]
-WIN_THRESHOLD = 200
+WIN_THRESHOLD = 500
+LOSS_THRESHOLD = 500
 
 
 def _extra_features(df):
@@ -183,10 +184,11 @@ def discover_winning_patterns(zq, paper):
     try:
         with sqlite3.connect(db_path, timeout=10) as db:
             rows = db.execute(
-                "SELECT COALESCE(feature_ts, ts) AS feature_ts, feats, label, ret "
-                "FROM signals "
-                "WHERE labeled=1 AND label IN (0,1) AND ret IS NOT NULL "
-                "ORDER BY COALESCE(feature_ts, ts), id"
+                "SELECT COALESCE(s.feature_ts, s.ts) AS feature_ts, s.feats, "
+                "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label, s.ret "
+                "FROM signals s JOIN tracked_signals t ON t.signal_id=s.id "
+                "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL "
+                "ORDER BY t.closed_ts, s.id"
             ).fetchall()
     except sqlite3.Error as exc:
         zq.log.warning("pattern discovery could not read labelled signals: %s", exc)
@@ -206,8 +208,12 @@ def discover_winning_patterns(zq, paper):
             continue
 
     winners = [r for r in parsed if r[2] == 1 and r[3] > 0.0]
-    losers = [r for r in parsed if r[2] == 0 or r[3] <= 0.0]
+    losers = [r for r in parsed if r[2] == 0 and r[3] < 0.0]
     path = os.path.join(zq.CFG["DIR"], "winning_patterns.json")
+    if len(winners) < WIN_THRESHOLD or len(losers) < LOSS_THRESHOLD:
+        return {"status": "waiting_for_closed_outcomes",
+                "winning_samples": len(winners), "losing_samples": len(losers),
+                "required_winners": WIN_THRESHOLD, "required_losers": LOSS_THRESHOLD}
 
     # Never let an old pattern file survive a reset or become active when the
     # current durable signal history no longer meets the evidence requirements.
@@ -262,13 +268,14 @@ def discover_winning_patterns(zq, paper):
         json.dump(result, fh, ensure_ascii=False, allow_nan=False, indent=2)
     os.replace(tmp, path)
 
-    old_count = int(paper._get("last_pattern_winners") or 0)
-    if old_count < WIN_THRESHOLD or len(winners) - old_count >= 200:
+    old_count = int(paper._get("last_pattern_closed_count") or 0)
+    closed_count = len(winners) + len(losers)
+    if closed_count > old_count:
         zq.tg("🧬 اكتشاف أنماط الصفقات الرابحة\\n"
               f"العينات الرابحة: {len(winners)} | الخاسرة للمقارنة: {len(losers)}\\n"
               "تم حفظ أهم 40 ميزة من سجل الإشارات المكتملة في winning_patterns.json. "
               "الأنماط مساعدة فقط ولا تُعد دليلًا على ربح مستقبلي قبل اختبار زمني مستقل.")
-        paper._set("last_pattern_winners", len(winners))
+        paper._set("last_pattern_closed_count", closed_count)
     return {"status": "patterns_updated", "winning_samples": len(winners),
             "losing_samples": len(losers), "features_reported": len(patterns), "path": path}
 
