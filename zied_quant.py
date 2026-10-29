@@ -1323,6 +1323,13 @@ def enforce_closed_outcome_gate(brain, paper):
         brain.nn = brain.gbm = None
         brain.mu = brain.sd = None
         brain.thrs, brain.mode, brain.auc, brain.info = {}, None, None, {}
+        # Prevent an old pattern file from influencing ranking before the closed-outcome gate.
+        pattern_path = os.path.join(CFG["DIR"], "winning_patterns.json")
+        try:
+            if os.path.exists(pattern_path):
+                os.remove(pattern_path)
+        except OSError as exc:
+            log.warning("could not remove pre-gate pattern memory: %s", exc)
     return status
 
 
@@ -1636,8 +1643,9 @@ def main(argv):
         enforce_closed_outcome_gate(b, p)
         print(retrain(b, p, get_universe(), "تدريب يدوي", refresh=(cmd == "refresh")))
     elif cmd == "backtest":
+        # Research backtest remains available, but its historical candles are never used to train/promote the live model.
         p = Paper(); folds = int(argv[2]) if len(argv) > 2 else 5
-        ds = collect_training_data(p, with_trades=False)
+        ds = build_trainset(get_universe())
         rep = walk_forward(ds, folds=folds)
         txt = backtest_report(rep); print(txt)
         json.dump(rep, open(os.path.join(CFG["DIR"], "backtest.json"), "w"), indent=2)
