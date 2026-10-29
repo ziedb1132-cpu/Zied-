@@ -893,7 +893,7 @@ CREATE TABLE IF NOT EXISTS signals(
 CREATE TABLE IF NOT EXISTS tracked_signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT NOT NULL, open_ts REAL NOT NULL,
   entry REAL NOT NULL, sl REAL NOT NULL, tp REAL NOT NULL, atr REAL NOT NULL,
-  prob REAL, rank INTEGER, status TEXT NOT NULL DEFAULT 'OPEN',
+  prob REAL, rank INTEGER, feats TEXT, status TEXT NOT NULL DEFAULT 'OPEN',
   close_ts REAL, exit REAL, ret_pct REAL, reason TEXT);
 CREATE TABLE IF NOT EXISTS pending_orders(
   id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, created_ts REAL, expires_ts REAL,
@@ -939,7 +939,8 @@ class Paper:
 
     def _migrate(self):
         for table, cols in {"trades": {"spread": "REAL", "vol24": "REAL", "feature_ts": "REAL"},
-                            "experience": {"ret": "REAL"}, "signals": {"feature_ts": "REAL"}}.items():
+                            "experience": {"ret": "REAL"}, "signals": {"feature_ts": "REAL"},
+                            "tracked_signals": {"feats": "TEXT"}}.items():
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
             for c, t in cols.items():
                 if c not in have:
@@ -1207,18 +1208,28 @@ class Paper:
         self.db.commit()
 
     @locked
-    def open_tracked_signal(self, inst, entry, atr_pct, prob, rank):
-        """Record a paper signal without allocating cash or creating a virtual position."""
+    def open_tracked_signal(self, inst, entry, atr_pct, prob, rank, feats=None):
+        """Record one active signal per coin, including its decision-time features."""
         if not np.isfinite(entry) or entry <= 0:
+            return None
+        # Atomic duplicate guard: an already-open signal blocks another for this coin.
+        existing = self.db.execute(
+            "SELECT id FROM tracked_signals WHERE inst=? AND status='OPEN' LIMIT 1", (inst,)).fetchone()
+        if existing:
             return None
         a = float(np.clip(atr_pct, 0.004, 0.06))
         sl = entry * (1 - CFG["SL_ATR"] * a)
         tp = entry * (1 + CFG["TP_ATR"] * a)
+        feature_json = None
+        if feats is not None:
+            fv = np.asarray(feats, dtype=np.float32).reshape(-1)
+            if len(fv) == N_FEATURES and np.isfinite(fv).all():
+                feature_json = json.dumps([float(x) for x in fv])
         now = time.time()
         cur = self.db.execute(
-            "INSERT INTO tracked_signals(inst,open_ts,entry,sl,tp,atr,prob,rank) VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO tracked_signals(inst,open_ts,entry,sl,tp,atr,prob,rank,feats) VALUES(?,?,?,?,?,?,?,?,?)",
             (inst, now, float(entry), sl, tp, a,
-             None if prob is None or not np.isfinite(prob) else float(prob), int(rank)))
+             None if prob is None or not np.isfinite(prob) else float(prob), int(rank), feature_json))
         self.db.commit()
         return dict(id=cur.lastrowid, inst=inst, entry=float(entry), sl=sl, tp=tp,
                     atr=a, prob=prob, rank=int(rank), open_ts=now)
@@ -1239,6 +1250,19 @@ class Paper:
         self.db.execute(
             "UPDATE tracked_signals SET status='CLOSED',close_ts=?,exit=?,ret_pct=?,reason=? WHERE id=?",
             (now, float(exit_price), net_pct, reason, sid))
+        # Feed the actual closed tracked signal back into the AI experience dataset.
+        feats_json = row["feats"] if "feats" in row.keys() else None
+        if feats_json:
+            try:
+                fv = json.loads(feats_json)
+                if len(fv) == N_FEATURES and np.isfinite(np.asarray(fv, dtype=float)).all():
+                    ret_fraction = float(net_pct) / 100.0
+                    self.db.execute(
+                        "INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
+                        (float(row["open_ts"]), row["inst"], feats_json,
+                         int(net_pct > 0), ret_fraction, ret_fraction))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                log.exception("could not create AI training sample for tracked signal id=%s", sid)
         self.db.commit()
         return dict(id=int(row["id"]), inst=row["inst"], entry=float(row["entry"]),
                     exit=float(exit_price), ret_pct=net_pct, reason=reason,
@@ -1759,7 +1783,8 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     for inst, r in sig.iterrows():
         entry = float(uni.loc[inst, "last"])
         tracked = paper.open_tracked_signal(
-            inst, entry, float(X.loc[inst, "1H_atr_pct"]), float(r["prob"]), int(r["rank"]))
+            inst, entry, float(X.loc[inst, "1H_atr_pct"]), float(r["prob"]), int(r["rank"]),
+            feats=X.loc[inst, FEATURE_COLS].values)
         if tracked:
             tg(f"🟢 فتح إشارة ورقية #{tracked['id']} — {inst}\n"
                f"احتمال النموذج: {float(r['prob'])*100:.1f}% | الترتيب: #{int(r['rank'])}\n"
