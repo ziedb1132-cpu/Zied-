@@ -67,7 +67,7 @@ class AINanGuardTests(unittest.TestCase):
                 paper.log_signals([{
                     "inst": "BTC-USDT", "price": 65000.0, "atr": 0.01,
                     "feats": np.zeros(zq.N_FEATURES), "prob": 0.7,
-                    "rank": 1, "feature_ts": 1000.0,
+                    "rank": 1, "ts": 1000.0, "feature_ts": 1000.0,
                 }])
                 pending = paper.pending_signals(2000.0)
                 self.assertEqual(len(pending), 1)
