@@ -7,11 +7,11 @@ OKX Spot (USDT, no stablecoins)
   -> 150 features = 5 timeframes x 28 technical + 10 market-context features
   -> cross-sectional ranking (best -> worst)
   -> models: 20-layer deep net + gradient boosting + ensemble (best chosen on a time-split validation)
-  -> BUY signal -> paper trading with risk management and realistic costs
-  -> every signal is logged and labelled later with triple-barrier outcomes (self-learning)
+  -> logged signal -> future-candle triple-barrier label for learning
+  -> signals are labelled from future candles for self-learning
   -> walk-forward backtest, Telegram alerts + Telegram commands.
 
-PAPER ONLY. No real order is ever sent. Public OKX endpoints only (no API key).
+SIGNAL-ONLY. No virtual wallet, simulated positions, or real orders. Public OKX endpoints only (no API key).
 
 Commands:
     python zied_quant.py train        # build dataset (cached) + train models
@@ -65,21 +65,9 @@ CFG = dict(
     SCAN_EVERY_SEC=900, MONITOR_EVERY_SEC=30, RANK_MSG_EVERY=4,
     PROB_MIN=None,                     # None = auto threshold from validation
     EXPLORATION_PROB_MIN=0.65,          # rank-based paper exploration while no validated AI model exists
-    # paper trading + risk
-    START_BALANCE=1000.0,
-    POS_FRAC=0.15,                     # max fraction of equity per trade
-    RISK_PER_TRADE=0.005,              # equity risked per trade -> smaller size when volatility is high
-    MAX_OPEN=5,
-    MAX_PORTFOLIO_RISK=0.02,           # aggregate stop-loss risk across open + pending positions
-    MAX_PORTFOLIO_EXPOSURE=0.75,       # maximum portfolio notional exposure / equity
-    LIMIT_TTL_H=6,                     # cancel unfilled paper LIMIT orders after six hours
-    CORR_MAX=0.85,                     # skip a coin too correlated with an open position
-    DAILY_LOSS=0.03,                   # stop new entries after -3% realised today (UTC)
-    LOSS_STREAK=4, COOLDOWN_H=6,       # kill-switch: N losses in a row -> pause
-    MAX_HOLD_H=24,
-    FEE=0.001, SLIP=0.0005, IMPACT_K=0.1,
+    # historical backtest constraints only; no live or virtual portfolio
+    MAX_OPEN=5, POS_FRAC=0.15, RISK_PER_TRADE=0.005, MAX_PORTFOLIO_RISK=0.02,
     # self-learning
-    RETRAIN_EVERY=20,                  # closed paper trades
     RETRAIN_SIGNALS=300,               # newly labelled logged signals
     DIR="zied_data",
 )
@@ -879,27 +867,10 @@ class Brain:
 # =====================================================================
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
-CREATE TABLE IF NOT EXISTS trades(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, open_ts REAL, feature_ts REAL, entry REAL, qty REAL,
-  usdt_in REAL, sl REAL, tp REAL, prob REAL, rank INTEGER, feats TEXT,
-  status TEXT DEFAULT 'OPEN', close_ts REAL, exit REAL, pnl REAL, pnl_pct REAL, reason TEXT,
-  spread REAL, vol24 REAL);
-CREATE TABLE IF NOT EXISTS experience(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, feats TEXT, label INTEGER, pnl REAL, ret REAL);
 CREATE TABLE IF NOT EXISTS signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, price REAL, atr REAL, feats TEXT,
   prob REAL, rank INTEGER, labeled INTEGER DEFAULT 0, label INTEGER, ret REAL, hold REAL,
   feature_ts REAL);
-CREATE TABLE IF NOT EXISTS tracked_signals(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT NOT NULL, open_ts REAL NOT NULL,
-  entry REAL NOT NULL, sl REAL NOT NULL, tp REAL NOT NULL, atr REAL NOT NULL,
-  prob REAL, rank INTEGER, feats TEXT, status TEXT NOT NULL DEFAULT 'WAITING',
-  entry_low REAL, entry_high REAL, activated_ts REAL,
-  close_ts REAL, exit REAL, ret_pct REAL, reason TEXT);
-CREATE TABLE IF NOT EXISTS pending_orders(
-  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, created_ts REAL, expires_ts REAL,
-  limit_px REAL, qty REAL, reserved_usdt REAL, sl REAL, tp REAL, prob REAL, rank INTEGER,
-  feats TEXT, spread REAL, vol24 REAL, status TEXT DEFAULT 'PENDING');
 """
 
 def locked(f):
@@ -929,42 +900,15 @@ def _rows_to_ds(rows, label_key="label", ret_key="ret"):
                 coin=np.array(coin, dtype="<U16"))
 
 class Paper:
+    """Signal history and model metadata only; no wallet, positions, or trade ledger."""
     def __init__(self):
         self.lock = threading.RLock()
         self.db = sqlite3.connect(CFG["DB"], check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
-        self._migrate()
-        if self._get("cash") is None:
-            self._set("cash", CFG["START_BALANCE"])
-
-    def _migrate(self):
-        for table, cols in {"trades": {"spread": "REAL", "vol24": "REAL", "feature_ts": "REAL"},
-                            "experience": {"ret": "REAL"}, "signals": {"feature_ts": "REAL"},
-                            "tracked_signals": {"feats": "TEXT", "entry_low": "REAL", "entry_high": "REAL", "activated_ts": "REAL"}}.items():
-            have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
-            for c, t in cols.items():
-                if c not in have:
-                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {c} {t}")
-        # A LIMIT order's features are observed when the order is created, which can
-        # precede its fill by up to LIMIT_TTL_H. Keep the sample timestamp at feature
-        # observation time, not fill/close time, to preserve chronological evaluation.
-        self.db.execute(
-            "UPDATE trades AS t SET feature_ts=COALESCE(("
-            "SELECT p.created_ts FROM pending_orders p WHERE p.inst=t.inst "
-            "AND p.feats=t.feats AND p.status='FILLED' AND p.created_ts<=t.open_ts "
-            "ORDER BY p.created_ts DESC LIMIT 1), t.open_ts) "
-            "WHERE t.feature_ts IS NULL"
-        )
-        self.db.execute(
-            "UPDATE experience SET ts=(SELECT COALESCE(t.feature_ts,t.open_ts) FROM trades t "
-            "WHERE t.inst=experience.inst AND t.feats=experience.feats "
-            "AND t.close_ts=experience.ts ORDER BY t.id DESC LIMIT 1) "
-            "WHERE EXISTS (SELECT 1 FROM trades t WHERE t.inst=experience.inst "
-            "AND t.feats=experience.feats AND t.close_ts=experience.ts)"
-        )
-        # Legacy signals only stored scan wall-clock time. Preserve those rows as a
-        # best-effort fallback; new rows record the actual latest closed 1H feature time.
+        # Delete legacy ledgers; learning must never use their closed outcomes.
+        for legacy_table in ("trades", "pending_orders", "experience", "tracked_signals"):
+            self.db.execute(f"DROP TABLE IF EXISTS {legacy_table}")
         self.db.execute("UPDATE signals SET feature_ts=ts WHERE feature_ts IS NULL")
         self.db.commit()
 
@@ -975,339 +919,25 @@ class Paper:
 
     @locked
     def _set(self, k, v):
-        self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (k, str(v))); self.db.commit()
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (k, str(v)))
+        self.db.commit()
 
     @locked
     def count(self, table, where="1=1"):
-        return self.db.execute(f"SELECT COUNT(*) c FROM {table} WHERE {where}").fetchone()["c"]
+        if table != "signals":
+            return 0
+        return self.db.execute(f"SELECT COUNT(*) c FROM signals WHERE {where}").fetchone()["c"]
 
-    @locked
-    def cash(self):
-        return float(self._get("cash"))
-
-    @locked
-    def open_trades(self):
-        return [dict(r) for r in self.db.execute("SELECT * FROM trades WHERE status='OPEN'")]
-
-    @locked
-    def pending_orders(self):
-        return [dict(r) for r in self.db.execute(
-            "SELECT * FROM pending_orders WHERE status='PENDING' ORDER BY created_ts")]
-
-    @locked
-    def equity(self, prices=None):
-        # Reserved cash remains an asset: pending LIMIT orders must not make equity disappear.
-        eq = self.cash()
-        eq += sum(float(o["reserved_usdt"]) for o in self.pending_orders())
-        for t in self.open_trades():
-            px = (prices or {}).get(t["inst"], t["entry"]); eq += t["qty"] * px
-        return eq
-
-    @locked
-    def portfolio_risk_used(self):
-        """Estimated USDT at risk to stop-loss across open positions and pending LIMIT orders."""
-        risk = 0.0
-        for t in self.open_trades():
-            if t["entry"] > 0:
-                risk += float(t["usdt_in"]) * max(0.0, (t["entry"] - t["sl"]) / t["entry"])
-        for o in self.pending_orders():
-            if o["limit_px"] > 0:
-                risk += float(o["reserved_usdt"]) * max(0.0, (o["limit_px"] - o["sl"]) / o["limit_px"])
-        return risk
-
-    # ---------- risk management ----------
-    @locked
-    def risk_gate(self, equity):
-        """None if new entries are allowed, else the reason (string)."""
-        if self._get("paused") == "1":
-            return "paused"
-        if time.time() < float(self._get("pause_until") or 0):
-            return "cooldown"
-        day0 = time.time() // 86400 * 86400
-        pnl = self.db.execute("SELECT COALESCE(SUM(pnl),0) s FROM trades WHERE status='CLOSED' AND close_ts>=?",
-                              (day0,)).fetchone()["s"]
-        if pnl <= -CFG["DAILY_LOSS"] * equity:
-            return "daily_loss"
-        return None
-
-    # ---------- trading ----------
-    @locked
-    def place_limit(self, inst, limit_px, atr_pct, prob, rank, feats, vol24, spread):
-        """Reserve paper cash for a buy LIMIT order; create a trade only after a later candle fills it."""
-        open_trades = self.open_trades()
-        pending = self.pending_orders()
-        if any(t["inst"] == inst for t in open_trades) or any(o["inst"] == inst for o in pending):
-            return None
-        if len(open_trades) + len(pending) >= CFG["MAX_OPEN"]:
-            return None
-        if not np.isfinite(limit_px) or limit_px <= 0:
-            return None
-        eq = self.equity()
-        a = float(np.clip(atr_pct, 0.004, 0.06))
-        usdt = min(self.cash(), CFG["POS_FRAC"] * eq,
-                   CFG["RISK_PER_TRADE"] * eq / (CFG["SL_ATR"] * a))
-        if usdt < 10:
-            return None
-        sl = float(limit_px) * (1 - CFG["SL_ATR"] * a)
-        tp = float(limit_px) * (1 + CFG["TP_ATR"] * a)
-        used_risk = self.portfolio_risk_used()
-        new_risk = usdt * (limit_px - sl) / limit_px
-        if used_risk + new_risk > CFG["MAX_PORTFOLIO_RISK"] * eq + 1e-9:
-            log.info("%s skipped: portfolio stop-risk budget %.2f + %.2f > %.2f USDT",
-                     inst, used_risk, new_risk, CFG["MAX_PORTFOLIO_RISK"] * eq)
-            return None
-        exposure = sum(float(t["usdt_in"]) for t in open_trades) + sum(float(o["reserved_usdt"]) for o in pending)
-        if exposure + usdt > CFG["MAX_PORTFOLIO_EXPOSURE"] * eq + 1e-9:
-            log.info("%s skipped: portfolio exposure limit", inst)
-            return None
-        now = time.time()
-        feats_json = json.dumps([float(x) for x in feats])
-        qty = usdt * (1 - CFG["FEE"]) / float(limit_px)
-        cur = self.db.execute(
-            "INSERT INTO pending_orders(inst,created_ts,expires_ts,limit_px,qty,reserved_usdt,sl,tp,prob,rank,feats,spread,vol24,status) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'PENDING')",
-            (inst, now, now + CFG["LIMIT_TTL_H"] * 3600, float(limit_px), qty, usdt, sl, tp,
-             prob, rank, feats_json, spread, vol24))
-        self._set("cash", self.cash() - usdt)
-        self.db.commit()
-        return dict(id=cur.lastrowid, inst=inst, limit_px=float(limit_px), sl=sl, tp=tp,
-                    usdt=usdt, qty=qty, expires_ts=now + CFG["LIMIT_TTL_H"] * 3600)
-
-    @locked
-    def check_limit_orders(self):
-        """Fill only from a closed 5m candle that starts after order creation; otherwise expire/refund."""
-        now = time.time()
-        filled = expired = 0
-        for o in self.pending_orders():
-            d = get_candles(o["inst"], "5m", 300)
-            hit = None
-            if d is not None and len(d):
-                # Strict start-time filter avoids filling from a candle that began before the order existed.
-                path = d[(d["ts"] >= int(o["created_ts"] * 1000)) &
-                         (d["ts"] < int(o["expires_ts"] * 1000))]
-                for _, candle in path.iterrows():
-                    if float(candle["l"]) <= float(o["limit_px"]):
-                        hit = candle
-                        break
-            if hit is not None:
-                fill_ts = float(hit["ts"]) / 1000.0 + CFG["TF_SEC"]["5m"]
-                self.db.execute(
-                    "INSERT INTO trades(inst,open_ts,feature_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats,spread,vol24) "
-                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (o["inst"], fill_ts, o["created_ts"], o["limit_px"], o["qty"], o["reserved_usdt"],
-                     o["sl"], o["tp"], o["prob"], o["rank"], o["feats"], o["spread"], o["vol24"]))
-                self.db.execute("UPDATE pending_orders SET status='FILLED' WHERE id=?", (o["id"],))
-                self.db.commit()
-                tg(f"✅ تنفيذ LIMIT افتراضي {o['inst']}\nالسعر: {o['limit_px']:.8g}\n"
-                   f"SL: {o['sl']:.8g} | TP: {o['tp']:.8g}\nالمبلغ المحجوز: {o['reserved_usdt']:.2f} USDT")
-                filled += 1
-            elif now >= float(o["expires_ts"]):
-                self._set("cash", self.cash() + float(o["reserved_usdt"]))
-                self.db.execute("UPDATE pending_orders SET status='EXPIRED' WHERE id=?", (o["id"],))
-                self.db.commit()
-                tg(f"⌛ انتهت صلاحية أمر LIMIT الافتراضي {o['inst']} دون تنفيذ. "
-                   f"أُعيد {o['reserved_usdt']:.2f} USDT إلى النقد المتاح.")
-                expired += 1
-        return dict(filled=filled, expired=expired)
-
-    @locked
-    def open(self, inst, ask, atr_pct, prob, rank, feats, vol24, spread):
-        if any(t["inst"] == inst for t in self.open_trades()):
-            return None
-        if len(self.open_trades()) >= CFG["MAX_OPEN"]:
-            return None
-        eq = self.equity()
-        a = float(np.clip(atr_pct, 0.004, 0.06))
-        usdt = min(self.cash(), CFG["POS_FRAC"] * eq, CFG["RISK_PER_TRADE"] * eq / (CFG["SL_ATR"] * a))
-        if usdt < 10:
-            return None
-        entry = ask * (1 + CFG["SLIP"] + impact(usdt, vol24))
-        qty = usdt * (1 - CFG["FEE"]) / entry
-        sl, tp = entry * (1 - CFG["SL_ATR"] * a), entry * (1 + CFG["TP_ATR"] * a)
-        now = time.time()
-        self.db.execute(
-            "INSERT INTO trades(inst,open_ts,feature_ts,entry,qty,usdt_in,sl,tp,prob,rank,feats,spread,vol24) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (inst, now, now, entry, qty, usdt, sl, tp, prob, rank,
-             json.dumps([float(x) for x in feats]), spread, vol24))
-        self._set("cash", self.cash() - usdt)
-        return dict(inst=inst, entry=entry, sl=sl, tp=tp, usdt=usdt)
-
-    @locked
-    def _close(self, t, price, reason):
-        exit_px = price * (1 - CFG["SLIP"] - (t.get("spread") or 0) / 2 - impact(t["usdt_in"], t.get("vol24")))
-        proceeds = t["qty"] * exit_px * (1 - CFG["FEE"])
-        pnl = proceeds - t["usdt_in"]; pct = pnl / t["usdt_in"]
-        now = time.time()
-        self.db.execute("UPDATE trades SET status='CLOSED',close_ts=?,exit=?,pnl=?,pnl_pct=?,reason=? WHERE id=?",
-                        (now, exit_px, pnl, pct, reason, t["id"]))
-        # Timestamp the sample when its features were observed, not when it filled
-        # or closed. This matters for LIMIT orders whose feature vector can be hours old.
-        feature_ts = t.get("feature_ts") or t["open_ts"]
-        self.db.execute("INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
-                        (float(feature_ts), t["inst"], t["feats"], int(pnl > 0), pnl, pct))
-        self._set("cash", self.cash() + proceeds); self.db.commit()
-        tg(f"{'✅' if pnl > 0 else '🔴'} إغلاق صفقة ورقية {t['inst']}\nالسبب: {reason}\n"
-           f"دخول {t['entry']:.6g} ← خروج {exit_px:.6g}\nالربح: {pnl:+.2f} USDT ({pct * 100:+.2f}%)")
-        self._streak_check()
-
-    @locked
-    def _streak_check(self):
-        n = CFG["LOSS_STREAK"]; since = float(self._get("streak_from") or 0)
-        rows = self.db.execute("SELECT pnl FROM trades WHERE status='CLOSED' AND close_ts>? "
-                               "ORDER BY close_ts DESC LIMIT ?", (since, n)).fetchall()
-        if len(rows) == n and all(r["pnl"] <= 0 for r in rows):
-            self._set("pause_until", time.time() + CFG["COOLDOWN_H"] * 3600)
-            self._set("streak_from", time.time())
-            tg(f"⛔ {n} خسائر متتالية: إيقاف مؤقت للصفقات الجديدة {CFG['COOLDOWN_H']} ساعات")
-
-    @locked
-    def check(self, prices):
-        """Fast mode (long-running loop): compare the latest price with SL/TP."""
-        closed = 0
-        for t in self.open_trades():
-            px = prices.get(t["inst"])
-            if px is None:
-                continue
-            if px <= t["sl"]:
-                self._close(t, px, "وقف الخسارة"); closed += 1
-            elif px >= t["tp"]:
-                self._close(t, px, "جني الأرباح"); closed += 1
-            elif time.time() - t["open_ts"] > CFG["MAX_HOLD_H"] * 3600:
-                self._close(t, px, "انتهاء المدة"); closed += 1
-        return closed
-
-    @locked
-    def check_candles(self):
-        """Scheduler mode (hourly): scan 5m candles since entry for SL/TP (SL first if both)."""
-        closed = 0
-        trades = self.open_trades()
-        prices = get_prices() if trades else {}
-        for t in trades:
-            px = reason = None
-            d = get_candles(t["inst"], "5m", 300)
-            if d is not None:
-                for _, k in d[d["ts"] >= t["open_ts"] * 1000].iterrows():
-                    if k["l"] <= t["sl"]:
-                        px, reason = t["sl"], "وقف الخسارة"; break
-                    if k["h"] >= t["tp"]:
-                        px, reason = t["tp"], "جني الأرباح"; break
-            if px is None and time.time() - t["open_ts"] > CFG["MAX_HOLD_H"] * 3600 and t["inst"] in prices:
-                px, reason = prices[t["inst"]], "انتهاء المدة"
-            if px is not None:
-                self._close(t, px, reason); closed += 1
-        return closed
-
-    # ---------- signal log (self-learning) ----------
     @locked
     def log_signals(self, rows):
         now = time.time()
-        self.db.executemany("INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts) VALUES(?,?,?,?,?,?,?,?)",
-                            [(now, r["inst"], r["price"], r["atr"], json.dumps([float(x) for x in r["feats"]]),
-                              None if r["prob"] is None or np.isnan(r["prob"]) else float(r["prob"]), r["rank"],
-                              float(r.get("feature_ts", now))) for r in rows])
+        self.db.executemany(
+            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts) VALUES(?,?,?,?,?,?,?,?)",
+            [(now, r["inst"], r["price"], r["atr"],
+              json.dumps([float(x) for x in r["feats"]]),
+              None if r["prob"] is None or np.isnan(r["prob"]) else float(r["prob"]),
+              r["rank"], float(r.get("feature_ts", now))) for r in rows])
         self.db.commit()
-
-    @locked
-    def open_tracked_signal(self, inst, entry, atr_pct, prob, rank, feats=None):
-        """Create a waiting signal with an ATR-based entry zone; fill only after price reaches it."""
-        if not np.isfinite(entry) or entry <= 0:
-            return None
-        existing = self.db.execute(
-            "SELECT id FROM tracked_signals WHERE inst=? AND status IN ('WAITING','OPEN') LIMIT 1", (inst,)).fetchone()
-        if existing:
-            return None
-        a = float(np.clip(atr_pct, 0.004, 0.06))
-        # Spot-long pullback zone sits below the observed price, so it cannot fill immediately.
-        entry_low = float(entry) * (1 - a * 0.50)
-        entry_high = float(entry) * (1 - a * 0.15)
-        sl = float(entry_low) * (1 - CFG["SL_ATR"] * a)
-        tp = float(entry_low) * (1 + CFG["TP_ATR"] * a)
-        feature_json = None
-        if feats is not None:
-            fv = np.asarray(feats, dtype=np.float32).reshape(-1)
-            if len(fv) == N_FEATURES and np.isfinite(fv).all():
-                feature_json = json.dumps([float(x) for x in fv])
-        now = time.time()
-        cur = self.db.execute(
-            "INSERT INTO tracked_signals(inst,open_ts,entry,sl,tp,atr,prob,rank,feats,status,entry_low,entry_high) "
-            "VALUES(?,?,?,?,?,?,?,?,?,'WAITING',?,?)",
-            (inst, now, float(entry), sl, tp, a,
-             None if prob is None or not np.isfinite(prob) else float(prob), int(rank), feature_json,
-             entry_low, entry_high))
-        self.db.commit()
-        return dict(id=cur.lastrowid, inst=inst, entry=float(entry), entry_low=entry_low,
-                    entry_high=entry_high, sl=sl, tp=tp, atr=a, prob=prob, rank=int(rank),
-                    open_ts=now, status="WAITING")
-
-    @locked
-    def waiting_tracked_signals(self):
-        return [dict(r) for r in self.db.execute(
-            "SELECT * FROM tracked_signals WHERE status='WAITING' ORDER BY open_ts,id")]
-
-    @locked
-    def activate_tracked_signal(self, sid, fill_price):
-        row = self.db.execute("SELECT * FROM tracked_signals WHERE id=? AND status='WAITING'", (sid,)).fetchone()
-        if row is None or not np.isfinite(fill_price) or fill_price <= 0:
-            return None
-        now = time.time()
-        # Recalculate TP/SL from the actual simulated fill price.
-        a = float(row["atr"])
-        sl = float(fill_price) * (1 - CFG["SL_ATR"] * a)
-        tp = float(fill_price) * (1 + CFG["TP_ATR"] * a)
-        self.db.execute(
-            "UPDATE tracked_signals SET status='OPEN',entry=?,sl=?,tp=?,open_ts=?,activated_ts=? WHERE id=? AND status='WAITING'",
-            (float(fill_price), sl, tp, now, now, sid))
-        self.db.commit()
-        return dict(id=int(row["id"]), inst=row["inst"], entry=float(fill_price),
-                    entry_low=float(row["entry_low"]), entry_high=float(row["entry_high"]),
-                    sl=sl, tp=tp, atr=a, prob=row["prob"], rank=row["rank"], open_ts=now)
-
-    @locked
-    def active_tracked_signals(self):
-        return [dict(r) for r in self.db.execute(
-            "SELECT * FROM tracked_signals WHERE status='OPEN' ORDER BY open_ts,id")]
-
-    @locked
-    def close_tracked_signal(self, sid, exit_price, reason):
-        row = self.db.execute("SELECT * FROM tracked_signals WHERE id=? AND status='OPEN'", (sid,)).fetchone()
-        if row is None or not np.isfinite(exit_price) or exit_price <= 0:
-            return None
-        gross_pct = (float(exit_price) / float(row["entry"]) - 1.0) * 100.0
-        net_pct = gross_pct - float(CFG["BT_COST"]) * 100.0
-        now = time.time()
-        self.db.execute(
-            "UPDATE tracked_signals SET status='CLOSED',close_ts=?,exit=?,ret_pct=?,reason=? WHERE id=?",
-            (now, float(exit_price), net_pct, reason, sid))
-        # Feed the actual closed tracked signal back into the AI experience dataset.
-        feats_json = row["feats"] if "feats" in row.keys() else None
-        if feats_json:
-            try:
-                fv = json.loads(feats_json)
-                if len(fv) == N_FEATURES and np.isfinite(np.asarray(fv, dtype=float)).all():
-                    ret_fraction = float(net_pct) / 100.0
-                    self.db.execute(
-                        "INSERT INTO experience(ts,inst,feats,label,pnl,ret) VALUES(?,?,?,?,?,?)",
-                        (float(row["open_ts"]), row["inst"], feats_json,
-                         int(net_pct > 0), ret_fraction, ret_fraction))
-            except (TypeError, ValueError, json.JSONDecodeError):
-                log.exception("could not create AI training sample for tracked signal id=%s", sid)
-        self.db.commit()
-        return dict(id=int(row["id"]), inst=row["inst"], entry=float(row["entry"]),
-                    exit=float(exit_price), ret_pct=net_pct, reason=reason,
-                    hold_hours=max(0.0, (now-float(row["open_ts"]))/3600.0))
-
-    @locked
-    def tracked_signal_stats(self):
-        closed = [dict(r) for r in self.db.execute(
-            "SELECT ret_pct FROM tracked_signals WHERE status='CLOSED' AND ret_pct IS NOT NULL")]
-        opened = self.db.execute("SELECT COUNT(*) n FROM tracked_signals WHERE status IN ('OPEN','WAITING')").fetchone()["n"]
-        n = len(closed)
-        wins = sum(1 for r in closed if float(r["ret_pct"]) > 0)
-        avg = sum(float(r["ret_pct"]) for r in closed) / n if n else 0.0
-        total = (float(np.prod([1.0 + float(r["ret_pct"])/100.0 for r in closed]) - 1.0) * 100.0) if n else 0.0
-        return dict(open=int(opened), closed=n, wins=wins, losses=n-wins,
-                    winrate=(100.0*wins/n if n else 0.0), avg_pct=avg, total_pct=total)
 
     @locked
     def pending_signals(self, cutoff_ts):
@@ -1317,7 +947,8 @@ class Paper:
 
     @locked
     def set_label(self, sid, label, ret, hold):
-        self.db.execute("UPDATE signals SET labeled=1,label=?,ret=?,hold=? WHERE id=?", (label, ret, hold, sid))
+        self.db.execute("UPDATE signals SET labeled=1,label=?,ret=?,hold=? WHERE id=?",
+                        (label, ret, hold, sid))
         self.db.commit()
 
     @locked
@@ -1326,23 +957,8 @@ class Paper:
             "SELECT COALESCE(feature_ts,ts) AS ts,inst,feats,label,ret,hold "
             "FROM signals WHERE labeled=1 ORDER BY feature_ts,ts").fetchall())
 
-    @locked
-    def experience_dataset(self):
-        return _rows_to_ds(self.db.execute(
-            "SELECT ts,inst,feats,label,ret FROM experience ORDER BY ts").fetchall())
-
-    @locked
-    def stats(self, prices=None):
-        cl = [dict(r) for r in self.db.execute("SELECT * FROM trades WHERE status='CLOSED'")]
-        n = len(cl); wins = [t for t in cl if t["pnl"] > 0]; loss = [t for t in cl if t["pnl"] <= 0]
-        gp, gl = sum(t["pnl"] for t in wins), -sum(t["pnl"] for t in loss)
-        eq = self.equity(prices)
-        return dict(trades=n, open=len(self.open_trades()), winrate=(len(wins) / n if n else 0),
-                    pnl=sum(t["pnl"] for t in cl),
-                    profit_factor=(gp / gl if gl > 0 else (float("inf") if gp else 0)),
-                    equity=eq, ret_pct=100 * (eq / CFG["START_BALANCE"] - 1))
-
 # =====================================================================
+# SIGNAL LABELLING# =====================================================================
 # SIGNAL LABELLING (triple barrier on real later prices)
 # =====================================================================
 def future_candles_for_signal(candles, created_ts):
@@ -1413,199 +1029,6 @@ def label_signals(paper):
              "no_candles=%d insufficient_future_candles=%d errors=%d",
              paper.count("signals"), total_unlabelled, len(rows), n, no_candles, insufficient, errors)
     return n
-
-def update_tracked_signals(paper, prices=None):
-    """Fill waiting signals when price enters the zone, then monitor open trades with 5m candles and live prices."""
-    prices = prices if prices is not None else get_prices()
-    closed = 0
-    now = time.time()
-    check_candles = now - float(paper._get("last_5m_check_ts") or 0) >= 240
-
-    # A waiting signal is not a trade yet. Spot-long entries wait for a pullback into the zone.
-    for s in paper.waiting_tracked_signals():
-        price = prices.get(s["inst"])
-        if price is None or not np.isfinite(price) or price <= 0:
-            continue
-        touched = float(s["entry_low"]) <= float(price) <= float(s["entry_high"])
-        if not touched and check_candles:
-            try:
-                candles = get_candles(s["inst"], "5m", 300)
-                if candles is not None and not candles.empty:
-                    created_ms = int(float(s["open_ts"]) * 1000)
-                    later = candles[candles["avail"].map(lambda x: x.timestamp() * 1000 > created_ms)]
-                    touched = any(float(b["l"]) <= float(s["entry_high"]) and
-                                  float(b["h"]) >= float(s["entry_low"])
-                                  for _, b in later.iterrows())
-                    # Historical wick touch is simulated at the planned zone midpoint.
-                    if touched:
-                        price = (float(s["entry_low"]) + float(s["entry_high"])) / 2.0
-            except Exception as exc:
-                log.warning("5m entry-zone check failed for %s: %s", s["inst"], exc)
-        if touched:
-            fill = float(price)
-            fill = min(float(s["entry_high"]), max(float(s["entry_low"]), fill))
-            filled = paper.activate_tracked_signal(s["id"], fill)
-            if filled:
-                tg(f"🟢 تفعيل إشارة ورقية #{filled['id']} — {filled['inst']}\n"
-                   f"وصل السعر إلى منطقة الدخول\n"
-                   f"منطقة الدخول: {filled['entry_low']:.8g} – {filled['entry_high']:.8g}\n"
-                   f"سعر الدخول الافتراضي: {filled['entry']:.8g}\n"
-                   f"وقف الخسارة: {filled['sl']:.8g} | الهدف: {filled['tp']:.8g}")
-
-    for s in paper.active_tracked_signals():
-        price = prices.get(s["inst"])
-        reason, exit_price = None, None
-        # Closed 5m candles help catch TP/SL touches between hourly GitHub Actions runs.
-        try:
-            candles = get_candles(s["inst"], "5m", 300) if check_candles else None
-        except Exception as exc:
-            candles = None
-            log.warning("5m monitoring failed for %s: %s", s["inst"], exc)
-        if candles is not None and not candles.empty:
-            since_ms = int(float(s.get("activated_ts") or s["open_ts"]) * 1000)
-            bars = candles[candles["ts"] >= since_ms]
-            for _, bar in bars.iterrows():
-                hit_sl = float(bar["l"]) <= float(s["sl"])
-                hit_tp = float(bar["h"]) >= float(s["tp"])
-                if hit_sl or hit_tp:
-                    # Conservative if both levels occur in one candle: assume SL first.
-                    if hit_sl:
-                        reason, exit_price = "وقف الخسارة (شمعة 5 دقائق)", float(s["sl"])
-                    else:
-                        reason, exit_price = "جني الأرباح (شمعة 5 دقائق)", float(s["tp"])
-                    break
-        if reason is None and price is not None and np.isfinite(price) and price > 0:
-            if float(price) <= float(s["sl"]):
-                reason, exit_price = "وقف الخسارة", float(s["sl"])
-            elif float(price) >= float(s["tp"]):
-                reason, exit_price = "جني الأرباح", float(s["tp"])
-        if reason is None and now - float(s["open_ts"]) >= CFG["MAX_HOLD_H"] * 3600:
-            reason, exit_price = "انتهاء مدة الإشارة", float(price) if price and price > 0 else float(s["entry"])
-        if reason:
-            result = paper.close_tracked_signal(s["id"], exit_price, reason)
-            if result:
-                icon = "✅" if result["ret_pct"] > 0 else "🔴"
-                tg(f"{icon} إغلاق إشارة ورقية #{result['id']} — {result['inst']}\n"
-                   f"السبب: {result['reason']}\n"
-                   f"الدخول: {result['entry']:.8g} ← الخروج: {result['exit']:.8g}\n"
-                   f"العائد الصافي بعد التكاليف: {result['ret_pct']:+.2f}%\n"
-                   f"مدة الإشارة: {result['hold_hours']:.1f} ساعة")
-                closed += 1
-    if check_candles:
-        paper._set("last_5m_check_ts", now)
-    return closed
-
-
-def analyze_tracked_signal_patterns(paper, force=False):
-    """Deep-dive analysis of closed tracked signals after 500 net-positive outcomes.
-    Uses winners and losers, preserves the original decision-time feature vector,
-    and reruns after every 50 additional closed outcomes.
-    """
-    rows = paper.db.execute(
-        "SELECT id,inst,open_ts,ret_pct,reason,feats FROM tracked_signals "
-        "WHERE status='CLOSED' AND ret_pct IS NOT NULL AND feats IS NOT NULL "
-        "ORDER BY close_ts,id"
-    ).fetchall()
-    if not rows:
-        return None
-    parsed = []
-    for row in rows:
-        try:
-            fv = np.asarray(json.loads(row["feats"]), dtype=np.float64).reshape(-1)
-            ret = float(row["ret_pct"])
-            if len(fv) == N_FEATURES and np.isfinite(fv).all() and np.isfinite(ret):
-                parsed.append((dict(row), fv, ret))
-        except (ValueError, TypeError, json.JSONDecodeError):
-            continue
-    if not parsed:
-        return None
-    wins = sum(1 for _, _, ret in parsed if ret > 0)
-    closed_n = len(parsed)
-    if wins < 500:
-        return {"ready": False, "wins": wins, "closed": closed_n}
-    last_n = int(paper._get("deep_analysis_last_closed") or 0)
-    if not force and closed_n - last_n < 50:
-        return {"ready": True, "wins": wins, "closed": closed_n, "skipped": True}
-
-    X = np.vstack([item[1] for item in parsed])
-    y = np.asarray([1 if item[2] > 0 else 0 for item in parsed], dtype=np.int8)
-    rets = np.asarray([item[2] for item in parsed], dtype=np.float64)
-    # Rank features by standardized winner-vs-loser mean separation.
-    win_x, loss_x = X[y == 1], X[y == 0]
-    rows_out = []
-    if len(win_x) and len(loss_x):
-        mu_w, mu_l = win_x.mean(axis=0), loss_x.mean(axis=0)
-        pooled = np.sqrt((win_x.var(axis=0) + loss_x.var(axis=0)) / 2.0) + 1e-9
-        effect = (mu_w - mu_l) / pooled
-        for j, name in enumerate(FEATURE_COLS):
-            rows_out.append({
-                "feature": name,
-                "winner_mean": float(mu_w[j]),
-                "loser_mean": float(mu_l[j]),
-                "effect_size": float(effect[j]),
-                "abs_effect_size": float(abs(effect[j]))
-            })
-    rows_out.sort(key=lambda item: item["abs_effect_size"], reverse=True)
-
-    # Simple candidate rules: feature quartile cutoffs with enough examples.
-    candidates = []
-    for j, name in enumerate(FEATURE_COLS):
-        vals = X[:, j]
-        if float(np.nanmax(vals) - np.nanmin(vals)) < 1e-10:
-            continue
-        for q in (0.20, 0.35, 0.50, 0.65, 0.80):
-            threshold = float(np.quantile(vals, q))
-            for op, mask in ((">=", vals >= threshold), ("<=", vals <= threshold)):
-                n = int(mask.sum())
-                if n < 30 or n >= len(y):
-                    continue
-                win_rate = float(y[mask].mean())
-                avg_ret = float(rets[mask].mean())
-                # Candidate only; do not automatically change strategy weights from in-sample rules.
-                if win_rate >= float(y.mean()) + 0.05 and avg_ret > 0:
-                    candidates.append({
-                        "feature": name, "condition": op, "threshold": threshold,
-                        "samples": n, "win_rate_pct": win_rate * 100.0,
-                        "avg_net_return_pct": avg_ret
-                    })
-    candidates.sort(key=lambda item: (item["avg_net_return_pct"], item["win_rate_pct"], item["samples"]), reverse=True)
-    report = {
-        "created_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "eligible_closed_signals": closed_n,
-        "wins": int(wins), "losses": int(closed_n - wins),
-        "win_rate_pct": float(y.mean() * 100.0),
-        "average_net_return_pct": float(rets.mean()),
-        "total_compounded_return_pct": float((np.prod(1.0 + rets / 100.0) - 1.0) * 100.0),
-        "top_winner_vs_loser_features": rows_out[:25],
-        "candidate_patterns": candidates[:50],
-        "warning": "Candidate patterns are in-sample discoveries, not proven edges; validate out-of-sample before automatic strategy changes."
-    }
-    path = os.path.join(CFG["DIR"], "deep_signal_analysis.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(report, f, ensure_ascii=False, indent=2)
-    paper._set("deep_analysis_last_closed", closed_n)
-    paper._set("deep_analysis_last_ts", time.time())
-    log.info("deep signal analysis complete: wins=%d closed=%d candidate_patterns=%d path=%s",
-             wins, closed_n, len(candidates), path)
-    tg(f"🧠 اكتمل التحليل العميق للإشارات\n"
-       f"الإشارات المغلقة ذات الميزات: {closed_n} | رابحة: {wins} | خاسرة: {closed_n-wins}\n"
-       f"نسبة الفوز: {y.mean()*100:.1f}% | متوسط العائد الصافي: {rets.mean():+.2f}%\n"
-       f"أفضل الميزات: {', '.join(x['feature'] for x in rows_out[:5]) or 'بيانات غير كافية'}\n"
-       f"الأنماط المرشحة: {len(candidates)}\n"
-       f"التقرير: {path}\n"
-       f"ملاحظة: الأنماط مرشحة وتحتاج اختبارًا خارج العينة قبل تغيير الأوزان تلقائيًا.")
-    return report
-
-
-def signal_performance_msg(paper):
-    s = paper.tracked_signal_stats()
-    return (f"📊 تقييم الإشارات الورقية\n"
-            f"المفتوحة: {s['open']} | المغلقة: {s['closed']}\n"
-            f"الرابحة: {s['wins']} | الخاسرة: {s['losses']}\n"
-            f"نسبة النجاح: {s['winrate']:.1f}%\n"
-            f"متوسط العائد الصافي: {s['avg_pct']:+.2f}%\n"
-            f"العائد التراكمي للإشارات المغلقة: {s['total_pct']:+.2f}%")
-
 
 # =====================================================================
 # RANKING (best -> worst)
@@ -1701,25 +1124,17 @@ def backtest_report(rep):
 # TELEGRAM COMMANDS
 # =====================================================================
 def stats_msg(paper, prices=None):
-    return signal_performance_msg(paper)
-
-def positions_msg(paper):
-    signals = paper.active_tracked_signals()
-    if not signals:
-        return "لا توجد إشارات ورقية مفتوحة."
-    prices = get_prices()
-    lines = []
-    for s in signals[:40]:
-        price = prices.get(s["inst"], s["entry"])
-        pct = (float(price) / float(s["entry"]) - 1.0) * 100.0 if price else 0.0
-        lines.append(f"#{s['id']} {s['inst']}: {pct:+.2f}% | "
-                     f"SL {((s['sl']/s['entry'])-1)*100:+.2f}% | "
-                     f"TP {((s['tp']/s['entry'])-1)*100:+.2f}%")
-    return "📌 الإشارات الورقية المفتوحة (نسب مئوية)\n" + "\n".join(lines)
-
-def portfolio_msg(paper):
-    """Legacy command compatibility: report signal performance, never a virtual wallet."""
-    return signal_performance_msg(paper)
+    total = paper.count("signals")
+    labelled = paper.count("signals", "labeled=1")
+    pending = paper.count("signals", "labeled=0")
+    ds = paper.signal_dataset()
+    n = len(ds["y"])
+    wins = int(np.sum(ds["y"] > 0.5)) if n else 0
+    avg = float(np.mean(ds["ret"]) * 100) if n else 0.0
+    return (f"📊 تقييم سجل الإشارات (دون محفظة افتراضية)\\n"
+            f"الإشارات المسجلة: {total} | التي اكتمل تقييمها: {labelled} | قيد التقييم: {pending}\\n"
+            f"رابحة: {wins} | خاسرة: {n-wins} | نسبة النجاح: {(wins/n*100 if n else 0):.1f}%\\n"
+            f"متوسط العائد النظري بعد التكاليف: {avg:+.2f}%")
 
 def top_msg():
     p = os.path.join(CFG["DIR"], "ranking.csv")
@@ -1732,26 +1147,19 @@ def top_msg():
 
 def handle_command(text, paper, brain):
     cmd = text.split()[0].split("@")[0].lower()
-    if cmd in ("/stats", "/status"):
+    if cmd in ("/stats", "/status", "/signals", "/portfolio", "/محفظتي"):
         return stats_msg(paper)
-    if cmd == "/positions":
-        return positions_msg(paper)
-    if cmd in ("/portfolio", "/محفظتي"):
-        return signal_performance_msg(paper)
     if cmd == "/top":
         return top_msg()
     if cmd == "/pause":
-        paper._set("paused", "1"); return "⏸ تم إيقاف فتح الإشارات الجديدة؛ متابعة الإشارات المفتوحة مستمرة."
+        paper._set("paused", "1")
+        return "⏸ تم إيقاف تسجيل الإشارات الجديدة؛ سيستمر تقييم الإشارات المسجلة."
     if cmd == "/resume":
-        paper._set("paused", "0"); paper._set("pause_until", "0"); return "▶️ تم استئناف فتح الإشارات الجديدة."
+        paper._set("paused", "0")
+        return "▶️ تم استئناف تسجيل الإشارات."
     if cmd == "/model":
         return "🧠 " + brain.describe()
-    if cmd == "/signals":
-        s = paper.tracked_signal_stats()
-        return (f"📊 الإشارات: مفتوحة {s['open']} | مغلقة {s['closed']} | "
-                f"نجاح {s['winrate']:.1f}% | متوسط العائد {s['avg_pct']:+.2f}%\n"
-                f"سجل التعلم: {paper.count('signals')} | موسومة {paper.count('signals', 'labeled=1')}")
-    return ("الأوامر: /stats /positions /portfolio /top /model /signals /pause /resume")
+    return "الأوامر: /stats /signals /top /model /pause /resume"
 
 def poll_commands(paper, brain, timeout=0):
     tok, chat = os.getenv("TELEGRAM_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
@@ -1779,69 +1187,28 @@ def poll_commands(paper, brain, timeout=0):
 # =====================================================================
 # PIPELINE
 # =====================================================================
-def collect_training_data(paper, universe=None, refresh=False, with_trades=True):
+def collect_training_data(paper, universe=None, refresh=False, with_trades=False):
     base = None if refresh else load_trainset()
     if base is None:
         universe = universe if universe is not None else get_universe()
         base = build_trainset(universe)
     signals = paper.signal_dataset()
-    exp = paper.experience_dataset() if with_trades else empty_ds()
-
-    def report_source(name, ds):
-        n = len(ds["y"])
-        if not n:
-            log.info("training data source=%s n=0", name)
-            return
-        y = np.asarray(ds["y"], dtype=np.float64)
-        ret = np.asarray(ds["ret"], dtype=np.float64)
-        ts = np.asarray(ds["ts"], dtype=np.float64)
-        finite_ret = np.isfinite(ret)
-        mismatch = (np.mean((y[finite_ret] > 0.5) != (ret[finite_ret] > 0))
-                    if finite_ret.any() else float("nan"))
-        coin = np.asarray(ds["coin"]).astype(str)
-        finite_ts = np.isfinite(ts)
-        keys = np.char.add(np.char.add(coin[finite_ts], "|"),
-                           ts[finite_ts].astype(np.int64).astype(str))
-        duplicate_rows = int(len(keys) - len(np.unique(keys)))
-        ts_range = (f"{int(ts[finite_ts].min())}..{int(ts[finite_ts].max())}"
-                    if finite_ts.any() else "invalid")
-        ret_mean = float(np.mean(ret[finite_ret])) if finite_ret.any() else float("nan")
-        ret_win = float(np.mean(ret[finite_ret] > 0)) if finite_ret.any() else float("nan")
-        log.info(
-            "training data source=%s n=%d label_win_rate=%.3f return_win_rate=%.3f "
-            "mean_net_return=%.5f ret_finite=%d/%d ts_finite=%d/%d "
-            "label_return_mismatch=%.4f duplicate_coin_timestamp=%d ts_range=%s",
-            name, n, float(np.mean(y > 0.5)), ret_win, ret_mean,
-            int(finite_ret.sum()), n, int(finite_ts.sum()), n,
-            float(mismatch), duplicate_rows, ts_range)
-
-    report_source("historical", base)
-    report_source("labelled_signals", signals)
-    if with_trades:
-        report_source("paper_experience", exp)
-    parts = [base, signals]
-    if with_trades:
-        parts += [exp] * 3                                # real paper-trade outcomes weigh x3
-    merged = ds_concat(parts)
+    log.info("training sources: historical=%d labelled_signals=%d; closed-trade outcomes excluded",
+             len(base["y"]), len(signals["y"]))
+    merged = ds_concat([base, signals])
     valid = (np.isfinite(merged["X"]).all(axis=1)
              & np.isfinite(merged["y"])
              & np.isin(merged["y"], [0, 1])
              & np.isfinite(merged["ts"])
              & np.isfinite(merged["ret"]))
-    dropped = int(len(valid) - valid.sum())
-    if dropped:
-        log.warning("training data integrity: dropping %d/%d rows with invalid features/labels/timestamps/returns",
-                    dropped, len(valid))
+    if not valid.all():
+        log.warning("training integrity: dropping %d invalid rows", int((~valid).sum()))
         merged = {k: v[valid] for k, v in merged.items()}
-    if len(merged["y"]):
-        log.info("training data merged: n=%d win_rate=%.3f", len(merged["y"]),
-                 float(np.mean(merged["y"] > 0.5)))
     return merged
 
 def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     ds = collect_training_data(paper, universe, refresh)
     info = brain.fit(ds["X"], ds["y"], ds["ts"], ds["ret"])
-    paper._set("last_train_n", paper.count("experience"))
     paper._set("last_train_sig", paper.count("signals", "labeled=1"))
     aucs = " | ".join(f"{k}:{v:.3f}" for k, v in info["aucs"].items())
     top = info.get("val_top_net")
@@ -1864,9 +1231,8 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     return info
 
 def need_retrain(paper):
-    new_trades = paper.count("experience") - int(paper._get("last_train_n") or 0)
     new_sigs = paper.count("signals", "labeled=1") - int(paper._get("last_train_sig") or 0)
-    return new_trades >= CFG["RETRAIN_EVERY"] or new_sigs >= CFG["RETRAIN_SIGNALS"]
+    return new_sigs >= CFG["RETRAIN_SIGNALS"]
 
 def _hourly_returns(inst):
     d = get_candles(inst, "1H", 100)
@@ -1937,7 +1303,9 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     # Telegram is intentionally quiet between paper-signal open/close events.
     if not trade:
         return R
-    # log the top coins of every scan: they become labelled training examples later
+    # Log candidate signals for future-candle labels; never create or track positions.
+    if paper._get("paused") == "1":
+        return R
     paper.log_signals([dict(inst=i, price=float(uni.loc[i, "last"]), atr=float(X.loc[i, "1H_atr_pct"]),
                             feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]),
                             feature_ts=feature_ts[i])
@@ -1947,30 +1315,7 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                   ai_prediction_error or "non-finite values")
         tg("⚠️ Zied Quant: خرجت احتمالات AI بقيم غير صالحة (NaN/Inf). تم منع جميع أوامر الدخول في هذه الدورة.")
         return R
-    # Signal tracking is independent of any wallet, cash balance, or position limit.
-    # Every qualifying signal is recorded at its market price and evaluated on close.
-    if ai_prediction_error is not None or not np.isfinite(R["prob"].dropna().to_numpy(dtype=float)).all():
-        log.error("AI probabilities invalid (%s); no new paper signals this cycle",
-                  ai_prediction_error or "non-finite values")
-        return R
-    thr = (float(CFG.get("EXPLORATION_PROB_MIN", 0.65)) if learning_mode else
-           (CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else brain.thr))
-    sig = R[R["prob"] >= thr].sort_values("prob", ascending=False)
-    if paper._get("paused") == "1":
-        log.info("new paper signals paused by Telegram command")
-        sig = sig.iloc[0:0]
-    for inst, r in sig.iterrows():
-        entry = float(uni.loc[inst, "last"])
-        tracked = paper.open_tracked_signal(
-            inst, entry, float(X.loc[inst, "1H_atr_pct"]), float(r["prob"]), int(r["rank"]),
-            feats=X.loc[inst, FEATURE_COLS].values)
-        if tracked:
-            tg(f"🟡 إشارة بانتظار الدخول #{tracked['id']} — {inst}\n"
-               f"احتمال النموذج: {float(r['prob'])*100:.1f}% | الترتيب: #{int(r['rank'])}\n"
-               f"منطقة الدخول: {tracked['entry_low']:.8g} – {tracked['entry_high']:.8g}\n"
-               f"سعر الرصد: {entry:.8g}\n"
-               f"عند التفعيل سيحدد الوقف والهدف انطلاقًا من سعر الدخول الفعلي.\n"
-               f"لن تُحسب صفقة ولن يبدأ TP/SL قبل لمس المنطقة.")
+    # Signal-only mode: outcomes are labelled later from future 1H candles; no positions are opened.
     return R
 
 def bootstrap_training_due(paper, now=None):
@@ -1979,7 +1324,6 @@ def bootstrap_training_due(paper, now=None):
     last = float(paper._get("bootstrap_train_attempt_ts") or 0)
     if last <= 0:
         return True
-    new_trades = paper.count("experience") - int(paper._get("bootstrap_attempt_exp") or 0)
     new_labels = paper.count("signals", "labeled=1") - int(paper._get("bootstrap_attempt_labels") or 0)
 
     # The GitHub Actions runner is ephemeral: train.npz is the durable historical
@@ -2006,7 +1350,6 @@ def bootstrap_training_due(paper, now=None):
         log.info("bootstrap memory cache: usable_rows=%d; accelerated_retry=%s",
                  cached_rows, cache_retry_due)
     return (now - last >= 86400
-            or new_trades >= int(CFG["RETRAIN_EVERY"])
             or new_labels >= int(CFG["RETRAIN_SIGNALS"])
             or cache_retry_due)
 
@@ -2015,7 +1358,6 @@ def mark_bootstrap_training_attempt(paper, now=None):
     """Persist the attempt and data counters even if validation rejects the candidate."""
     now = time.time() if now is None else float(now)
     paper._set("bootstrap_train_attempt_ts", now)
-    paper._set("bootstrap_attempt_exp", paper.count("experience"))
     paper._set("bootstrap_attempt_labels", paper.count("signals", "labeled=1"))
 
 
@@ -2026,9 +1368,6 @@ def once():
     if uni.empty:
         raise RuntimeError("OKX returned no tradable pairs (blocked? try OKX_BASE=https://aws.okx.com)")
     poll_commands(paper, brain)
-    # Update every open paper signal; no wallet/virtual-position management.
-    update_tracked_signals(paper)
-    analyze_tracked_signal_patterns(paper)
     # Label matured feature samples for AI training independently of signal-trade closure.
     label_signals(paper)
     if not brain.ready and bootstrap_training_due(paper):
@@ -2041,11 +1380,10 @@ def once():
             log.exception("bootstrap training failed: %s", e)
             tg(f"⚠️ فشل تدريب النموذج: {e}")
     elif not brain.ready:
-        log.info("AI model not approved; bootstrap retry deferred until enough new labels/trades or 24 hours")
+        log.info("AI model not approved; bootstrap retry deferred until enough new signal labels or 24 hours")
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
     paper._set("cycle", cycle + 1)
-    # No virtual portfolio snapshot: only signal-open and signal-close alerts are sent.
     # When no model has passed validation, bootstrap cooldown is the only retry path.
     if brain.ready and need_retrain(paper):
         try:
@@ -2053,14 +1391,6 @@ def once():
         except Exception as e:
             log.warning("retrain: %s", e)
     # Statistics are available on demand via /stats; no periodic wallet messages.
-
-def monitor_loop(paper, stop):
-    while not stop.is_set():
-        try:
-            update_tracked_signals(paper)
-        except Exception as e:
-            log.warning("monitor: %s", e)
-        stop.wait(CFG["MONITOR_EVERY_SEC"])
 
 def telegram_loop(paper, brain, stop):
     while not stop.is_set():
@@ -2075,8 +1405,6 @@ def run():
     brain, paper = Brain(), Paper()
     stop = threading.Event()
     uni = get_universe()
-    # Update and evaluate tracked signals, then mature AI training labels.
-    update_tracked_signals(paper)
     label_signals(paper)
     if not brain.ready and bootstrap_training_due(paper):
         first_attempt = not paper._get("bootstrap_train_attempt_ts")
@@ -2089,7 +1417,6 @@ def run():
             tg(f"⚠️ فشل تدريب النموذج: {e}")
     elif not brain.ready:
         log.info("AI model not approved; bootstrap retry deferred until enough new labels/trades or 24 hours")
-    threading.Thread(target=monitor_loop, args=(paper, stop), daemon=True).start()
     threading.Thread(target=telegram_loop, args=(paper, brain, stop), daemon=True).start()
     tg("🚀 Zied Quant v2 بدأ العمل (Paper Trading فقط). أرسل /help للأوامر.")
     cycle, last_daily = 0, time.time()
@@ -2097,8 +1424,6 @@ def run():
         while True:
             t0 = time.time()
             try:
-                update_tracked_signals(paper)
-                analyze_tracked_signal_patterns(paper)
                 label_signals(paper)
                 if not brain.ready and bootstrap_training_due(paper):
                     first_attempt = not paper._get("bootstrap_train_attempt_ts")
