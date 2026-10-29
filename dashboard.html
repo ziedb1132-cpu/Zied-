@@ -1,89 +1,120 @@
-<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Zied Quant AI Dashboard</title><style>
-:root{--bg:#0b1020;--p:#141e33;--line:#2a3854;--txt:#edf3ff;--mut:#9eacc6;--green:#4cdaa4;--red:#ff788b;--blue:#7aa8ff}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,Arial}header{padding:18px;position:sticky;top:0;background:#0b1020ed;border-bottom:1px solid var(--line);z-index:2}.top,.controls,.tabs,.head{display:flex;gap:9px;align-items:center;justify-content:space-between;flex-wrap:wrap}.brand{display:flex;gap:12px;align-items:center}.logo{background:#4779ef;border-radius:12px;padding:12px;font-weight:bold}.brand h1{margin:0;font-size:20px}.muted,.sub{color:var(--mut);font-size:12px}main{max-width:1300px;margin:auto;padding:18px}.notice{background:#302817;border:1px solid #5b4928;color:#f8dc9c;border-radius:12px;padding:12px;margin-bottom:15px}.controls{margin:15px 0}input{background:var(--p);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px;min-width:130px;flex:1}button{background:#18243b;border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 13px;cursor:pointer}.primary,.active{background:#315bb0}.tabs{justify-content:flex-start;overflow:auto;margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.card{background:var(--p);border:1px solid var(--line);border-radius:14px;padding:15px;min-width:0}.label{color:var(--mut);font-size:12px}.value{font-size:24px;font-weight:750;margin:7px 0;overflow-wrap:anywhere}.good{color:var(--green)}.bad{color:var(--red)}.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.section{margin-top:14px}.section h2{font-size:16px;margin:0 0 12px}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px}table{border-collapse:collapse;width:100%;white-space:nowrap;font-size:12px}th,td{text-align:right;padding:10px;border-bottom:1px solid var(--line)}th{background:#1a2942;color:#cbd8f3}tr:last-child td{border:0}.empty{padding:25px;text-align:center;color:var(--mut)}.row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}.row:last-child{border:0}.hide{display:none!important}.status{font-size:12px;color:var(--mut)}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#e8bb54;margin-left:6px}.foot{text-align:center;color:var(--mut);font-size:11px;margin:25px}@media(max-width:850px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}}@media(max-width:480px){.grid{gap:8px}.card{padding:11px}.value{font-size:20px}header{padding:12px}}
-</style></head><body><header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant AI</h1><div class="muted">لوحة مراقبة — قراءة فقط</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">لم يتم الاتصال</span></span></div></header><main>
-<div class="notice">هذه اللوحة تعرض البيانات فقط ولا تنفّذ صفقات. لا تدخل مفاتيح OKX. إذا كان المستودع خاصًا، استخدم رمز GitHub بصلاحية قراءة المحتويات فقط ولا تشاركه.</div>
-<div id="connectionError" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div><div class="controls"><input id="owner" value="ziedb1132-cpu" placeholder="مالك المستودع"><input id="repo" value="Zied-" placeholder="اسم المستودع"><input id="branch" value="state-data" placeholder="الفرع"><input id="token" type="password" autocomplete="off" placeholder="GitHub token (اختياري)"><button id="connect" class="primary">اتصال / تحديث</button><button id="clear">مسح الرمز</button></div>
-<div class="tabs"><button class="active" data-tab="overview">نظرة عامة</button><button data-tab="positions">المراكز</button><button data-tab="signals">الإشارات</button><button data-tab="strategies">الاستراتيجيات</button><button data-tab="ai">تعلم AI</button><button data-tab="backtest">الاختبار التاريخي</button><button data-tab="files">حالة الملفات</button></div>
-<section id="page-overview"><div id="metrics" class="grid"></div><div class="cols"><div class="card"><h2>حالة النظام</h2><div id="system"></div></div><div class="card"><h2>ملخص الذكاء الاصطناعي</h2><div id="aiSummary"></div></div></div><div class="card section"><h2>آخر المراكز</h2><div id="recent" class="tablewrap"><div class="empty">اتصل بالمستودع لعرض البيانات.</div></div></div></section>
-<section id="page-positions" class="hide section"><h2>المراكز المفتوحة</h2><div id="positions" class="tablewrap"></div></section><section id="page-signals" class="hide section"><h2>الإشارات الأخيرة</h2><div id="signals" class="tablewrap"></div></section><section id="page-strategies" class="hide section"><h2>أداء الاستراتيجيات</h2><div id="strategies" class="tablewrap"></div><div class="card section"><h2>اكتشاف أنماط الشموع</h2><div id="candles" class="tablewrap"></div></div></section><section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>ملفات ذاكرة التعلم</h2><div id="learning" class="tablewrap"></div></div></section><section id="page-backtest" class="hide section"><div id="btMetrics" class="grid"></div><div class="card section"><h2>نتائج الاختبار التاريخي</h2><p class="muted">هذا القسم يعرض تقرير backtest مستقلًا عند حفظه. قاعدة state-data الحالية تتضمن paper.db وranking.csv وstrategy_evolution.json وtrain.npz، ولا تتضمن ملف backtest.json؛ لذلك لن نعرض صفقات المحفظة على أنها نتائج اختبار تاريخي.</p><div id="backtest" class="tablewrap"></div></div></section><section id="page-files" class="hide section"><h2>حالة الملفات</h2><div id="files" class="tablewrap"></div><p id="errors" class="bad"></p></section><div class="foot">Zied Quant Dashboard · GitHub API · قراءة فقط</div></main>
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zied Quant — لوحة بيانات البرنامج</title>
+<style>
+:root{--bg:#0b1020;--panel:#141e33;--line:#2a3854;--txt:#edf3ff;--mut:#9eacc6;--green:#4cdaa4;--red:#ff788b;--blue:#7aa8ff;--gold:#f0c66b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 system-ui,Arial,sans-serif}
+header{padding:16px;position:sticky;top:0;background:#0b1020f2;border-bottom:1px solid var(--line);z-index:5}
+.top,.controls,.tabs,.brand{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.top{justify-content:space-between}.brand h1{margin:0;font-size:19px}.logo{background:#315bb0;padding:10px 12px;border-radius:12px;font-weight:bold}.muted,.sub,.status{color:var(--mut);font-size:12px}
+main{max-width:1450px;margin:auto;padding:16px}.notice{background:#302817;border:1px solid #5b4928;color:#f8dc9c;padding:12px;border-radius:12px;margin:10px 0}
+.controls{margin:13px 0}input,select{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px;min-width:110px;flex:1}button{background:#18243b;border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 12px;cursor:pointer;white-space:nowrap}.primary,.active{background:#315bb0}
+.tabs{overflow:auto;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px;min-width:0}.label{color:var(--mut);font-size:12px}.value{font-size:23px;font-weight:750;margin:5px 0;overflow-wrap:anywhere}.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.section{margin-top:13px}.section h2,.card h2{font-size:16px;margin:0 0 10px}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:8px}table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}th,td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--line);max-width:360px}td{overflow:hidden;text-overflow:ellipsis;max-width:300px}th{background:#1a2942;color:#cbd8f3;position:sticky;top:0}tr:last-child td{border:0}.empty{padding:22px;text-align:center;color:var(--mut)}.row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.row:last-child{border:0}.hide{display:none!important}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-left:6px}.good{color:var(--green)}.bad{color:var(--red)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1425;padding:12px;border-radius:9px;max-height:65vh;overflow:auto;font-size:12px}.foot{text-align:center;color:var(--mut);font-size:11px;margin:24px}
+@media(max-width:850px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}}@media(max-width:480px){main{padding:10px}.grid{gap:7px}.card{padding:10px}.value{font-size:19px}header{padding:10px}.brand h1{font-size:16px}}
+</style></head>
+<body>
+<header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — بيانات البرنامج</h1><div class="muted">لوحة قراءة فقط · مبنية على ملفات البرنامج الفعلية</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">لم يتم الاتصال</span></span></div></header>
+<main>
+<div class="notice">هذه الصفحة للعرض فقط ولا تفتح صفقات. المشروع الحالي SIGNAL-ONLY: لا توجد محفظة افتراضية أو سجل صفقات. تعرض الصفحة الإشارات ونتائج تقييمها وبيانات النموذج والملفات المحفوظة فعلًا، ولا تخترع بيانات غير موجودة.</div>
+<div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
+<div class="controls"><input id="owner" value="ziedb1132-cpu" aria-label="مالك المستودع" placeholder="مالك المستودع"><input id="repo" value="Zied-" aria-label="المستودع" placeholder="المستودع"><input id="branch" value="state-data" aria-label="فرع البيانات" placeholder="فرع البيانات"><input id="token" type="password" autocomplete="off" aria-label="GitHub token" placeholder="رمز GitHub للقراءة فقط"><button id="connect" class="primary">اتصال / تحديث</button><button id="clear">مسح الرمز</button></div>
+<div class="tabs"><button class="active" data-tab="overview">نظرة عامة</button><button data-tab="signals">كل الإشارات</button><button data-tab="ai">الذكاء الاصطناعي</button><button data-tab="ranking">ترتيب العملات</button><button data-tab="files">جميع الملفات</button><button data-tab="raw">بيانات تقنية</button></div>
+<section id="page-overview"><div id="metrics" class="grid"></div><div class="cols"><div class="card"><h2>حالة التشغيل</h2><div id="system"></div></div><div class="card"><h2>نتائج تقييم الإشارات</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>أحدث الإشارات</h2><div id="recent" class="tablewrap"></div></div><div class="card section"><h2>بيانات نموذج AI المحفوظة</h2><div id="metaPreview"></div></div></section>
+<section id="page-signals" class="hide section"><h2>سجل الإشارات من قاعدة البيانات</h2><p class="muted">تعرض آخر 500 إشارة محفوظة في SQLite. النتائج لا تعني تنفيذ صفقات فعلية.</p><div id="signals" class="tablewrap"></div></section>
+<section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>كل مفاتيح meta المحفوظة</h2><div id="metaTable" class="tablewrap"></div></div><div class="card section"><h2>ملخص ملفات النموذج والتدريب</h2><div id="aiFiles" class="tablewrap"></div></div></section>
+<section id="page-ranking" class="hide section"><h2>أحدث ترتيب محفوظ للعملات</h2><p class="muted">يُقرأ من ranking.csv إن كان موجودًا في مخزن البيانات.</p><div id="ranking" class="tablewrap"></div><div class="card section"><h2>تطور الاستراتيجيات / الاكتشاف</h2><pre id="evolution">لم يتم تحميل ملف استراتيجية.</pre></div></section>
+<section id="page-files" class="hide section"><h2>كل الملفات المذكورة في manifest</h2><div id="files" class="tablewrap"></div><div class="card section"><h2>أخطاء التحميل</h2><pre id="errors">لا توجد أخطاء.</pre></div></section>
+<section id="page-raw" class="hide section"><h2>مخطط قاعدة البيانات</h2><div id="schema" class="tablewrap"></div><div class="card section"><h2>عينة البيانات الخام</h2><select id="rawSelect"></select><pre id="rawData">اختر ملفًا لعرض تفاصيله.</pre></div></section>
+<div class="foot">Zied Quant Dashboard · GitHub API · قراءة فقط</div>
+</main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
 <script>
-const names=["paper.db","ranking.csv","strategy_evolution.json","train.npz"];let d={},raw={},dbMeta={};
-const $=x=>document.getElementById(x),esc=x=>String(x??"—").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])),pick=(o,ks,fb="—")=>{for(let k of ks)if(o&&o[k]!=null)return o[k];return fb},list=(o,ks)=>{for(let k of ks)if(Array.isArray(o?.[k]))return o[k];return Array.isArray(o)?o:[]},num=(o,ks)=>{let x=pick(o,ks,null);return x!==null&&Number.isFinite(Number(x))?Number(x):null},money=x=>x==null?"—":Number(x).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2}),fmt=x=>x==null?"—":Number(x).toLocaleString("en-US",{maximumFractionDigits:2});
-function table(rows,cols){if(!rows.length)return '<div class="empty">لا توجد بيانات في الملف.</div>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td>'+esc(typeof c[1]==="function"?c[1](r):pick(r,c[1]))+'</td>').join("")+'</tr>').join("")+'</tbody></table>'}
-function metric(a,b,c=""){return `<div class="card"><div class="label">${esc(a)}</div><div class="value">${esc(b)}</div><div class="sub">${esc(c)}</div></div>`}function rowsObj(o,ks){return list(o,ks).filter(x=>x&&typeof x==="object")}function render(){
-let p=d["portfolio.json"]||{},pos=rowsObj(p,["openPositions","open_positions","positions","open_trades","trades"]),sig=rowsObj(d["signal_history.json"],["signals","history","items","records"]).slice(-100).reverse(),str=rowsObj(d["strategy_stats.json"],["strategies","stats","strategy_stats","items"]),bt=rowsObj(d["backtest_results.json"],["results","trades","folds","strategies","items"]);
-if(!str.length&&d["strategy_stats.json"]&&!Array.isArray(d["strategy_stats.json"]))str=Object.entries(d["strategy_stats.json"]).filter(x=>x[1]&&typeof x[1]==="object").map(([name,v])=>({name,...v}));
-let cash=num(p,["cash","availableCash","available_cash"]),equity=num(p,["equity","totalEquity","total_equity","balance"]),initial=num(p,["initialCapital","initial_capital","initialBalance","startBalance"]),pnl=num(p,["totalPnl","total_pnl","realizedPnl","realized_pnl"]);if(pnl===null&&equity!==null&&initial!==null)pnl=equity-initial;
-let ai=d["ml_model_memory.json"]||{},approved=pick(ai,["approved","model_approved","is_approved"],null),samples=pick(ai,["labelled_samples","labeled_samples","n_samples","samples"]),auc=pick(ai,["holdout_auc","auc_holdout","auc"]),thr=pick(ai,["threshold","prob_min","probability_threshold"]);
-$("metrics").innerHTML=metric("قيمة المحفظة",money(equity??initial))+metric("السيولة",money(cash))+metric("الربح / الخسارة",money(pnl),pnl===null?"لا توجد بيانات كافية":pnl>0?"إيجابي":"حسب البيانات")+metric("المراكز المفتوحة",pos.length);
-$("system").innerHTML=[["المستودع",$("owner").value+"/"+$("repo").value],["الفرع",$("branch").value],["الملفات المحمّلة",Object.keys(raw).length+"/"+names.length],["وضع اللوحة","قراءة فقط"]].map(x=>`<div class="row"><span class="muted">${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join("");
-$("aiSummary").innerHTML=[["اعتماد النموذج",approved===true?"معتمد":approved===false?"غير معتمد":"غير معروف"],["عينات التعلم",samples],["AUC التحقق",auc],["عتبة القرار",thr]].map(x=>`<div class="row"><span class="muted">${esc(x[0])}</span><b>${esc(x[1])}</b></div>`).join("");
-const poscols=[["العملة",r=>pick(r,["instId","symbol","coin","instrument"])],["الدخول",r=>pick(r,["entry","entryPrice","entry_price","avgPrice"])],["السعر",r=>pick(r,["currentPrice","current_price","markPrice","price"])],["القيمة",r=>pick(r,["usdt","notional","size","quantity","qty"])],["SL",r=>pick(r,["sl","stopLoss","stop_loss"])],["TP",r=>pick(r,["tp","takeProfit","take_profit"])],["الحالة",r=>pick(r,["status","state"],"مفتوح")]];
-$("positions").innerHTML=table(pos,poscols);$("recent").innerHTML=table(pos.slice(0,5),poscols.slice(0,5));
-const sigcols=[["الوقت",r=>pick(r,["ts","timestamp","time","created_at","date"])],["العملة",r=>pick(r,["instId","symbol","coin","instrument"])],["الاستراتيجية",r=>pick(r,["strategy","strategy_name","method"])],["الدرجة",r=>pick(r,["score","probability","prob","confidence"])],["الإشارة",r=>pick(r,["signal","action","status","label"])],["النتيجة",r=>pick(r,["return","pnl","net_return","outcome"])]];
-$("signals").innerHTML=table(sig,sigcols);
-$("strategies").innerHTML=table(str,[["الاستراتيجية",r=>pick(r,["name","strategy","strategy_name","id"])],["الصفقات",r=>pick(r,["trades","total_trades","samples"])],["الفوز",r=>pick(r,["wins","tp_hits","tp"])],["الخسارة",r=>pick(r,["losses","sl_hits","sl"])],["نسبة الفوز",r=>pick(r,["win_rate","winRate","wr"])],["الربح / PF",r=>pick(r,["pnl","net_return","profit_factor","pf"])]]);
-$("candles").innerHTML=table(rowsObj(d["candle_strategy_discovery.json"],["strategies","patterns","items","results"]),[["النمط",r=>pick(r,["name","pattern","strategy"])],["العينات",r=>pick(r,["samples","count","trades"])],["نسبة الفوز",r=>pick(r,["win_rate","wr","match_rate"])],["الحالة",r=>pick(r,["status","validated"])]]);
-$("aiMetrics").innerHTML=metric("اعتماد النموذج",approved===true?"معتمد":approved===false?"غير معتمد":"غير معروف")+metric("عينات مصنفة",samples)+metric("AUC",auc)+metric("عتبة القرار",thr);
-$("learning").innerHTML=table(names.filter(f=>/memory|learning|discovery|entry_method/.test(f)).map(f=>({file:f,status:raw[f]?"تم التحميل":"غير موجود",size:raw[f]?.length||0})),[["الملف",r=>r.file],["الحالة",r=>r.status],["الحجم",r=>r.size]]);
-$("btMetrics").innerHTML=metric("سجلات تقرير الاختبار",bt.length)+metric("تقرير backtest.json","غير محفوظ في state-data")+metric("سجل الصفقات في قاعدة البيانات",rowsObj(d["portfolio.json"],["closedPositions"]).length)+metric("بيانات الترتيب",raw["ranking.csv"]&&raw["ranking.csv"].length?"تم تحميلها":"غير متاحة");
-$("backtest").innerHTML=bt.length?table(bt, [["الاستراتيجية",r=>pick(r,["strategy","name","fold"])],["الصفقات",r=>pick(r,["trades","total_trades","n"])],["نسبة الفوز",r=>pick(r,["win_rate","wr"])],["صافي الربح",r=>pick(r,["net_return","pnl","return"])],["PF",r=>pick(r,["profit_factor","pf"])],["النتيجة",r=>pick(r,["status","result"])]]):'<div class="empty">لا يوجد تقرير اختبار تاريخي محفوظ في فرع state-data. هذا لا يعني أن الاختبار لم يعمل؛ التقرير غير موجود ضمن الملفات التي تحفظها آلية التخزين الحالية.</div>';
-$("files").innerHTML=table(names.map(f=>({file:f,status:raw[f]?"متوفر":"غير موجود/غير قابل للقراءة",size:raw[f]?.length||0})),[["الملف",r=>r.file],["الحالة",r=>r.status],["الحجم",r=>r.size]]);
+"use strict";
+const $=id=>document.getElementById(id);
+const esc=x=>String(x===null||x===undefined?"—":x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=x=>x===null||x===undefined||x===""?"—":typeof x==="number"?x.toLocaleString("en-US",{maximumFractionDigits:5}):String(x);
+const money=x=>x===null||x===undefined?"—":Number(x).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
+const timeFmt=x=>{if(x===null||x===undefined||x==="")return "—";let n=Number(x);if(Number.isFinite(n)&&n>1000000000){if(n<100000000000)n*=1000;return new Date(n).toLocaleString()}return String(x)};
+let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],ranking:[],errors:[],schema:[]};
+function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">لا توجد بيانات محفوظة لهذا القسم.</div>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td title="'+esc(typeof c[1]==="function"?c[1](r):(r[c[1]]))+'">'+esc(typeof c[1]==="function"?c[1](r):(r[c[1]]))+'</td>').join("")+'</tr>').join("")+'</tbody></table>'}
+function metric(label,value,sub){return '<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(value)+'</div><div class="sub">'+esc(sub||"")+'</div></div>'}
+function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="row"><span class="muted">'+esc(k)+'</span><b>'+esc(typeof v==="string"?v:JSON.stringify(v))+'</b></div>').join("")||'<div class="empty">لا توجد بيانات meta.</div>'}
+function dbQuery(sql){try{if(!state.db)return [];let r=state.db.exec(sql);if(!r.length)return [];return r[0].values.map(row=>Object.fromEntries(r[0].columns.map((c,i)=>[c,row[i]])))}catch(e){return []}}
+function fileText(path){let x=state.contents[path];return typeof x==="string"?x:x===undefined?"":JSON.stringify(x,null,2)}
+function parseCSV(text){const lines=text.trim().split(/\r?\n/);if(lines.length<2)return [];const parse=line=>{let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===","&&!q){out.push(cur);cur=""}else cur+=c}out.push(cur);return out};const headers=parse(lines[0]);return lines.slice(1).filter(Boolean).map(line=>{const vals=parse(line),o={};headers.forEach((h,i)=>o[h]=vals[i]??"");return o})}
+function render(){
+ const total=state.signals.length, labeled=state.signals.filter(s=>Number(s.labeled)===1),pending=total-labeled.length;
+ const wins=labeled.filter(s=>Number(s.label)===1).length,losses=labeled.length-wins;
+ const avg=labeled.length?labeled.reduce((a,s)=>a+(Number(s.ret)||0),0)/labeled.length:null;
+ const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
+ $("metrics").innerHTML=metric("الإشارات المحفوظة",total)+metric("تم تقييمها",labeled.length)+metric("بانتظار شموع مستقبلية",pending)+metric("نسبة نجاح الإشارات",labeled.length?(wins/labeled.length*100).toFixed(1)+"%":"—","من نتائج التقييم النظرية");
+ $("system").innerHTML=showRows({"المستودع":$("owner").value+"/"+$("repo").value,"فرع البيانات":$("branch").value,"دورة الفحص":cycle,"تسجيل الإشارات":paused?"متوقف مؤقتًا":"غير متوقف حسب meta","قاعدة البيانات":state.db?"تم فتح SQLite":"غير متاحة","ملفات manifest":state.files.length,"البيانات": "قراءة فقط — لا صفقات"});
+ $("labelSummary").innerHTML=showRows({"إجمالي الإشارات":total,"مقيّمة":labeled.length,"غير مقيّمة":pending,"نتائج موجبة":wins,"نتائج غير موجبة":losses,"نسبة النجاح":labeled.length?(wins/labeled.length*100).toFixed(2)+"%":"—","متوسط العائد النظري":avg===null?"—":(avg*100).toFixed(3)+"%","ملاحظة":"التقييم من الشموع المستقبلية، وليس صفقات منفذة"});
+ const sigCols=[["وقت التسجيل",r=>timeFmt(r.ts)],["العملة","inst"],["السعر","price"],["احتمال AI","prob"],["الترتيب","rank"],["اكتمل التقييم",r=>Number(r.labeled)===1?"نعم":"لا"],["النتيجة",r=>r.label===null||r.label===undefined?"—":Number(r.label)===1?"موجبة":"غير موجبة"],["العائد النظري",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["مدة التقييم (ساعات)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
+ const ordered=state.signals.slice().sort((a,b)=>Number(b.ts||0)-Number(a.ts||0));
+ $("recent").innerHTML=table(ordered.slice(0,10),sigCols);$("signals").innerHTML=table(ordered.slice(0,500),sigCols);
+ $("metaPreview").innerHTML=showRows(Object.fromEntries(Object.entries(state.meta).slice(0,12)));
+ $("aiMetrics").innerHTML=metric("حالة النموذج",String(state.meta.model_approved)==="1"||String(state.meta.model_approved)==="true"?"معتمد حسب meta":"غير معتمد / غير محدد")+metric("عينات مصنفة",labeled.length)+metric("عتبة الاحتمال",state.meta.prob_min??"تلقائية/غير محفوظة")+metric("آخر دورة",cycle);
+ $("metaTable").innerHTML=table(Object.entries(state.meta).map(([key,value])=>({key,value:typeof value==="string"?value:JSON.stringify(value)})),[["المفتاح","key"],["القيمة","value"]]);
+ const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
+ $("aiFiles").innerHTML=table(modelNames.map(name=>({file:name,status:state.files.some(f=>f.path===name)?"موجود في manifest":(state.contents[name]!==undefined?"تم تحميله":"غير موجود في manifest"),detail:name==="paper.db"?"SQLite: meta + signals":name==="train.npz"?"بيانات تدريب ثنائية؛ لا تعرض كنص":name==="model.pt"||name==="gbm.pkl"?"ملف نموذج ثنائي":"ملف بيانات"})),[["الملف","file"],["الحالة","status"],["الوصف","detail"]]);
+ $("ranking").innerHTML=table(state.ranking,[["العملة",r=>r.inst||r.symbol||r["Unnamed: 0"]||r.coin||"—"],["الترتيب",r=>r.rank??r.Rank??"—"],["الدرجة",r=>r.score??r.Score??"—"],["احتمال AI",r=>r.prob??r.probability??"—"],["الحجم",r=>r.vol??r.vol24??"—"],["السعر",r=>r.last??r.price??"—"]]);
+ const evolution=state.contents["strategy_evolution.json"];$("evolution").textContent=evolution===undefined?"لا يوجد ملف strategy_evolution.json ضمن الملفات التي تم تحميلها.":(typeof evolution==="string"?evolution:JSON.stringify(evolution,null,2)).slice(0,30000);
+ $("files").innerHTML=table(state.files.map(f=>({path:f.path||f.name||"—",size:f.size??"—",chunks:(f.chunks||[]).length,status:state.contents[f.path]!==undefined?"تم تحميل المحتوى":"بيانات ثنائية/تعذر فكها"})),[["المسار","path"],["الحجم بالبايت","size"],["الأجزاء","chunks"],["الحالة","status"]]);
+ $("errors").textContent=state.errors.length?state.errors.join("\n"):"لا توجد أخطاء تحميل مسجلة.";
+ $("schema").innerHTML=table(state.schema,[["الجدول","table"],["العمود","name"],["النوع","type"],["المفتاح","pk"]]);
+ const select=$("rawSelect"),old=select.value;select.innerHTML=Object.keys(state.contents).map(k=>'<option value="'+esc(k)+'">'+esc(k)+'</option>').join("");if(Object.keys(state.contents).includes(old))select.value=old;renderRaw();
+}
+function renderRaw(){const key=$("rawSelect").value;if(!key){$("rawData").textContent="لا توجد ملفات نصية قابلة للعرض.";return}let val=state.contents[key];$("rawData").textContent=(typeof val==="string"?val:JSON.stringify(val,null,2)).slice(0,50000)}
+async function fetchApi(path,owner,repo,branch,headers){
+ const url="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/"+path.split("/").map(encodeURIComponent).join("/")+"?ref="+encodeURIComponent(branch);
+ const r=await fetch(url,{headers});if(!r.ok)throw new Error(path+" — HTTP "+r.status);
+ return await r.json();
+}
+function decodeContent(j){if(!j.content)return "";const bin=atob(j.content.replace(/\s/g,""));const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));return new TextDecoder().decode(bytes)}
+async function loadFileBytes(path,parts,owner,repo,branch,headers){
+ const arrays=[];
+ for(const part of (parts||[])){const j=await fetchApi("zied_data_store/"+part,owner,repo,branch,headers);const bin=atob((j.content||"").replace(/\s/g,""));arrays.push(Uint8Array.from(bin,c=>c.charCodeAt(0)))}
+ const total=arrays.reduce((a,b)=>a+b.length,0),out=new Uint8Array(total);let at=0;for(const a of arrays){out.set(a,at);at+=a.length}return out;
 }
 async function connect(){
- const errorBox=$("connectionError");errorBox.style.display="none";errorBox.textContent="";
  const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data",token=$("token").value.trim();
- if(!owner||!repo)return alert("أدخل مالك المستودع واسم المستودع");
- $("status").textContent="جار الاتصال بفرع البيانات…";$("dot").style.background="#e8bb54";d={};raw={};dbMeta={};
- const errors=[],headers={Accept:"application/vnd.github+json"};if(token)headers.Authorization="Bearer "+token;
- const apiBase="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/";
- const rawBase="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/";
- async function getJson(path){const r=await fetch(apiBase+path.split("/").map(encodeURIComponent).join("/")+"?ref="+encodeURIComponent(branch),{headers});if(!r.ok)throw Error(path+": HTTP "+r.status);const j=await r.json();const bin=atob((j.content||"").replace(/\n/g,""));const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));return JSON.parse(new TextDecoder().decode(bytes))}
- try {
-   const manifest=await getJson("zied_data_store/manifest.json");
-   const dbInfo=manifest.files.find(x=>x.path==="paper.db");
-   if(!dbInfo)throw Error("paper.db غير موجود في manifest");
-   const parts=[];
-   for(const part of dbInfo.chunks){
-     const url=rawBase+"zied_data_store/"+part;
-     const response=await fetch(url);if(!response.ok)throw Error("تعذر تحميل جزء قاعدة البيانات: "+part);
-     parts.push(new Uint8Array(await response.arrayBuffer()));
-   }
-   const total=parts.reduce((n,p)=>n+p.length,0),bytes=new Uint8Array(total);let offset=0;
-   for(const p of parts){bytes.set(p,offset);offset+=p.length}
-   if(typeof initSqlJs!=="function")throw Error("تعذر تحميل محرك قراءة SQLite؛ تحقق من الاتصال بالإنترنت ثم أعد المحاولة");
-   let SQL;try{SQL=await initSqlJs({locateFile:f=>"https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/"+f})}catch(first){SQL=await initSqlJs({locateFile:f=>"https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/"+f})}
-   const db=new SQL.Database(bytes);
-   const query=(sql)=>{try{const result=db.exec(sql);if(!result.length)return [];const {columns,values}=result[0];return values.map(row=>Object.fromEntries(columns.map((c,i)=>[c,row[i]])))}catch(e){return []}};
-   const metaRows=query("SELECT k,v FROM meta"),meta=Object.fromEntries(metaRows.map(x=>[x.k,x.v]));dbMeta=meta;
-   const open=query("SELECT * FROM trades WHERE status='OPEN' ORDER BY open_ts DESC");
-   const closed=query("SELECT * FROM trades WHERE status='CLOSED' ORDER BY close_ts DESC");
-   const pending=query("SELECT * FROM pending_orders WHERE status='PENDING' ORDER BY created_ts DESC");
-   const signals=query("SELECT * FROM signals ORDER BY ts DESC LIMIT 200");
-   const experience=query("SELECT * FROM experience ORDER BY ts DESC LIMIT 500");
-   const sum=(arr,key)=>arr.reduce((a,x)=>a+(Number(x[key])||0),0);
-   const cash=Number(meta.cash||0),reserved=sum(pending,"reserved_usdt");
-   const equity=cash+reserved+sum(open,"usdt_in");
-   d["portfolio.json"]={cash,equity,initialCapital:Number(meta.start_balance||meta.initial_capital||1000),openPositions:open.map(t=>({instId:t.inst,entryPrice:t.entry,currentPrice:t.entry,usdt:t.usdt_in,sl:t.sl,tp:t.tp,status:t.status,qty:t.qty,prob:t.prob,rank:t.rank})),pendingOrders:pending,closedPositions:closed};
-   d["signal_history.json"]={signals:signals.map(s=>({timestamp:s.ts,instId:s.inst,score:s.prob,probability:s.prob,rank:s.rank,price:s.price,labeled:s.labeled,outcome:s.label,return:s.ret}))};
-   const stats={};for(const t of closed){const k=t.reason||"CLOSED";if(!stats[k])stats[k]={name:k,trades:0,wins:0,losses:0,pnl:0};stats[k].trades++;stats[k].pnl+=Number(t.pnl)||0;if((Number(t.pnl)||0)>0)stats[k].wins++;else stats[k].losses++}
-   d["strategy_stats.json"]=Object.values(stats).map(s=>({...s,win_rate:s.trades?100*s.wins/s.trades:0}));
-   d["backtest_results.json"]={results:[],note:"لا يوجد تقرير backtest.json ضمن ملفات state-data المحفوظة"};
-   d["ml_model_memory.json"]={approved:meta.model_approved==="1"||meta.model_approved==="true",labelled_samples:experience.length,auc:meta.auc||meta.validation_auc||null,threshold:meta.prob_min||null};
-   d["analysis_memory.json"]={meta};
-   d["top_gainer_learning.json"]={items:experience};
-   d["candle_strategy_discovery.json"]={patterns:[]};
-   d["entry_method_memory.json"]={items:pending};
-   raw["paper.db"]="loaded";raw["ranking.csv"]="";raw["strategy_evolution.json"]="";raw["train.npz"]="stored (not rendered)";
-   try{const csv=await fetch(rawBase+"zied_data_store/parts/00000001.part");if(csv.ok)raw["ranking.csv"]=await csv.text()}catch(e){}
-   try{const evolution=await fetch(rawBase+"zied_data_store/parts/00000002.part");if(evolution.ok){const txt=await evolution.text();raw["strategy_evolution.json"]=txt;d["candle_strategy_discovery.json"]=JSON.parse(txt)}}catch(e){}
-   db.close();
-   $("status").textContent="اتصال ناجح — قاعدة البيانات محمّلة";$("dot").style.background="#4cdaa4";
- } catch(e){errors.push(e.message||String(e));$("status").textContent="تعذر تحميل بيانات state-data";$("dot").style.background="#ff788b";errorBox.style.display="block";errorBox.textContent="خطأ الاتصال: "+errors.join("\n")+"\nتحقق من اتصال الإنترنت وصلاحية قراءة المستودع."}
- $("errors").textContent=errors.join("\n");
+ if(!owner||!repo){alert("أدخل مالك المستودع واسم المستودع");return}
+ $("error").style.display="none";$("error").textContent="";$("status").textContent="جار تحميل manifest والبيانات…";$("dot").style.background="var(--gold)";
+ state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],ranking:[],errors:[],schema:[]};
+ const headers={Accept:"application/vnd.github+json"};if(token)headers.Authorization="Bearer "+token;
+ try{
+  const manifest=await fetchApi("zied_data_store/manifest.json",owner,repo,branch,headers);state.manifest=manifest;state.files=Array.isArray(manifest.files)?manifest.files:[];
+  for(const f of state.files){
+   const path=f.path||f.name;if(!path||!Array.isArray(f.chunks))continue;
+   try{
+    const bytes=await loadFileBytes(path,f.chunks,owner,repo,branch,headers);
+    if(path==="paper.db"){
+     let SQL;try{SQL=await initSqlJs({locateFile:name=>"https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/"+name})}catch(e){SQL=await initSqlJs({locateFile:name=>"https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/"+name})}
+     state.db=new SQL.Database(bytes);
+     state.schema=dbQuery("SELECT name AS table_name, name AS table FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+     const tableNames=dbQuery("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").map(x=>x.name);
+     state.schema=[];
+     for(const t of tableNames){for(const col of dbQuery("PRAGMA table_info('"+String(t).replace(/'/g,"''")+"')"))state.schema.push({table:t,name:col.name,type:col.type,pk:col.pk})}
+     state.meta=Object.fromEntries(dbQuery("SELECT k,v FROM meta").map(x=>[x.k,x.v]));
+     state.signals=dbQuery("SELECT id,ts,inst,price,atr,prob,rank,labeled,label,ret,hold,feature_ts FROM signals ORDER BY ts DESC LIMIT 500");
+     state.contents[path]="تم تحميل SQLite؛ الجداول: "+tableNames.join(", ");
+    }else if(path.endsWith(".json")){
+     const text=new TextDecoder().decode(bytes);try{state.contents[path]=JSON.parse(text)}catch(e){state.contents[path]=text;state.errors.push(path+": JSON غير صالح")}
+    }else if(path.endsWith(".csv")){
+     const text=new TextDecoder().decode(bytes);state.contents[path]=text;if(path==="ranking.csv")state.ranking=parseCSV(text).map(r=>{const first=Object.keys(r)[0];if(first&&(!r.inst)&&r[first]&&r[first].includes("-USDT"))r.inst=r[first];return r});
+    }else if(path.endsWith(".npz")||path.endsWith(".pt")||path.endsWith(".pkl"))state.contents[path]="ملف ثنائي، الحجم "+bytes.length+" بايت — محفوظ ولم يُعرض كنص";
+    else state.contents[path]=new TextDecoder().decode(bytes);
+   }catch(e){state.errors.push(path+": "+(e.message||String(e)))}
+  }
+  if(!state.files.length)throw new Error("manifest موجود لكنه لا يحتوي قائمة files.");
+  $("status").textContent="تم الاتصال — "+state.files.length+" ملفات مسجلة";$("dot").style.background="var(--green)";
+ }catch(e){state.errors.push(e.message||String(e));$("status").textContent="فشل تحميل البيانات";$("dot").style.background="var(--red)";$("error").style.display="block";$("error").textContent="تعذر قراءة بيانات البرنامج: "+state.errors.join("\n")+"\nتأكد من الفرع ووجود zied_data_store/manifest.json. للمستودع الخاص استخدم رمزًا بصلاحية Contents: Read فقط."}
  render();
 }
-$("connect").onclick=connect;$("clear").onclick=()=>{$("token").value="";$("token").focus()};document.querySelector(".tabs").onclick=e=>{let b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(s=>s.classList.toggle("hide",s.id!=="page-"+b.dataset.tab))};render();
-window.addEventListener("load",()=>{setTimeout(connect,500)});
+$("connect").addEventListener("click",connect);$("clear").addEventListener("click",()=>{$("token").value="";$("token").focus()});$("rawSelect").addEventListener("change",renderRaw);
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+b.dataset.tab))});
+render();
+window.addEventListener("load",()=>setTimeout(connect,300));
 </script></body></html>
