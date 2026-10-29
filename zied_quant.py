@@ -1087,6 +1087,47 @@ def label_signals(paper):
              paper.count("signals"), total_unlabelled, len(rows), n, no_candles, insufficient, errors)
     return n
 
+def monitor_tracked_signals(paper):
+    """Resolve paper signals from later closed 1H candles; stop-loss wins candle ties."""
+    opened = paper.open_tracked_signals()
+    if not opened:
+        return 0
+    now, closed = time.time(), 0
+    for s in opened:
+        try:
+            d = get_candles(s["inst"], "1H", min(80, CFG["BARRIER_H"] + 5))
+            path = future_candles_for_signal(d, s["opened_ts"])
+            if path is None or path.empty:
+                continue
+            elapsed = 0
+            for _, candle in path.iterrows():
+                if float(candle["ts"]) / 1000 + CFG["TF_SEC"]["1H"] > now:
+                    continue
+                elapsed += 1
+                low, high, close = float(candle["l"]), float(candle["h"]), float(candle["c"])
+                reason = outcome = None
+                exit_price = close
+                if low <= s["sl"]:
+                    reason, outcome, exit_price = "SL", "SL", float(s["sl"])
+                elif high >= s["tp"]:
+                    reason, outcome, exit_price = "TP", "TP", float(s["tp"])
+                elif elapsed >= CFG["BARRIER_H"]:
+                    reason, outcome = "TIME", ("TP" if close > s["entry"] else "SL")
+                if reason:
+                    ret = exit_price / float(s["entry"]) - 1.0 - CFG["BT_COST"]
+                    if paper.close_tracked_signal(s["id"], now, exit_price, outcome, ret, elapsed, reason):
+                        closed += 1
+                        emoji = "✅" if outcome == "TP" else ("⏳" if reason == "TIME" else "🛑")
+                        tg(f"{emoji} إغلاق إشارة ورقية: {s['inst']}\n"
+                           f"السبب: {reason} | الدخول: {s['entry']:.8g} | الخروج: {exit_price:.8g}\n"
+                           f"العائد النظري بعد التكاليف: {ret*100:+.2f}% | المدة: {elapsed} ساعة")
+                    break
+        except Exception as exc:
+            log.warning("paper signal monitor failed for %s: %s", s["inst"], exc)
+    log.info("paper signal monitor: open=%d closed_now=%d", paper.tracked_count("status='OPEN'"), closed)
+    return closed
+
+
 # =====================================================================
 # RANKING (best -> worst)
 # =====================================================================
@@ -1357,10 +1398,9 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         R.loc[top, "prob"] = np.linspace(0.78, 0.60, len(top)) if top else []
     R.to_csv(os.path.join(CFG["DIR"], "ranking.csv"))
     log.info("top 5:\n%s", R.head(5))
-    # Telegram is intentionally quiet between paper-signal open/close events.
     if not trade:
         return R
-    # Log candidate signals for future-candle labels; never create or track positions.
+    monitor_tracked_signals(paper)
     if paper._get("paused") == "1":
         return R
     paper.log_signals([dict(inst=i, price=float(uni.loc[i, "last"]), atr=float(X.loc[i, "1H_atr_pct"]),
@@ -1372,7 +1412,29 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                   ai_prediction_error or "non-finite values")
         tg("⚠️ Zied Quant: خرجت احتمالات AI بقيم غير صالحة (NaN/Inf). تم منع جميع أوامر الدخول في هذه الدورة.")
         return R
-    # Signal-only mode: outcomes are labelled later from future 1H candles; no positions are opened.
+    if ai_prediction_error is not None:
+        return R
+    prob_min = CFG["PROB_MIN"]
+    if prob_min is None:
+        prob_min = float(CFG["EXPLORATION_PROB_MIN"]) if not brain.ready else 0.55
+    eligible = R[(R["rank"] <= 50) & R["prob"].notna() & (R["prob"] >= float(prob_min))]
+    eligible = eligible.sort_values(["prob", "score"], ascending=False).head(10)
+    created = []
+    for inst, rr in eligible.iterrows():
+        sig = paper.create_tracked_signal(dict(
+            inst=inst, price=float(uni.loc[inst, "last"]), atr=float(X.loc[inst, "1H_atr_pct"]),
+            feats=X.loc[inst, FEATURE_COLS].values, prob=float(rr["prob"]), rank=int(rr["rank"]),
+            feature_ts=feature_ts[inst]))
+        if sig:
+            created.append(sig)
+            tg(f"🟢 إشارة تداول ورقي #{sig['id']}\n"
+               f"العملة: {inst} | الترتيب: {sig['rank']}/50\n"
+               f"احتمال النموذج: {float(sig['prob'])*100:.1f}%\n"
+               f"الدخول الافتراضي: {sig['entry']:.8g}\n"
+               f"وقف الخسارة: {sig['sl']:.8g} | الهدف: {sig['tp']:.8g}\n"
+               f"متابعة تلقائية حتى TP/SL أو انتهاء {CFG['BARRIER_H']} ساعة. لا توجد أوامر حقيقية.")
+    log.info("paper signal creation: top50=%d eligible=%d created=%d threshold=%.3f",
+             min(50, len(R)), len(eligible), len(created), float(prob_min))
     return R
 
 def bootstrap_training_due(paper, now=None):
@@ -1426,6 +1488,7 @@ def once():
         raise RuntimeError("OKX returned no tradable pairs (blocked? try OKX_BASE=https://aws.okx.com)")
     poll_commands(paper, brain)
     # Label matured feature samples for AI training independently of signal-trade closure.
+    monitor_tracked_signals(paper)
     label_signals(paper)
     if not brain.ready and bootstrap_training_due(paper):
         first_attempt = not paper._get("bootstrap_train_attempt_ts")
@@ -1481,6 +1544,7 @@ def run():
         while True:
             t0 = time.time()
             try:
+                monitor_tracked_signals(paper)
                 label_signals(paper)
                 if not brain.ready and bootstrap_training_due(paper):
                     first_attempt = not paper._get("bootstrap_train_attempt_ts")
