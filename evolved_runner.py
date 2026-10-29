@@ -8,6 +8,14 @@ import strategy_evolver
 
 # Expand the schema/model before installing guarded train/tune/holdout promotion.
 deep_learning_evolution.install(zied_quant)
+# EMA-200 on the daily timeframe needs at least 200 daily candles in bootstrap data.
+_original_hist_depth = zied_quant.hist_depth
+def _expanded_hist_depth():
+    depth = _original_hist_depth()
+    depth["1D"] = max(int(depth["1D"]), 320)
+    return depth
+zied_quant.hist_depth = _expanded_hist_depth
+
 evolution_engine.install(zied_quant)
 
 # Research-only strategy discovery is throttled to once per 23 hours by persistent state.
