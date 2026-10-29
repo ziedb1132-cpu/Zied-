@@ -893,7 +893,8 @@ CREATE TABLE IF NOT EXISTS signals(
 CREATE TABLE IF NOT EXISTS tracked_signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT NOT NULL, open_ts REAL NOT NULL,
   entry REAL NOT NULL, sl REAL NOT NULL, tp REAL NOT NULL, atr REAL NOT NULL,
-  prob REAL, rank INTEGER, feats TEXT, status TEXT NOT NULL DEFAULT 'OPEN',
+  prob REAL, rank INTEGER, feats TEXT, status TEXT NOT NULL DEFAULT 'WAITING',
+  entry_low REAL, entry_high REAL, activated_ts REAL,
   close_ts REAL, exit REAL, ret_pct REAL, reason TEXT);
 CREATE TABLE IF NOT EXISTS pending_orders(
   id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, created_ts REAL, expires_ts REAL,
@@ -940,7 +941,7 @@ class Paper:
     def _migrate(self):
         for table, cols in {"trades": {"spread": "REAL", "vol24": "REAL", "feature_ts": "REAL"},
                             "experience": {"ret": "REAL"}, "signals": {"feature_ts": "REAL"},
-                            "tracked_signals": {"feats": "TEXT"}}.items():
+                            "tracked_signals": {"feats": "TEXT", "entry_low": "REAL", "entry_high": "REAL", "activated_ts": "REAL"}}.items():
             have = {r["name"] for r in self.db.execute(f"PRAGMA table_info({table})")}
             for c, t in cols.items():
                 if c not in have:
@@ -1209,17 +1210,19 @@ class Paper:
 
     @locked
     def open_tracked_signal(self, inst, entry, atr_pct, prob, rank, feats=None):
-        """Record one active signal per coin, including its decision-time features."""
+        """Create a waiting signal with an ATR-based entry zone; fill only after price reaches it."""
         if not np.isfinite(entry) or entry <= 0:
             return None
-        # Atomic duplicate guard: an already-open signal blocks another for this coin.
         existing = self.db.execute(
-            "SELECT id FROM tracked_signals WHERE inst=? AND status='OPEN' LIMIT 1", (inst,)).fetchone()
+            "SELECT id FROM tracked_signals WHERE inst=? AND status IN ('WAITING','OPEN') LIMIT 1", (inst,)).fetchone()
         if existing:
             return None
         a = float(np.clip(atr_pct, 0.004, 0.06))
-        sl = entry * (1 - CFG["SL_ATR"] * a)
-        tp = entry * (1 + CFG["TP_ATR"] * a)
+        # Entry zone is 25% of ATR on either side of the signal price.
+        zone_half = float(entry) * a * 0.25
+        entry_low, entry_high = float(entry) - zone_half, float(entry) + zone_half
+        sl = float(entry) * (1 - CFG["SL_ATR"] * a)
+        tp = float(entry) * (1 + CFG["TP_ATR"] * a)
         feature_json = None
         if feats is not None:
             fv = np.asarray(feats, dtype=np.float32).reshape(-1)
@@ -1227,12 +1230,38 @@ class Paper:
                 feature_json = json.dumps([float(x) for x in fv])
         now = time.time()
         cur = self.db.execute(
-            "INSERT INTO tracked_signals(inst,open_ts,entry,sl,tp,atr,prob,rank,feats) VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO tracked_signals(inst,open_ts,entry,sl,tp,atr,prob,rank,feats,status,entry_low,entry_high) "
+            "VALUES(?,?,?,?,?,?,?,?,?,'WAITING',?,?)",
             (inst, now, float(entry), sl, tp, a,
-             None if prob is None or not np.isfinite(prob) else float(prob), int(rank), feature_json))
+             None if prob is None or not np.isfinite(prob) else float(prob), int(rank), feature_json,
+             entry_low, entry_high))
         self.db.commit()
-        return dict(id=cur.lastrowid, inst=inst, entry=float(entry), sl=sl, tp=tp,
-                    atr=a, prob=prob, rank=int(rank), open_ts=now)
+        return dict(id=cur.lastrowid, inst=inst, entry=float(entry), entry_low=entry_low,
+                    entry_high=entry_high, sl=sl, tp=tp, atr=a, prob=prob, rank=int(rank),
+                    open_ts=now, status="WAITING")
+
+    @locked
+    def waiting_tracked_signals(self):
+        return [dict(r) for r in self.db.execute(
+            "SELECT * FROM tracked_signals WHERE status='WAITING' ORDER BY open_ts,id")]
+
+    @locked
+    def activate_tracked_signal(self, sid, fill_price):
+        row = self.db.execute("SELECT * FROM tracked_signals WHERE id=? AND status='WAITING'", (sid,)).fetchone()
+        if row is None or not np.isfinite(fill_price) or fill_price <= 0:
+            return None
+        now = time.time()
+        # Recalculate TP/SL from the actual simulated fill price.
+        a = float(row["atr"])
+        sl = float(fill_price) * (1 - CFG["SL_ATR"] * a)
+        tp = float(fill_price) * (1 + CFG["TP_ATR"] * a)
+        self.db.execute(
+            "UPDATE tracked_signals SET status='OPEN',entry=?,sl=?,tp=?,open_ts=?,activated_ts=? WHERE id=? AND status='WAITING'",
+            (float(fill_price), sl, tp, now, now, sid))
+        self.db.commit()
+        return dict(id=int(row["id"]), inst=row["inst"], entry=float(fill_price),
+                    entry_low=float(row["entry_low"]), entry_high=float(row["entry_high"]),
+                    sl=sl, tp=tp, atr=a, prob=row["prob"], rank=row["rank"], open_ts=now)
 
     @locked
     def active_tracked_signals(self):
@@ -1272,7 +1301,7 @@ class Paper:
     def tracked_signal_stats(self):
         closed = [dict(r) for r in self.db.execute(
             "SELECT ret_pct FROM tracked_signals WHERE status='CLOSED' AND ret_pct IS NOT NULL")]
-        opened = self.db.execute("SELECT COUNT(*) n FROM tracked_signals WHERE status='OPEN'").fetchone()["n"]
+        opened = self.db.execute("SELECT COUNT(*) n FROM tracked_signals WHERE status IN ('OPEN','WAITING')").fetchone()["n"]
         n = len(closed)
         wins = sum(1 for r in closed if float(r["ret_pct"]) > 0)
         avg = sum(float(r["ret_pct"]) for r in closed) / n if n else 0.0
@@ -1386,25 +1415,54 @@ def label_signals(paper):
     return n
 
 def update_tracked_signals(paper, prices=None):
-    """Close tracked paper signals on SL, TP, or the 24-hour maximum holding time."""
-    active = paper.active_tracked_signals()
-    if not active:
-        return 0
+    """Fill waiting signals when price enters the zone, then monitor open trades with 5m candles and live prices."""
     prices = prices if prices is not None else get_prices()
     closed = 0
     now = time.time()
-    for s in active:
+
+    # A waiting signal is not a trade yet. It becomes OPEN only when live price enters its entry zone.
+    for s in paper.waiting_tracked_signals():
         price = prices.get(s["inst"])
         if price is None or not np.isfinite(price) or price <= 0:
             continue
-        reason = None
-        exit_price = float(price)
-        if float(price) <= float(s["sl"]):
-            reason, exit_price = "وقف الخسارة", float(s["sl"])
-        elif float(price) >= float(s["tp"]):
-            reason, exit_price = "جني الأرباح", float(s["tp"])
-        elif now - float(s["open_ts"]) >= CFG["MAX_HOLD_H"] * 3600:
-            reason = "انتهاء مدة الإشارة"
+        if float(s["entry_low"]) <= float(price) <= float(s["entry_high"]):
+            filled = paper.activate_tracked_signal(s["id"], float(price))
+            if filled:
+                tg(f"🟢 تفعيل إشارة ورقية #{filled['id']} — {filled['inst']}\n"
+                   f"وصل السعر إلى منطقة الدخول\n"
+                   f"منطقة الدخول: {filled['entry_low']:.8g} – {filled['entry_high']:.8g}\n"
+                   f"سعر الدخول الفعلي: {filled['entry']:.8g}\n"
+                   f"وقف الخسارة: {filled['sl']:.8g} | الهدف: {filled['tp']:.8g}")
+
+    for s in paper.active_tracked_signals():
+        price = prices.get(s["inst"])
+        reason, exit_price = None, None
+        # Closed 5m candles help catch TP/SL touches between hourly GitHub Actions runs.
+        try:
+            candles = get_candles(s["inst"], "5m", 300)
+        except Exception as exc:
+            candles = None
+            log.warning("5m monitoring failed for %s: %s", s["inst"], exc)
+        if candles is not None and not candles.empty:
+            since_ms = int(float(s.get("activated_ts") or s["open_ts"]) * 1000)
+            bars = candles[candles["ts"] >= since_ms]
+            for _, bar in bars.iterrows():
+                hit_sl = float(bar["l"]) <= float(s["sl"])
+                hit_tp = float(bar["h"]) >= float(s["tp"])
+                if hit_sl or hit_tp:
+                    # Conservative if both levels occur in one candle: assume SL first.
+                    if hit_sl:
+                        reason, exit_price = "وقف الخسارة (شمعة 5 دقائق)", float(s["sl"])
+                    else:
+                        reason, exit_price = "جني الأرباح (شمعة 5 دقائق)", float(s["tp"])
+                    break
+        if reason is None and price is not None and np.isfinite(price) and price > 0:
+            if float(price) <= float(s["sl"]):
+                reason, exit_price = "وقف الخسارة", float(s["sl"])
+            elif float(price) >= float(s["tp"]):
+                reason, exit_price = "جني الأرباح", float(s["tp"])
+        if reason is None and now - float(s["open_ts"]) >= CFG["MAX_HOLD_H"] * 3600:
+            reason, exit_price = "انتهاء مدة الإشارة", float(price) if price and price > 0 else float(s["entry"])
         if reason:
             result = paper.close_tracked_signal(s["id"], exit_price, reason)
             if result:
@@ -1786,12 +1844,12 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
             inst, entry, float(X.loc[inst, "1H_atr_pct"]), float(r["prob"]), int(r["rank"]),
             feats=X.loc[inst, FEATURE_COLS].values)
         if tracked:
-            tg(f"🟢 فتح إشارة ورقية #{tracked['id']} — {inst}\n"
+            tg(f"🟡 إشارة بانتظار الدخول #{tracked['id']} — {inst}\n"
                f"احتمال النموذج: {float(r['prob'])*100:.1f}% | الترتيب: #{int(r['rank'])}\n"
-               f"سعر الدخول: {entry:.8g}\n"
-               f"وقف الخسارة: {tracked['sl']:.8g} | الهدف: {tracked['tp']:.8g}\n"
-               f"الهدف المتوقع: {((tracked['tp']/entry)-1)*100-CFG['BT_COST']*100:+.2f}% | "
-               f"مخاطرة SL: {((tracked['sl']/entry)-1)*100-CFG['BT_COST']*100:+.2f}%")
+               f"منطقة الدخول: {tracked['entry_low']:.8g} – {tracked['entry_high']:.8g}\n"
+               f"سعر الرصد: {entry:.8g}\n"
+               f"عند التفعيل سيحدد الوقف والهدف انطلاقًا من سعر الدخول الفعلي.\n"
+               f"لن تُحسب صفقة ولن يبدأ TP/SL قبل لمس المنطقة.")
     return R
 
 def bootstrap_training_due(paper, now=None):
