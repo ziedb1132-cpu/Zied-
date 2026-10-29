@@ -136,11 +136,11 @@ async function connect(){
   }
   if(!state.files.length)throw new Error("manifest موجود لكنه لا يحتوي قائمة files.");
   $("status").textContent="تم الاتصال — "+state.files.length+" ملفات مسجلة";$("dot").style.background="var(--green)";
- }catch(e){state.errors.push(e.message||String(e));$("status").textContent="فشل تحميل البيانات";$("dot").style.background="var(--red)";$("error").style.display="block";$("error").textContent="تعذر قراءة بيانات البرنامج: "+state.errors.join("\n")+"\nتأكد من الفرع ووجود zied_data_store/manifest.json. للمستودع الخاص استخدم رمزًا بصلاحية Contents: Read فقط."}
+ }catch(e){state.errors.push(e.message||String(e));$("status").textContent="فشل تحميل البيانات";$("dot").style.background="var(--red)";$("error").style.display="block";$("error").textContent="تعذر قراءة بيانات البرنامج: "+state.errors.join("\n")+"\nلم يتم تحميل البيانات. إذا كان المستودع خاصًا، أدخل رمز Fine-grained من GitHub لديه Repository access للمستودع Zied- وصلاحية Contents: Read-only، ثم اضغط اتصال / تحديث. لا تضع الرمز في رابط الصفحة ولا تشاركه مع أحد."}
  render();
 }
 $("connect").addEventListener("click",connect);$("clear").addEventListener("click",()=>{$("token").value="";$("token").focus()});$("rawSelect").addEventListener("change",renderRaw);
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+b.dataset.tab))});
 render();
-window.addEventListener("load",()=>setTimeout(connect,300));
+window.addEventListener("load",()=>setTimeout(()=>{if($("token").value.trim())connect();else{$("status").textContent="أدخل رمز GitHub للقراءة ثم اضغط اتصال / تحديث";$("dot").style.background="var(--gold)";}},300));
 </script></body></html>
