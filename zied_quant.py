@@ -936,10 +936,10 @@ class Paper:
         now = time.time()
         self.db.executemany(
             "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts) VALUES(?,?,?,?,?,?,?,?)",
-            [(now, r["inst"], r["price"], r["atr"],
+            [(float(r.get("ts", now)), r["inst"], r["price"], r["atr"],
               json.dumps([float(x) for x in r["feats"]]),
               None if r["prob"] is None or np.isnan(r["prob"]) else float(r["prob"]),
-              r["rank"], float(r.get("feature_ts", now))) for r in rows])
+              r["rank"], float(r.get("feature_ts", r.get("ts", now)))) for r in rows])
         self.db.commit()
 
     @locked
