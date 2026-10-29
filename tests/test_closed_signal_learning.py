@@ -56,6 +56,19 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertEqual(status["losses"], 500)
         self.assertTrue(status["ready"])
 
+    def test_training_dataset_keeps_all_outcomes_above_threshold(self):
+        # The 500/500 rule is a minimum gate, not a per-class cap.
+        for _ in range(501):
+            self.add_signal(0.01)
+        for _ in range(503):
+            self.add_signal(-0.01)
+        status = zq.learning_gate_status(self.paper)
+        self.assertTrue(status["ready"])
+        ds = self.paper.closed_signal_dataset()
+        self.assertEqual(len(ds["y"]), 1004)
+        self.assertEqual(int((ds["y"] == 1).sum()), 501)
+        self.assertEqual(int((ds["y"] == 0).sum()), 503)
+
     def test_training_dataset_excludes_open_signals(self):
         self.add_signal(0.01, closed=True)
         self.add_signal(-0.01, closed=False)
