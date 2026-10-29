@@ -41,6 +41,17 @@ class ClosedSignalLearningTests(unittest.TestCase):
              ret, 1.0, "TP" if ret > 0 else "SL"))
         self.paper.db.commit()
 
+    def test_timeout_exit_is_classified_by_net_return_after_costs(self):
+        # A small gross gain below the assumed costs is a net loss.
+        ret, outcome = zq.classify_exit_return(100.0, 100.2)
+        self.assertLess(ret, 0.0)
+        self.assertEqual(outcome, "LOSS")
+
+        # A larger close is a net win after costs.
+        ret, outcome = zq.classify_exit_return(100.0, 101.0)
+        self.assertGreater(ret, 0.0)
+        self.assertEqual(outcome, "WIN")
+
     def test_gate_requires_500_closed_wins_and_500_closed_losses(self):
         for _ in range(500):
             self.add_signal(0.01)
