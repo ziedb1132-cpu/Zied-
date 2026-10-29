@@ -1501,17 +1501,25 @@ def stats_msg(paper, prices=None):
     return signal_performance_msg(paper)
 
 def positions_msg(paper):
-    ts = paper.open_trades()
-    if not ts:
-        return "لا توجد صفقات مفتوحة."
-    px = get_prices(); lines = []
-    for t in ts:
-        p = px.get(t["inst"], t["entry"])
-        lines.append(f"{t['inst']}: {(p / t['entry'] - 1) * 100:+.2f}% | SL {t['sl']:.6g} | TP {t['tp']:.6g}")
-    return "📌 الصفقات المفتوحة\n" + "\n".join(lines)
+    signals = paper.active_tracked_signals()
+    if not signals:
+        return "لا توجد إشارات ورقية مفتوحة."
+    prices = get_prices()
+    lines = []
+    for s in signals[:40]:
+        price = prices.get(s["inst"], s["entry"])
+        pct = (float(price) / float(s["entry"]) - 1.0) * 100.0 if price else 0.0
+        lines.append(f"#{s['id']} {s['inst']}: {pct:+.2f}% | "
+                     f"SL {((s['sl']/s['entry'])-1)*100:+.2f}% | "
+                     f"TP {((s['tp']/s['entry'])-1)*100:+.2f}%")
+    return "📌 الإشارات الورقية المفتوحة (نسب مئوية)\n" + "\n".join(lines)
 
 def portfolio_msg(paper):
-    """Full virtual-portfolio snapshot for Telegram; paper trading only."""
+    """Legacy command compatibility: report signal performance, never a virtual wallet."""
+    return signal_performance_msg(paper)
+
+# Old portfolio renderer retained below only for backward compatibility.
+def _legacy_portfolio_msg_unused(paper):
     prices = get_prices()
     s = paper.stats(prices)
     cash = paper.cash()
@@ -1563,7 +1571,7 @@ def handle_command(text, paper, brain):
     if cmd == "/positions":
         return positions_msg(paper)
     if cmd in ("/portfolio", "/محفظتي"):
-        return portfolio_msg(paper)
+        return signal_performance_msg(paper)
     if cmd == "/top":
         return top_msg()
     if cmd == "/pause":
@@ -1573,8 +1581,10 @@ def handle_command(text, paper, brain):
     if cmd == "/model":
         return "🧠 " + brain.describe()
     if cmd == "/signals":
-        return (f"سجل الإشارات: {paper.count('signals')} | موسومة: {paper.count('signals', 'labeled=1')} | "
-                f"صفقات مغلقة: {paper.count('experience')}")
+        s = paper.tracked_signal_stats()
+        return (f"📊 الإشارات: مفتوحة {s['open']} | مغلقة {s['closed']} | "
+                f"نجاح {s['winrate']:.1f}% | متوسط العائد {s['avg_pct']:+.2f}%\\n"
+                f"سجل التعلم: {paper.count('signals')} | موسومة {paper.count('signals', 'labeled=1')}")
     return ("الأوامر: /stats /positions /portfolio /top /model /signals /pause /resume")
 
 def poll_commands(paper, brain, timeout=0):
