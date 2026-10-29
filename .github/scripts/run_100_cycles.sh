@@ -3,7 +3,7 @@
 # to state-data after every successful cycle.
 set -euo pipefail
 
-CYCLES="${CYCLES_PER_WORKFLOW:-100}"
+CYCLES="${CYCLES_PER_WORKFLOW:-30}"
 if ! [[ "$CYCLES" =~ ^[0-9]+$ ]] || [ "$CYCLES" -lt 1 ]; then
   echo "CYCLES_PER_WORKFLOW must be a positive integer" >&2
   exit 2
