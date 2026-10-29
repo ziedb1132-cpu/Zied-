@@ -29,8 +29,8 @@ class SignalOnlyTrackingTests(unittest.TestCase):
         self.assertFalse(hasattr(self.paper, "cash"))
         self.assertFalse(hasattr(self.paper, "open_trades"))
         self.assertFalse(hasattr(self.paper, "pending_orders"))
-        self.assertFalse(hasattr(self.paper, "open_tracked_signal"))
-        self.assertFalse(hasattr(self.paper, "close_tracked_signal"))
+        self.assertTrue(hasattr(self.paper, "open_tracked_signals"))
+        self.assertTrue(hasattr(self.paper, "close_tracked_signal"))
 
     def test_mature_signal_records_net_return_and_learning_label(self):
         self.paper.log_signals([{
