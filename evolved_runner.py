@@ -7,6 +7,7 @@ import evolution_engine
 import strategy_evolver
 import candle_news_intelligence
 import ai_trade_controller
+import exit_evolution
 
 # Expand the schema/model before installing guarded train/tune/holdout promotion.
 deep_learning_evolution.install(zied_quant)
@@ -25,6 +26,9 @@ def _expanded_hist_depth():
 zied_quant.hist_depth = _expanded_hist_depth
 
 evolution_engine.install(zied_quant)
+# Learn TP/SL ATR multipliers from completed counterfactual 1H paths.
+# Existing signals are untouched; only newly created paper signals use promoted settings.
+exit_evolution.install(zied_quant)
 
 # Research-only strategy discovery is throttled to once per 23 hours by persistent state.
 _original_scan = zied_quant.scan
