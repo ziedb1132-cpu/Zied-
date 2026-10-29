@@ -61,14 +61,14 @@ CFG = dict(
     SL_ATR=1.5, TP_ATR=3.0,
     BT_COST=0.0035,                    # assumed round-trip cost (fees+slippage+spread) for labels/backtest
     # scanning / signals
-    TOP_AI=30, LOG_TOP=30,
+    TOP_AI=50, LOG_TOP=50,
     SCAN_EVERY_SEC=900, MONITOR_EVERY_SEC=30, RANK_MSG_EVERY=4,
     PROB_MIN=None,                     # None = auto threshold from validation
     EXPLORATION_PROB_MIN=0.65,          # rank-based paper exploration while no validated AI model exists
     # historical backtest constraints only; no live or virtual portfolio
     MAX_OPEN=5, POS_FRAC=0.15, RISK_PER_TRADE=0.005, MAX_PORTFOLIO_RISK=0.02,
     # self-learning
-    RETRAIN_SIGNALS=300,               # newly labelled logged signals
+    RETRAIN_SIGNALS=500,               # outcomes required between scheduled retraining checks
     DIR="zied_data",
 )
 os.makedirs(CFG["DIR"], exist_ok=True)
@@ -871,6 +871,13 @@ CREATE TABLE IF NOT EXISTS signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, price REAL, atr REAL, feats TEXT,
   prob REAL, rank INTEGER, labeled INTEGER DEFAULT 0, label INTEGER, ret REAL, hold REAL,
   feature_ts REAL);
+CREATE TABLE IF NOT EXISTS tracked_signals(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, signal_id INTEGER UNIQUE, inst TEXT NOT NULL,
+  opened_ts REAL NOT NULL, entry REAL NOT NULL, sl REAL NOT NULL, tp REAL NOT NULL,
+  atr_pct REAL NOT NULL, prob REAL, rank INTEGER, feats TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'OPEN', closed_ts REAL, exit_price REAL,
+  outcome TEXT, ret REAL, hold REAL, close_reason TEXT);
+CREATE INDEX IF NOT EXISTS idx_tracked_status ON tracked_signals(status, inst);
 """
 
 def locked(f):
@@ -906,8 +913,8 @@ class Paper:
         self.db = sqlite3.connect(CFG["DB"], check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript(SCHEMA)
-        # Delete legacy ledgers; learning must never use their closed outcomes.
-        for legacy_table in ("trades", "pending_orders", "experience", "tracked_signals"):
+        # Keep paper signal tracking durable; remove only obsolete wallet/order ledgers.
+        for legacy_table in ("trades", "pending_orders", "experience"):
             self.db.execute(f"DROP TABLE IF EXISTS {legacy_table}")
         signal_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(signals)")}
         if "feature_ts" not in signal_columns:
@@ -959,6 +966,53 @@ class Paper:
         return _rows_to_ds(self.db.execute(
             "SELECT COALESCE(feature_ts,ts) AS ts,inst,feats,label,ret,hold "
             "FROM signals WHERE labeled=1 ORDER BY feature_ts,ts").fetchall())
+
+    @locked
+    def create_tracked_signal(self, row):
+        now = float(row.get("ts", time.time()))
+        inst = str(row["inst"])
+        if self.db.execute("SELECT 1 FROM tracked_signals WHERE inst=? AND status='OPEN'", (inst,)).fetchone():
+            return None
+        if self.db.execute("SELECT 1 FROM tracked_signals WHERE inst=? AND opened_ts>=?",
+                           (inst, now - CFG["TF_SEC"]["1H"])).fetchone():
+            return None
+        entry = float(row["price"])
+        atr_pct = min(max(float(row["atr"]), 0.004), 0.06)
+        sl = entry * (1.0 - CFG["SL_ATR"] * atr_pct)
+        tp = entry * (1.0 + CFG["TP_ATR"] * atr_pct)
+        feats = json.dumps([float(x) for x in row["feats"]])
+        cur = self.db.execute(
+            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,feature_ts) VALUES(?,?,?,?,?,?,?,?,?)",
+            (now, inst, entry, atr_pct, feats, None if row.get("prob") is None else float(row["prob"]),
+             int(row["rank"]), 0, float(row.get("feature_ts", now))))
+        sid = int(cur.lastrowid)
+        self.db.execute(
+            "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (sid, inst, now, entry, sl, tp, atr_pct,
+             None if row.get("prob") is None else float(row["prob"]), int(row["rank"]), feats))
+        self.db.commit()
+        return dict(id=sid, inst=inst, entry=entry, sl=sl, tp=tp, prob=row.get("prob"), rank=int(row["rank"]))
+
+    @locked
+    def open_tracked_signals(self):
+        return [dict(r) for r in self.db.execute("SELECT * FROM tracked_signals WHERE status='OPEN' ORDER BY opened_ts")]
+
+    @locked
+    def close_tracked_signal(self, sid, closed_ts, exit_price, outcome, ret, hold, reason):
+        row = self.db.execute("SELECT signal_id FROM tracked_signals WHERE id=? AND status='OPEN'", (sid,)).fetchone()
+        if not row:
+            return False
+        self.db.execute(
+            "UPDATE tracked_signals SET status='CLOSED',closed_ts=?,exit_price=?,outcome=?,ret=?,hold=?,close_reason=? WHERE id=? AND status='OPEN'",
+            (float(closed_ts), float(exit_price), outcome, float(ret), float(hold), reason, sid))
+        self.db.execute("UPDATE signals SET labeled=1,label=?,ret=?,hold=? WHERE id=?",
+                        (1 if outcome == "TP" else 0, float(ret), float(hold), row["signal_id"]))
+        self.db.commit()
+        return True
+
+    @locked
+    def tracked_count(self, where="1=1"):
+        return int(self.db.execute(f"SELECT COUNT(*) c FROM tracked_signals WHERE {where}").fetchone()["c"])
 
 # =====================================================================
 # SIGNAL LABELLING# =====================================================================
