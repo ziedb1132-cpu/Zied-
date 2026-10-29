@@ -214,10 +214,10 @@ def _select(paper, atr_pct):
 def install(zq):
     if getattr(zq, "_exit_evolution_installed", False):
         return
-    _ensure_tables(zq.Paper()) if False else None  # schema is initialized lazily with the active Paper instance
     original_create = zq.Paper.create_tracked_signal
 
     def create_with_learned_exits(self, row):
+        _ensure_tables(self)
         signal = original_create(self, row)
         if signal is None:
             return None
