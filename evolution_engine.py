@@ -41,8 +41,8 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     ts = np.asarray(ts, dtype=np.float64)[order]
     ret = None if ret is None else np.asarray(ret, dtype=np.float64)[order]
     n = len(X)
-    if n < 1200:
-        raise ValueError(f"not enough samples for train/tune/holdout ({n}; need 1200)")
+    if n < 1000:
+        raise ValueError(f"not enough closed-signal samples for train/tune/holdout ({n}; need 1000)")
     block = max(int(n * 0.15), 200)
     embargo = zq.CFG["BARRIER_H"] * 3600
     train_mask, tune_mask, test_mask = chronological_train_tune_holdout_masks(ts, block, embargo)
