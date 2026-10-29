@@ -1253,9 +1253,13 @@ def stats_msg(paper, prices=None):
     opened = paper.tracked_count("status='OPEN'")
     tracked = paper.tracked_count("status='CLOSED'")
     tracked_wins = paper.tracked_count("status='CLOSED' AND outcome IN ('TP','WIN')")
+    closed_counts = paper.closed_outcome_counts()
+    gate_text = ("جاهز للتعلم" if closed_counts["wins"] >= 500 and closed_counts["losses"] >= 500
+                 else "ينتظر اكتمال 500 رابحة و500 خاسرة")
     return (f"📊 تقييم سجل الإشارات الورقية\n"
             f"سجل التعلم: {total} | مكتملة التقييم: {labelled} | تنتظر: {pending}\n"
             f"مفتوحة: {opened} | مغلقة: {tracked} | رابحة: {tracked_wins}\n"
+            f"بوابة AI: {gate_text} | رابحة مغلقة {closed_counts['wins']}/500 | خاسرة مغلقة {closed_counts['losses']}/500\n"
             f"رابحة حسب بيانات التدريب: {wins} | خاسرة: {n-wins} | نسبة النجاح: {(wins/n*100 if n else 0):.1f}%\n"
             f"متوسط العائد النظري بعد التكاليف: {avg:+.2f}%")
 
