@@ -890,6 +890,11 @@ CREATE TABLE IF NOT EXISTS signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, price REAL, atr REAL, feats TEXT,
   prob REAL, rank INTEGER, labeled INTEGER DEFAULT 0, label INTEGER, ret REAL, hold REAL,
   feature_ts REAL);
+CREATE TABLE IF NOT EXISTS tracked_signals(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT NOT NULL, open_ts REAL NOT NULL,
+  entry REAL NOT NULL, sl REAL NOT NULL, tp REAL NOT NULL, atr REAL NOT NULL,
+  prob REAL, rank INTEGER, status TEXT NOT NULL DEFAULT 'OPEN',
+  close_ts REAL, exit REAL, ret_pct REAL, reason TEXT);
 CREATE TABLE IF NOT EXISTS pending_orders(
   id INTEGER PRIMARY KEY AUTOINCREMENT, inst TEXT, created_ts REAL, expires_ts REAL,
   limit_px REAL, qty REAL, reserved_usdt REAL, sl REAL, tp REAL, prob REAL, rank INTEGER,
@@ -1202,6 +1207,56 @@ class Paper:
         self.db.commit()
 
     @locked
+    def open_tracked_signal(self, inst, entry, atr_pct, prob, rank):
+        """Record a paper signal without allocating cash or creating a virtual position."""
+        if not np.isfinite(entry) or entry <= 0:
+            return None
+        a = float(np.clip(atr_pct, 0.004, 0.06))
+        sl = entry * (1 - CFG["SL_ATR"] * a)
+        tp = entry * (1 + CFG["TP_ATR"] * a)
+        now = time.time()
+        cur = self.db.execute(
+            "INSERT INTO tracked_signals(inst,open_ts,entry,sl,tp,atr,prob,rank) VALUES(?,?,?,?,?,?,?,?)",
+            (inst, now, float(entry), sl, tp, a,
+             None if prob is None or not np.isfinite(prob) else float(prob), int(rank)))
+        self.db.commit()
+        return dict(id=cur.lastrowid, inst=inst, entry=float(entry), sl=sl, tp=tp,
+                    atr=a, prob=prob, rank=int(rank), open_ts=now)
+
+    @locked
+    def active_tracked_signals(self):
+        return [dict(r) for r in self.db.execute(
+            "SELECT * FROM tracked_signals WHERE status='OPEN' ORDER BY open_ts,id")]
+
+    @locked
+    def close_tracked_signal(self, sid, exit_price, reason):
+        row = self.db.execute("SELECT * FROM tracked_signals WHERE id=? AND status='OPEN'", (sid,)).fetchone()
+        if row is None or not np.isfinite(exit_price) or exit_price <= 0:
+            return None
+        gross_pct = (float(exit_price) / float(row["entry"]) - 1.0) * 100.0
+        net_pct = gross_pct - float(CFG["BT_COST"]) * 100.0
+        now = time.time()
+        self.db.execute(
+            "UPDATE tracked_signals SET status='CLOSED',close_ts=?,exit=?,ret_pct=?,reason=? WHERE id=?",
+            (now, float(exit_price), net_pct, reason, sid))
+        self.db.commit()
+        return dict(id=int(row["id"]), inst=row["inst"], entry=float(row["entry"]),
+                    exit=float(exit_price), ret_pct=net_pct, reason=reason,
+                    hold_hours=max(0.0, (now-float(row["open_ts"]))/3600.0))
+
+    @locked
+    def tracked_signal_stats(self):
+        closed = [dict(r) for r in self.db.execute(
+            "SELECT ret_pct FROM tracked_signals WHERE status='CLOSED' AND ret_pct IS NOT NULL")]
+        opened = self.db.execute("SELECT COUNT(*) n FROM tracked_signals WHERE status='OPEN'").fetchone()["n"]
+        n = len(closed)
+        wins = sum(1 for r in closed if float(r["ret_pct"]) > 0)
+        avg = sum(float(r["ret_pct"]) for r in closed) / n if n else 0.0
+        total = (float(np.prod([1.0 + float(r["ret_pct"])/100.0 for r in closed]) - 1.0) * 100.0) if n else 0.0
+        return dict(open=int(opened), closed=n, wins=wins, losses=n-wins,
+                    winrate=(100.0*wins/n if n else 0.0), avg_pct=avg, total_pct=total)
+
+    @locked
     def pending_signals(self, cutoff_ts):
         return [dict(r) for r in self.db.execute(
             "SELECT id,ts,COALESCE(feature_ts,ts) AS feature_ts,inst,price,atr "
@@ -1306,6 +1361,49 @@ def label_signals(paper):
              paper.count("signals"), total_unlabelled, len(rows), n, no_candles, insufficient, errors)
     return n
 
+def update_tracked_signals(paper, prices=None):
+    """Close tracked paper signals on SL, TP, or the 24-hour maximum holding time."""
+    active = paper.active_tracked_signals()
+    if not active:
+        return 0
+    prices = prices if prices is not None else get_prices()
+    closed = 0
+    now = time.time()
+    for s in active:
+        price = prices.get(s["inst"])
+        if price is None or not np.isfinite(price) or price <= 0:
+            continue
+        reason = None
+        exit_price = float(price)
+        if float(price) <= float(s["sl"]):
+            reason, exit_price = "وقف الخسارة", float(s["sl"])
+        elif float(price) >= float(s["tp"]):
+            reason, exit_price = "جني الأرباح", float(s["tp"])
+        elif now - float(s["open_ts"]) >= CFG["MAX_HOLD_H"] * 3600:
+            reason = "انتهاء مدة الإشارة"
+        if reason:
+            result = paper.close_tracked_signal(s["id"], exit_price, reason)
+            if result:
+                icon = "✅" if result["ret_pct"] > 0 else "🔴"
+                tg(f"{icon} إغلاق إشارة ورقية #{result['id']} — {result['inst']}\\n"
+                   f"السبب: {result['reason']}\\n"
+                   f"الدخول: {result['entry']:.8g} ← الخروج: {result['exit']:.8g}\\n"
+                   f"العائد الصافي بعد التكاليف: {result['ret_pct']:+.2f}%\\n"
+                   f"مدة الإشارة: {result['hold_hours']:.1f} ساعة")
+                closed += 1
+    return closed
+
+
+def signal_performance_msg(paper):
+    s = paper.tracked_signal_stats()
+    return (f"📊 تقييم الإشارات الورقية\\n"
+            f"المفتوحة: {s['open']} | المغلقة: {s['closed']}\\n"
+            f"الرابحة: {s['wins']} | الخاسرة: {s['losses']}\\n"
+            f"نسبة النجاح: {s['winrate']:.1f}%\\n"
+            f"متوسط العائد الصافي: {s['avg_pct']:+.2f}%\\n"
+            f"العائد التراكمي للإشارات المغلقة: {s['total_pct']:+.2f}%")
+
+
 # =====================================================================
 # RANKING (best -> worst)
 # =====================================================================
@@ -1400,12 +1498,7 @@ def backtest_report(rep):
 # TELEGRAM COMMANDS
 # =====================================================================
 def stats_msg(paper, prices=None):
-    s = paper.stats(prices if prices is not None else get_prices())
-    gate = paper.risk_gate(s["equity"])
-    return (f"📈 ملخص Paper Trading\nالرصيد الكلي: {s['equity']:.2f} USDT ({s['ret_pct']:+.2f}%)\n"
-            f"صفقات مغلقة: {s['trades']} | مفتوحة: {s['open']}\n"
-            f"نسبة النجاح: {s['winrate'] * 100:.1f}% | Profit factor: {s['profit_factor']:.2f}\n"
-            f"الحالة: {'متوقف (' + gate + ')' if gate else 'نشط'}")
+    return signal_performance_msg(paper)
 
 def positions_msg(paper):
     ts = paper.open_trades()
@@ -1670,8 +1763,7 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         R.loc[top, "prob"] = np.linspace(0.78, 0.60, len(top)) if top else []
     R.to_csv(os.path.join(CFG["DIR"], "ranking.csv"))
     log.info("top 5:\n%s", R.head(5))
-    if cycle % CFG["RANK_MSG_EVERY"] == 0:
-        tg(top_msg())
+    # Telegram is intentionally quiet between paper-signal open/close events.
     if not trade:
         return R
     # log the top coins of every scan: they become labelled training examples later
@@ -1684,46 +1776,29 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                   ai_prediction_error or "non-finite values")
         tg("⚠️ Zied Quant: خرجت احتمالات AI بقيم غير صالحة (NaN/Inf). تم منع جميع أوامر الدخول في هذه الدورة.")
         return R
-    gate = paper.risk_gate(paper.equity(uni["last"].to_dict()))
-    if gate:
-        log.info("entries blocked: %s", gate); return R
-    # Until a candidate model passes the independent validation gate, use a clearly
-    # labelled rank-based exploration score. This starts paper learning without treating
-    # an unapproved model as AI; portfolio, cash, correlation and stop-risk checks still apply.
+    # Signal tracking is independent of any wallet, cash balance, or position limit.
+    # Every qualifying signal is recorded at its market price and evaluated on close.
+    if ai_prediction_error is not None or not np.isfinite(R["prob"].dropna().to_numpy(dtype=float)).all():
+        log.error("AI probabilities invalid (%s); no new paper signals this cycle",
+                  ai_prediction_error or "non-finite values")
+        return R
     thr = (float(CFG.get("EXPLORATION_PROB_MIN", 0.65)) if learning_mode else
            (CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else brain.thr))
     sig = R[R["prob"] >= thr].sort_values("prob", ascending=False)
-    cache = {}
     for inst, r in sig.iterrows():
-        open_inst = [t["inst"] for t in paper.open_trades()]
-        pending_inst = [o["inst"] for o in paper.pending_orders()]
-        active = open_inst + pending_inst
-        if inst in active or len(active) >= CFG["MAX_OPEN"]:
-            continue
-        corr = max_corr_with_open(inst, active, cache)
-        if corr > CFG["CORR_MAX"]:
-            log.info("%s skipped: corr %.2f with an open/pending position", inst, corr); continue
-        last = float(uni.loc[inst, "last"])
-        ask = float(uni.loc[inst, "ask"])
-        spread = float(uni.loc[inst, "spread"])
-        atr_pct = float(X.loc[inst, "1H_atr_pct"])
-        # Place a modestly discounted limit: no more than 0.30% below last, but account for spread.
-        discount = max(spread / 2.0, min(0.25 * float(np.clip(atr_pct, 0.004, 0.06)), 0.003))
-        limit_px = min(ask, last * (1.0 - discount))
-        label = "درجة استكشاف ورقي" if learning_mode else "احتمال AI"
-        tg(f"🟡 إشارة شراء LIMIT افتراضي {inst}\n{label}: {r['prob'] * 100:.1f}% (العتبة {thr * 100:.1f}%)\n"
-           f"الترتيب: #{int(r['rank'])} | السعر الحالي: {last:.8g} | سعر LIMIT: {limit_px:.8g}")
-        t = paper.place_limit(inst, limit_px, atr_pct, float(r["prob"]), int(r["rank"]),
-                              X.loc[inst, FEATURE_COLS].values, float(uni.loc[inst, "vol"]), spread)
-        if t:
-            tg(f"📋 أمر LIMIT افتراضي معلّق {inst}\nالسعر المحدد: {t['limit_px']:.8g}\n"
-               f"SL: {t['sl']:.8g} | TP: {t['tp']:.8g}\n"
-               f"المحجوز: {t['usdt']:.2f} USDT | الصلاحية: {CFG['LIMIT_TTL_H']} ساعات")
-        else:
-            log.info("%s LIMIT skipped by cash, slot, exposure or aggregate-risk controls", inst)
+        entry = float(uni.loc[inst, "last"])
+        tracked = paper.open_tracked_signal(
+            inst, entry, float(X.loc[inst, "1H_atr_pct"]), float(r["prob"]), int(r["rank"]))
+        if tracked:
+            tg(f"🟢 فتح إشارة ورقية #{tracked['id']} — {inst}\\n"
+               f"احتمال النموذج: {float(r['prob'])*100:.1f}% | الترتيب: #{int(r['rank'])}\\n"
+               f"سعر الدخول: {entry:.8g}\\n"
+               f"وقف الخسارة: {tracked['sl']:.8g} | الهدف: {tracked['tp']:.8g}\\n"
+               f"الهدف المتوقع: {((tracked['tp']/entry)-1)*100-CFG['BT_COST']*100:+.2f}% | "
+               f"مخاطرة SL: {((tracked['sl']/entry)-1)*100-CFG['BT_COST']*100:+.2f}%")
     return R
 
-def bootstrap_training_due(paper, now=None):
+def bootstrap_training_duedef bootstrap_training_due(paper, now=None):
     """Retry model bootstrap when new outcomes arrive, or periodically if durable history is trainable."""
     now = time.time() if now is None else float(now)
     last = float(paper._get("bootstrap_train_attempt_ts") or 0)
@@ -1776,8 +1851,9 @@ def once():
     if uni.empty:
         raise RuntimeError("OKX returned no tradable pairs (blocked? try OKX_BASE=https://aws.okx.com)")
     poll_commands(paper, brain)
-    paper.check_candles()
-    # Label mature outcomes BEFORE training so the latest eligible experience is available.
+    # Update every open paper signal; no wallet/virtual-position management.
+    update_tracked_signals(paper)
+    # Label matured feature samples for AI training independently of signal-trade closure.
     label_signals(paper)
     if not brain.ready and bootstrap_training_due(paper):
         first_attempt = not paper._get("bootstrap_train_attempt_ts")
@@ -1793,22 +1869,19 @@ def once():
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
     paper._set("cycle", cycle + 1)
-    # Send a complete portfolio snapshot to Telegram after every hourly GitHub Actions cycle.
-    tg(portfolio_msg(paper))
+    # No virtual portfolio snapshot: only signal-open and signal-close alerts are sent.
     # When no model has passed validation, bootstrap cooldown is the only retry path.
     if brain.ready and need_retrain(paper):
         try:
             retrain(brain, paper, uni, "تعلّم ذاتي")
         except Exception as e:
             log.warning("retrain: %s", e)
-    if time.time() - float(paper._get("last_daily") or 0) > 86400:
-        tg(stats_msg(paper)); paper._set("last_daily", time.time())
+    # Statistics are available on demand via /stats; no periodic wallet messages.
 
 def monitor_loop(paper, stop):
     while not stop.is_set():
         try:
-            if paper.open_trades():
-                paper.check(get_prices())
+            update_tracked_signals(paper)
         except Exception as e:
             log.warning("monitor: %s", e)
         stop.wait(CFG["MONITOR_EVERY_SEC"])
@@ -1826,7 +1899,8 @@ def run():
     brain, paper = Brain(), Paper()
     stop = threading.Event()
     uni = get_universe()
-    # Mature old signals before the initial training attempt, just like the scheduled runner.
+    # Update and evaluate tracked signals, then mature AI training labels.
+    update_tracked_signals(paper)
     label_signals(paper)
     if not brain.ready and bootstrap_training_due(paper):
         first_attempt = not paper._get("bootstrap_train_attempt_ts")
@@ -1847,6 +1921,7 @@ def run():
         while True:
             t0 = time.time()
             try:
+                update_tracked_signals(paper)
                 label_signals(paper)
                 if not brain.ready and bootstrap_training_due(paper):
                     first_attempt = not paper._get("bootstrap_train_attempt_ts")
@@ -1866,8 +1941,7 @@ def run():
                     retrain(brain, paper, None, "تعلّم ذاتي")
                 except Exception as e:
                     log.warning("retrain: %s", e)
-            if time.time() - last_daily > 86400:
-                tg(stats_msg(paper)); last_daily = time.time()
+            # Only open/close signal alerts are pushed; statistics remain available by /stats.
             time.sleep(max(5, CFG["SCAN_EVERY_SEC"] - (time.time() - t0)))
     except KeyboardInterrupt:
         stop.set(); tg("⏹ Zied Quant توقف")
