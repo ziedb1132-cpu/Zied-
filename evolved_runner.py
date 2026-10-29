@@ -13,8 +13,8 @@ deep_learning_evolution.install(zied_quant)
 # Candlestick patterns and cached RSS headline sentiment adjust ranking only;
 # the 300-feature model schema and portfolio risk controls remain unchanged.
 candle_news_intelligence.install(zied_quant)
-# Discovered winner/loser patterns now influence candidate ranking and AI scores.
-# The 200-win threshold activates discovery only; it does not gate entries.
+# Discovered winner/loser patterns influence ranking only after 500 closed wins and 500 closed losses.
+# The live model itself trains only on closed tracked-signal outcomes.
 ai_trade_controller.install(zied_quant)
 # EMA-200 on the daily timeframe needs at least 200 daily candles in bootstrap data.
 _original_hist_depth = zied_quant.hist_depth
