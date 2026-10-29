@@ -55,7 +55,7 @@ CFG = dict(
     SCAN_DEPTH=300,                    # candles per TF for the live scan
     HIST_DAYS=30,                      # history used for the bootstrap dataset
     TRAIN_TOP=40,                      # coins (by volume) in the bootstrap dataset
-    MIN_VOL_USDT=300_000,              # min 24h quote volume to be in the universe
+    MIN_VOL_USDT=0,                    # scan every live non-stable SPOT-USDT pair; rank liquidity as a feature
     # labels = triple barrier on 1H candles (same SL/TP as paper trading)
     BARRIER_H=24,                      # max holding, in 1H bars
     SL_ATR=1.5, TP_ATR=3.0,
@@ -1513,9 +1513,10 @@ def once():
     if brain.ready and need_retrain(paper):
         try:
             retrain(brain, paper, uni, "تعلّم ذاتي")
+            paper._set("last_train_wins", paper.tracked_count("status='CLOSED' AND outcome IN ('TP','WIN')"))
         except Exception as e:
             log.warning("retrain: %s", e)
-    # Statistics are available on demand via /stats; no periodic wallet messages.
+    # Statistics are available on demand via /stats; no wallet or exchange orders.
 
 def telegram_loop(paper, brain, stop):
     while not stop.is_set():
@@ -1567,6 +1568,7 @@ def run():
             if brain.ready and need_retrain(paper):
                 try:
                     retrain(brain, paper, None, "تعلّم ذاتي")
+                    paper._set("last_train_wins", paper.tracked_count("status='CLOSED' AND outcome IN ('TP','WIN')"))
                 except Exception as e:
                     log.warning("retrain: %s", e)
             # No virtual trades are opened or closed; only signal outcomes are labelled from candles.
