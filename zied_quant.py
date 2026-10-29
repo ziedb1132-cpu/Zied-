@@ -91,7 +91,7 @@ CFG["TRAINSET"] = os.path.join(CFG["DIR"], "train.npz")
 
 TFS, BASE = CFG["TFS"], CFG["BASE_TF"]
 EPS = 1e-12
-DATA_VER = 2
+DATA_VER = 3
 
 # =====================================================================
 # TELEGRAM
@@ -243,14 +243,15 @@ NAMES = ["ret1", "ret3", "ret5", "ret10", "ret20", "vol20", "rsi7", "rsi14",
          "macd", "macd_hist", "stoch_k", "bb_pos", "bb_width", "atr_pct", "adx14", "cci20",
          "mfi14", "obv_slope", "vol_ratio", "ema_dist21", "ema_dist50",
          "ema_slope21", "dist_high20", "dist_low20", "range_pct", "body_ratio",
-         "upper_wick", "lower_wick"]
+         "upper_wick", "lower_wick", "ret40", "ret60", "downside_vol20", "upside_vol20",
+         "efficiency20", "range_pos20", "vol_trend20", "vwap_dist20", "atr_change5", "ema_cross21_50"]
 CTX_NAMES = ["beta48", "corr48", "rel_ret24", "btc_ret24", "btc_vol24", "btc_regime",
              "hour_sin", "hour_cos", "dow_sin", "log_dvol24"]
 TF_COLS = [f"{tf}_{n}" for tf in TFS for n in NAMES]
 CTX_COLS = [f"ctx_{n}" for n in CTX_NAMES]
 FEATURE_COLS = TF_COLS + CTX_COLS
 N_FEATURES = len(FEATURE_COLS)
-assert N_FEATURES == 150
+assert N_FEATURES == 200
 
 def _rsi(c, n):
     d = c.diff()
@@ -304,6 +305,19 @@ def tf_features(df):
     f["body_ratio"] = (c - o) / rng
     f["upper_wick"] = (h - np.maximum(o, c)) / rng
     f["lower_wick"] = (np.minimum(o, c) - l) / rng
+    # Extra multi-horizon, volatility-regime, trend-quality and volume features.
+    lr = lc.diff()
+    f["ret40"], f["ret60"] = lc.diff(40), lc.diff(60)
+    f["downside_vol20"] = lr.clip(upper=0).rolling(20).std()
+    f["upside_vol20"] = lr.clip(lower=0).rolling(20).std()
+    f["efficiency20"] = lc.diff(20).abs() / (lr.abs().rolling(20).sum() + EPS)
+    lo20, hi20 = l.rolling(20).min(), h.rolling(20).max()
+    f["range_pos20"] = (c - lo20) / (hi20 - lo20 + EPS)
+    f["vol_trend20"] = v.rolling(5).mean() / (v.rolling(20).mean() + EPS)
+    typical = (h + l + c) / 3
+    f["vwap_dist20"] = c / ((typical * v).rolling(20).sum() / (v.rolling(20).sum() + EPS) + EPS) - 1
+    f["atr_change5"] = atr / (atr.shift(5) + EPS) - 1
+    f["ema_cross21_50"] = e21 / (e50 + EPS) - 1
     out = pd.DataFrame(f)[NAMES].replace([np.inf, -np.inf], np.nan)
     out.index = pd.DatetimeIndex(df["avail"].values)
     return out
@@ -1639,13 +1653,17 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     score = rank_universe(X, uni["vol"])
     R = pd.DataFrame({"score": score}); R["rank"] = np.arange(1, len(R) + 1); R["prob"] = np.nan
     ai_prediction_error = None
+    learning_mode = not brain.ready
+    top = list(R.index[:CFG["TOP_AI"]])
     if brain.ready:
-        top = list(R.index[:CFG["TOP_AI"]])
         try:
             R.loc[top, "prob"] = brain.predict(X.loc[top, FEATURE_COLS].values)
         except Exception as e:
             ai_prediction_error = str(e)
             log.exception("AI prediction invalid; all new entries will be blocked")
+    else:
+        # Paper-only exploration breaks the cold-start deadlock without approving AI.
+        R.loc[top, "prob"] = np.linspace(0.78, 0.60, len(top)) if top else []
     R.to_csv(os.path.join(CFG["DIR"], "ranking.csv"))
     log.info("top 5:\n%s", R.head(5))
     if cycle % CFG["RANK_MSG_EVERY"] == 0:
@@ -1657,10 +1675,6 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                             feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]),
                             feature_ts=feature_ts[i])
                        for i in R.index[:CFG["LOG_TOP"]]])
-    if not brain.ready:
-        log.error("AI model unavailable; scan is ranking-only and no entries are allowed")
-        tg("⚠️ Zied Quant: نموذج AI غير جاهز أو لم يجتز شروط الاعتماد. تم إيقاف الدخول في صفقات جديدة؛ الترتيب الظاهر ليس توصية شراء. راجع سجل التدريب.")
-        return R
     if ai_prediction_error is not None or not np.isfinite(R["prob"].dropna().to_numpy(dtype=float)).all():
         log.error("AI probabilities invalid (%s); scan is ranking-only and no entries are allowed",
                   ai_prediction_error or "non-finite values")
@@ -1669,7 +1683,8 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     gate = paper.risk_gate(paper.equity(uni["last"].to_dict()))
     if gate:
         log.info("entries blocked: %s", gate); return R
-    thr = CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else brain.thr
+    thr = (0.70 if learning_mode else
+           (CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else brain.thr))
     sig = R[R["prob"] >= thr].sort_values("prob", ascending=False)
     cache = {}
     for inst, r in sig.iterrows():
@@ -1688,7 +1703,8 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         # Place a modestly discounted limit: no more than 0.30% below last, but account for spread.
         discount = max(spread / 2.0, min(0.25 * float(np.clip(atr_pct, 0.004, 0.06)), 0.003))
         limit_px = min(ask, last * (1.0 - discount))
-        tg(f"🟡 إشارة شراء LIMIT {inst}\nاحتمال AI: {r['prob'] * 100:.1f}% (العتبة {thr * 100:.1f}%)\n"
+        label = "درجة استكشاف ورقي" if learning_mode else "احتمال AI"
+        tg(f"🟡 إشارة شراء LIMIT افتراضي {inst}\n{label}: {r['prob'] * 100:.1f}% (العتبة {thr * 100:.1f}%)\n"
            f"الترتيب: #{int(r['rank'])} | السعر الحالي: {last:.8g} | سعر LIMIT: {limit_px:.8g}")
         t = paper.place_limit(inst, limit_px, atr_pct, float(r["prob"]), int(r["rank"]),
                               X.loc[inst, FEATURE_COLS].values, float(uni.loc[inst, "vol"]), spread)
