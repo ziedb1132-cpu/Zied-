@@ -1222,6 +1222,22 @@ class Paper:
 # =====================================================================
 # SIGNAL LABELLING (triple barrier on real later prices)
 # =====================================================================
+def future_candles_for_signal(candles, created_ts):
+    """Return only 1H candles whose opening time is not before signal creation.
+
+    OKX candle timestamps are candle *start* times, while a live signal can be
+    created partway through an hour. Starting at feature_ts would include the
+    in-progress candle that contains the entry time, leaking pre-entry movement
+    into the outcome. Round the creation time up to the next candle boundary.
+    """
+    if candles is None or candles.empty:
+        return candles
+    created_ms = int(float(created_ts) * 1000)
+    hour_ms = CFG["TF_SEC"]["1H"] * 1000
+    first_future_start = ((created_ms + hour_ms - 1) // hour_ms) * hour_ms
+    return candles[candles["ts"] >= first_future_start]
+
+
 def label_signals(paper):
     H = CFG["BARRIER_H"]
     now = time.time()
@@ -1251,9 +1267,10 @@ def label_signals(paper):
             log.warning("signal labelling: no 1H candles for %s (%d mature signals)", inst, len(rs))
             continue
         for r in rs:
-            # Label from candles strictly after the candle used to build the features.
-            # ts is signal creation time; feature_ts is the actual 1H candle close time.
-            path = d[d["ts"] >= r["feature_ts"] * 1000]
+            # Outcomes must begin after the actual signal/entry time, not merely
+            # after feature availability: the candle containing a mid-hour signal
+            # includes price movement that occurred before the entry.
+            path = future_candles_for_signal(d, r["ts"])
             if len(path) < H:
                 insufficient += 1
                 continue
