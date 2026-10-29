@@ -43,15 +43,15 @@ def mute_telegram():
 
 # ---------------------------------------------------------------- features
 def test_feature_count_and_names():
-    assert zq.N_FEATURES == 150
-    assert len(zq.NAMES) == 28 and len(zq.CTX_NAMES) == 10
-    assert len(set(zq.FEATURE_COLS)) == 150
+    assert zq.N_FEATURES == 200
+    assert len(zq.NAMES) == 38 and len(zq.CTX_NAMES) == 10
+    assert len(set(zq.FEATURE_COLS)) == 200
 
 def test_live_vector_complete():
     fr = fake_frames("AAA-USDT", 300); btc = {"1H": fake_candles("BTC-USDT", "1H", 300),
                                               "4H": fake_candles("BTC-USDT", "4H", 300)}
     v = zq.live_vector(fr, btc)
-    assert len(v) == 150 and int(v.isna().sum()) == 0
+    assert len(v) == 200 and int(v.isna().sum()) == 0
 
 def test_no_lookahead():
     btc = {"1H": fake_candles("BTC-USDT", "1H", 800), "4H": fake_candles("BTC-USDT", "4H", 400)}
@@ -104,7 +104,7 @@ def test_stable_filter():
 # ---------------------------------------------------------------- paper trading
 def test_paper_open_close_accounting_and_sizing():
     tmp_env(); sent = mute_telegram()
-    p = zq.Paper(); feats = np.zeros(150)
+    p = zq.Paper(); feats = np.zeros(zq.N_FEATURES)
     t = p.open("AAA-USDT", 100.0, 0.01, 0.7, 1, feats, 5e6, 0.001)
     assert t and t["usdt"] <= zq.CFG["POS_FRAC"] * 1000 + 1e-9
     big = p.open("BBB-USDT", 100.0, 0.06, 0.7, 2, feats, 5e6, 0.001)          # high ATR -> smaller position
@@ -117,7 +117,7 @@ def test_paper_open_close_accounting_and_sizing():
 
 def test_risk_gate_daily_loss_and_streak():
     tmp_env(); mute_telegram()
-    p = zq.Paper(); feats = np.zeros(150)
+    p = zq.Paper(); feats = np.zeros(zq.N_FEATURES)
     assert p.risk_gate(1000) is None
     for i in range(zq.CFG["LOSS_STREAK"]):
         p.open(f"C{i}-USDT", 100.0, 0.01, 0.7, i, feats, 5e6, 0.001)
@@ -130,7 +130,7 @@ def test_risk_gate_daily_loss_and_streak():
 def test_check_uses_sl_tp():
     tmp_env(); mute_telegram()
     p = zq.Paper()
-    t = p.open("AAA-USDT", 100.0, 0.01, 0.7, 1, np.zeros(150), 5e6, 0.001)
+    t = p.open("AAA-USDT", 100.0, 0.01, 0.7, 1, np.zeros(zq.N_FEATURES), 5e6, 0.001)
     assert p.check({"AAA-USDT": t["entry"]}) == 0
     assert p.check({"AAA-USDT": t["tp"] * 1.001}) == 1
     assert p.open_trades() == []
@@ -157,7 +157,7 @@ def test_trainset_and_fit_and_backtest():
     tmp_env(); mute_telegram(); _patch_network()
     zq.fetch_btc = lambda a, b: {"1H": fake_candles("BTC-USDT", "1H", a), "4H": fake_candles("BTC-USDT", "4H", b)}
     ds = zq.build_trainset(_universe())
-    assert ds["X"].shape[1] == 150 and len(ds["y"]) > 1500 and not np.isnan(ds["X"]).any()
+    assert ds["X"].shape[1] == 200 and len(ds["y"]) > 1500 and not np.isnan(ds["X"]).any()
     assert set(np.unique(ds["y"])) <= {0.0, 1.0}
     assert zq.load_trainset() is not None
     b = zq.Brain(persist=True)
@@ -180,7 +180,7 @@ def test_label_signals_end_to_end():
     tmp_env(); mute_telegram(); _patch_network()
     p = zq.Paper(); H = zq.CFG["BARRIER_H"]
     old = time.time() - (H + 6) * 3600
-    p.log_signals([dict(inst="AAA-USDT", price=100.0, atr=0.01, feats=np.zeros(150), prob=0.6, rank=1)])
+    p.log_signals([dict(inst="AAA-USDT", price=100.0, atr=0.01, feats=np.zeros(zq.N_FEATURES), prob=0.6, rank=1)])
     p.db.execute("UPDATE signals SET ts=?", (old,)); p.db.commit()
     zq.get_candles = lambda inst, bar, depth: (lambda d: d.assign(ts=d["ts"] - 0))(fake_candles(inst, bar, depth))
     # make candles start after the signal time
