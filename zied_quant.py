@@ -1026,8 +1026,11 @@ class Paper:
         self.db.execute(
             "UPDATE tracked_signals SET status='CLOSED',closed_ts=?,exit_price=?,outcome=?,ret=?,hold=?,close_reason=? WHERE id=? AND status='OPEN'",
             (float(closed_ts), float(exit_price), outcome, float(ret), float(hold), reason, sid))
+        # Keep the learning label consistent with realized net return after costs.
+        net_ret = float(ret)
+        label = 1 if net_ret > 0 else 0
         self.db.execute("UPDATE signals SET labeled=1,label=?,ret=?,hold=? WHERE id=?",
-                        (1 if outcome in ("TP", "WIN") else 0, float(ret), float(hold), row["signal_id"]))
+                        (label, net_ret, float(hold), row["signal_id"]))
         self.db.commit()
         return True
 
@@ -1108,6 +1111,17 @@ def label_signals(paper):
              paper.count("signals"), total_unlabelled, len(rows), n, no_candles, insufficient, errors)
     return n
 
+def classify_exit_return(entry, exit_price):
+    """Classify an exit using net return after the configured round-trip costs."""
+    entry, exit_price = float(entry), float(exit_price)
+    if not np.isfinite(entry) or not np.isfinite(exit_price) or entry <= 0 or exit_price <= 0:
+        raise ValueError("entry and exit_price must be finite positive prices")
+    ret = exit_price / entry - 1.0 - CFG["BT_COST"]
+    if abs(ret) < 1e-12:
+        ret = 0.0
+    return ret, ("WIN" if ret > 0 else "LOSS" if ret < 0 else "FLAT")
+
+
 def monitor_tracked_signals(paper):
     """Resolve paper signals from later closed 1H candles; stop-loss wins candle ties."""
     opened = paper.open_tracked_signals()
@@ -1133,9 +1147,16 @@ def monitor_tracked_signals(paper):
                 elif high >= s["tp"]:
                     reason, outcome, exit_price = "TP", "TP", float(s["tp"])
                 elif elapsed >= CFG["BARRIER_H"]:
-                    reason, outcome = "TIME", ("WIN" if close > s["entry"] else "LOSS")
+                    # Close at the completed candle's close when the holding horizon expires.
+                    reason = "TIME"
                 if reason:
-                    ret = exit_price / float(s["entry"]) - 1.0 - CFG["BT_COST"]
+                    ret, net_outcome = classify_exit_return(s["entry"], exit_price)
+                    if reason == "TIME":
+                        outcome = net_outcome
+                    elif reason == "TP":
+                        outcome = "WIN" if ret > 0 else ("FLAT" if ret == 0 else "LOSS")
+                    else:
+                        outcome = "LOSS" if ret < 0 else ("FLAT" if ret == 0 else "WIN")
                     if paper.close_tracked_signal(s["id"], now, exit_price, outcome, ret, elapsed, reason):
                         closed += 1
                         emoji = "✅" if outcome == "TP" else ("⏳" if reason == "TIME" else "🛑")
