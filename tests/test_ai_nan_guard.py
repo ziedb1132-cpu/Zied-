@@ -54,8 +54,8 @@ class AINanGuardTests(unittest.TestCase):
                     "SELECT name FROM sqlite_master WHERE type='table'")}
                 self.assertIn("signals", tables)
                 self.assertIn("meta", tables)
-                self.assertFalse({"trades", "pending_orders", "experience",
-                                  "tracked_signals"} & tables)
+                self.assertIn("tracked_signals", tables)
+                self.assertFalse({"trades", "pending_orders", "experience"} & tables)
                 self.assertFalse(hasattr(paper, "open_tracked_signal"))
                 self.assertFalse(hasattr(paper, "cash"))
                 paper.db.close()
