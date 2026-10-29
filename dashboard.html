@@ -93,7 +93,13 @@ async function connect(){
  state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],ranking:[],errors:[],schema:[]};
  const headers={Accept:"application/vnd.github+json"};if(token)headers.Authorization="Bearer "+token;
  try{
-  const manifest=await fetchApi("zied_data_store/manifest.json",owner,repo,branch,headers);state.manifest=manifest;state.files=Array.isArray(manifest.files)?manifest.files:[];
+  const manifestResponse=await fetchApi("zied_data_store/manifest.json",owner,repo,branch,headers);
+  if(!manifestResponse || !manifestResponse.content) throw new Error("استجابة GitHub لا تحتوي محتوى manifest.json.");
+  let manifestText;
+  try { manifestText=decodeContent(manifestResponse); state.manifest=JSON.parse(manifestText); }
+  catch(parseError) { throw new Error("تعذر فك أو تحليل manifest.json: "+parseError.message); }
+  const manifest=state.manifest;
+  state.files=Array.isArray(manifest.files)?manifest.files:[];
   for(const f of state.files){
    const path=f.path||f.name;if(!path||!Array.isArray(f.chunks))continue;
    try{
