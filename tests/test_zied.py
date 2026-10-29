@@ -101,47 +101,22 @@ def test_stable_filter():
     for s in ("BTC", "ETH", "SOL", "XRP"):
         assert not zq.is_stable(s), s
 
-# ---------------------------------------------------------------- paper trading
-def test_paper_open_close_accounting_and_sizing():
-    tmp_env(); sent = mute_telegram()
-    p = zq.Paper(); feats = np.zeros(zq.N_FEATURES)
-    t = p.open("AAA-USDT", 100.0, 0.01, 0.7, 1, feats, 5e6, 0.001)
-    assert t and t["usdt"] <= zq.CFG["POS_FRAC"] * 1000 + 1e-9
-    big = p.open("BBB-USDT", 100.0, 0.06, 0.7, 2, feats, 5e6, 0.001)          # high ATR -> smaller position
-    assert big["usdt"] < t["usdt"]
-    assert 0.99 * zq.CFG["START_BALANCE"] < p.equity() < zq.CFG["START_BALANCE"]     # only entry costs are lost
-    tr = p.open_trades()[0]
-    p._close(tr, tr["entry"], "test")
-    assert p.cash() < zq.CFG["START_BALANCE"] - big["usdt"] + tr["usdt_in"]    # costs were charged
-    assert p.count("experience") == 1 and any("إغلاق" in m for m in sent)
-
-def test_risk_gate_daily_loss_and_streak():
+# ---------------------------------------------------------------- signal-only persistence
+def test_signal_only_store_and_commands():
     tmp_env(); mute_telegram()
-    p = zq.Paper(); feats = np.zeros(zq.N_FEATURES)
-    assert p.risk_gate(1000) is None
-    for i in range(zq.CFG["LOSS_STREAK"]):
-        p.open(f"C{i}-USDT", 100.0, 0.01, 0.7, i, feats, 5e6, 0.001)
-        tr = p.open_trades()[0]
-        p._close(tr, tr["entry"] * 0.97, "loss")
-    assert p.risk_gate(p.equity()) in ("cooldown", "daily_loss")
-    p._set("pause_until", 0); p._set("paused", "1")
-    assert p.risk_gate(1000) == "paused"
-
-def test_check_uses_sl_tp():
-    tmp_env(); mute_telegram()
-    p = zq.Paper()
-    t = p.open("AAA-USDT", 100.0, 0.01, 0.7, 1, np.zeros(zq.N_FEATURES), 5e6, 0.001)
-    assert p.check({"AAA-USDT": t["entry"]}) == 0
-    assert p.check({"AAA-USDT": t["tp"] * 1.001}) == 1
-    assert p.open_trades() == []
-
-def test_commands():
-    tmp_env(); sent = mute_telegram()
     p = zq.Paper(); b = zq.Brain(persist=False)
-    assert "pause" in zq.handle_command("/x", p, b) or "/stats" in zq.handle_command("/x", p, b)
+    feats = np.zeros(zq.N_FEATURES)
+    p.log_signals([dict(inst="AAA-USDT", price=100.0, atr=0.01, feats=feats, prob=0.6, rank=1)])
+    assert p.count("signals") == 1
+    assert p.count("signals", "labeled=0") == 1
+    # No virtual portfolio, trade, or closed-trade learning tables are retained.
+    tables = {r["name"] for r in p.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "signals" in tables and "meta" in tables
+    assert not ({"trades", "pending_orders", "experience", "tracked_signals"} & tables)
     zq.handle_command("/pause", p, b); assert p._get("paused") == "1"
     zq.handle_command("/resume@mybot", p, b); assert p._get("paused") == "0"
-    assert "سجل" in zq.handle_command("/signals", p, b)
+    assert "سجل الإشارات" in zq.handle_command("/signals", p, b)
+    assert "/positions" not in zq.handle_command("/help", p, b)
 
 # ---------------------------------------------------------------- data + models
 def _patch_network(monkey=True):
