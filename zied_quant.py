@@ -1159,7 +1159,7 @@ def monitor_tracked_signals(paper):
                         outcome = "LOSS" if ret < 0 else ("FLAT" if ret == 0 else "WIN")
                     if paper.close_tracked_signal(s["id"], now, exit_price, outcome, ret, elapsed, reason):
                         closed += 1
-                        emoji = "✅" if outcome == "TP" else ("⏳" if reason == "TIME" else "🛑")
+                        emoji = "✅" if reason == "TP" else ("⏳" if reason == "TIME" else "🛑")
                         tg(f"{emoji} إغلاق إشارة ورقية: {s['inst']}\n"
                            f"السبب: {reason} | الدخول: {s['entry']:.8g} | الخروج: {exit_price:.8g}\n"
                            f"العائد النظري بعد التكاليف: {ret*100:+.2f}% | المدة: {elapsed} ساعة")
