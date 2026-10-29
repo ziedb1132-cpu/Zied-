@@ -1,7 +1,13 @@
 name: Zied Quant hourly
 
 on:
-  workflow_dispatch: # Start once manually; successful batches dispatch the next run automatically.
+  workflow_dispatch:
+    inputs:
+      reset_state:
+        description: "ابدأ من الصفر: امسح ذاكرة التعلم والإشارات الورقية السابقة"
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
   group: zied-quant            # queue chained runs; never overlap state writers
@@ -37,6 +43,7 @@ jobs:
 
       # Fast recovery path. Cache is useful, but it can be evicted by GitHub.
       - name: Restore state cache
+        if: ${{ inputs.reset_state != true }}
         uses: actions/cache/restore@v4
         with:
           path: zied_data
@@ -45,6 +52,7 @@ jobs:
 
       # Durable source of truth. New state is chunked; old state-data branches remain readable.
       - name: Restore durable state
+        if: ${{ inputs.reset_state != true }}
         shell: bash
         run: |
           set -euo pipefail
@@ -63,6 +71,15 @@ jobs:
           else
             echo "DURABLE_STATE=first_run_no_branch"
           fi
+
+      - name: Initialize clean state when reset requested
+        if: ${{ inputs.reset_state == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf zied_data zied_data_store
+          mkdir -p zied_data
+          echo "RESET_STATE=true; old cache and state-data were intentionally not restored."
 
       - name: Verify restored memory
         shell: bash
