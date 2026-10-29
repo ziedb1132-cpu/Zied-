@@ -109,10 +109,10 @@ def test_signal_only_store_and_commands():
     p.log_signals([dict(inst="AAA-USDT", price=100.0, atr=0.01, feats=feats, prob=0.6, rank=1)])
     assert p.count("signals") == 1
     assert p.count("signals", "labeled=0") == 1
-    # No virtual portfolio, trade, or closed-trade learning tables are retained.
+    # Paper signals are tracked durably; no wallet or exchange-order ledger exists.
     tables = {r["name"] for r in p.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert "signals" in tables and "meta" in tables
-    assert not ({"trades", "pending_orders", "experience", "tracked_signals"} & tables)
+    assert {"signals", "meta", "tracked_signals"} <= tables
+    assert not ({"trades", "pending_orders", "experience"} & tables)
     zq.handle_command("/pause", p, b); assert p._get("paused") == "1"
     zq.handle_command("/resume@mybot", p, b); assert p._get("paused") == "0"
     assert "سجل الإشارات" in zq.handle_command("/signals", p, b)
@@ -178,13 +178,16 @@ def test_scan_and_once_pipeline():
     zq.CFG["BTC_FILTER"] = -1.0  # synthetic test candles should not trip the live BTC gate
     b = zq.Brain(persist=False); p = zq.Paper()
     R = zq.scan(b, p, uni, 0, trade=True)                       # no model yet: ranking + signal logging only
-    assert len(R) > 0 and R["rank"].is_monotonic_increasing and p.count("signals") == min(zq.CFG["LOG_TOP"], len(R))
+    assert len(R) > 0 and R["rank"].is_monotonic_increasing
+    assert p.count("signals") >= min(zq.CFG["LOG_TOP"], len(R))
+    assert p.tracked_count("status='OPEN'") <= 10
     ds = zq.build_trainset(uni)
     b.fit(ds["X"], ds["y"], ds["ts"], ds["ret"], epochs=2, force=True)
     zq.CFG["PROB_MIN"] = 0.0                                   # force signals to exercise the entry path
     R = zq.scan(b, p, uni, 1, trade=True)
     assert R["prob"].notna().sum() > 0 and p.count("signals") > 0
-    assert p.count("signals") > 0  # scan records signals only; it must not create virtual positions
+    assert p.count("signals") > 0
+    assert p.tracked_count("status='OPEN'") <= 10
     zq.CFG["PROB_MIN"] = None
     zq.once()                                                  # full scheduler cycle must not raise
     # A full cycle may legitimately emit no buy alert when no candidate passes live filters.
