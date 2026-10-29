@@ -23,7 +23,7 @@ def test_paper_has_no_wallet_positions_or_order_ledger(monkeypatch, tmp_path):
         tables = {r["name"] for r in p.db.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
-        assert "signals" in tables and "meta" in tables
-        assert not ({"trades", "pending_orders", "experience", "tracked_signals"} & tables)
+        assert {"signals", "meta", "tracked_signals"} <= tables
+        assert not ({"trades", "pending_orders", "experience"} & tables)
     finally:
         p.db.close()
