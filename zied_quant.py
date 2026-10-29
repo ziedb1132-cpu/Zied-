@@ -1229,9 +1229,13 @@ def stats_msg(paper, prices=None):
     n = len(ds["y"])
     wins = int(np.sum(ds["y"] > 0.5)) if n else 0
     avg = float(np.mean(ds["ret"]) * 100) if n else 0.0
-    return (f"📊 تقييم سجل الإشارات (دون محفظة افتراضية)\\n"
-            f"الإشارات المسجلة: {total} | التي اكتمل تقييمها: {labelled} | قيد التقييم: {pending}\\n"
-            f"رابحة: {wins} | خاسرة: {n-wins} | نسبة النجاح: {(wins/n*100 if n else 0):.1f}%\\n"
+    opened = paper.tracked_count("status='OPEN'")
+    tracked = paper.tracked_count("status='CLOSED'")
+    tracked_wins = paper.tracked_count("status='CLOSED' AND outcome='TP'")
+    return (f"📊 تقييم الإشارات الورقية\\n"
+            f"سجل التعلم: {total} | مكتملة التقييم: {labelled} | تنتظر: {pending}\\n"
+            f"مفتوحة: {opened} | مغلقة: {tracked} | أهداف TP: {tracked_wins}\\n"
+            f"رابحة حسب بيانات التدريب: {wins} | خاسرة: {n-wins} | نسبة النجاح: {(wins/n*100 if n else 0):.1f}%\\n"
             f"متوسط العائد النظري بعد التكاليف: {avg:+.2f}%")
 
 def top_msg():
@@ -1329,8 +1333,9 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     return info
 
 def need_retrain(paper):
-    new_sigs = paper.count("signals", "labeled=1") - int(paper._get("last_train_sig") or 0)
-    return new_sigs >= CFG["RETRAIN_SIGNALS"]
+    wins = paper.tracked_count("status='CLOSED' AND outcome='TP'")
+    previous = int(paper._get("last_train_wins") or 0)
+    return wins - previous >= 500
 
 def _hourly_returns(inst):
     d = get_candles(inst, "1H", 100)
