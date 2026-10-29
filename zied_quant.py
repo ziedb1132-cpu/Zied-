@@ -1385,10 +1385,10 @@ def update_tracked_signals(paper, prices=None):
             result = paper.close_tracked_signal(s["id"], exit_price, reason)
             if result:
                 icon = "✅" if result["ret_pct"] > 0 else "🔴"
-                tg(f"{icon} إغلاق إشارة ورقية #{result['id']} — {result['inst']}\\n"
-                   f"السبب: {result['reason']}\\n"
-                   f"الدخول: {result['entry']:.8g} ← الخروج: {result['exit']:.8g}\\n"
-                   f"العائد الصافي بعد التكاليف: {result['ret_pct']:+.2f}%\\n"
+                tg(f"{icon} إغلاق إشارة ورقية #{result['id']} — {result['inst']}\n"
+                   f"السبب: {result['reason']}\n"
+                   f"الدخول: {result['entry']:.8g} ← الخروج: {result['exit']:.8g}\n"
+                   f"العائد الصافي بعد التكاليف: {result['ret_pct']:+.2f}%\n"
                    f"مدة الإشارة: {result['hold_hours']:.1f} ساعة")
                 closed += 1
     return closed
@@ -1396,11 +1396,11 @@ def update_tracked_signals(paper, prices=None):
 
 def signal_performance_msg(paper):
     s = paper.tracked_signal_stats()
-    return (f"📊 تقييم الإشارات الورقية\\n"
-            f"المفتوحة: {s['open']} | المغلقة: {s['closed']}\\n"
-            f"الرابحة: {s['wins']} | الخاسرة: {s['losses']}\\n"
-            f"نسبة النجاح: {s['winrate']:.1f}%\\n"
-            f"متوسط العائد الصافي: {s['avg_pct']:+.2f}%\\n"
+    return (f"📊 تقييم الإشارات الورقية\n"
+            f"المفتوحة: {s['open']} | المغلقة: {s['closed']}\n"
+            f"الرابحة: {s['wins']} | الخاسرة: {s['losses']}\n"
+            f"نسبة النجاح: {s['winrate']:.1f}%\n"
+            f"متوسط العائد الصافي: {s['avg_pct']:+.2f}%\n"
             f"العائد التراكمي للإشارات المغلقة: {s['total_pct']:+.2f}%")
 
 
@@ -1717,11 +1717,6 @@ def max_corr_with_open(inst, open_insts, cache):
     return best
 
 def scan(brain, paper, universe=None, cycle=0, trade=True):
-    if trade:
-        try:
-            paper.check_limit_orders()
-        except Exception as e:
-            log.warning("LIMIT order check failed: %s", e)
     uni = universe if universe is not None else get_universe()
     log.info("universe: %d coins", len(uni))
     if uni.empty:
@@ -1790,15 +1785,15 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         tracked = paper.open_tracked_signal(
             inst, entry, float(X.loc[inst, "1H_atr_pct"]), float(r["prob"]), int(r["rank"]))
         if tracked:
-            tg(f"🟢 فتح إشارة ورقية #{tracked['id']} — {inst}\\n"
-               f"احتمال النموذج: {float(r['prob'])*100:.1f}% | الترتيب: #{int(r['rank'])}\\n"
-               f"سعر الدخول: {entry:.8g}\\n"
-               f"وقف الخسارة: {tracked['sl']:.8g} | الهدف: {tracked['tp']:.8g}\\n"
+            tg(f"🟢 فتح إشارة ورقية #{tracked['id']} — {inst}\n"
+               f"احتمال النموذج: {float(r['prob'])*100:.1f}% | الترتيب: #{int(r['rank'])}\n"
+               f"سعر الدخول: {entry:.8g}\n"
+               f"وقف الخسارة: {tracked['sl']:.8g} | الهدف: {tracked['tp']:.8g}\n"
                f"الهدف المتوقع: {((tracked['tp']/entry)-1)*100-CFG['BT_COST']*100:+.2f}% | "
                f"مخاطرة SL: {((tracked['sl']/entry)-1)*100-CFG['BT_COST']*100:+.2f}%")
     return R
 
-def bootstrap_training_duedef bootstrap_training_due(paper, now=None):
+def bootstrap_training_due(paper, now=None):
     """Retry model bootstrap when new outcomes arrive, or periodically if durable history is trainable."""
     now = time.time() if now is None else float(now)
     last = float(paper._get("bootstrap_train_attempt_ts") or 0)
