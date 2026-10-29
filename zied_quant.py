@@ -1317,12 +1317,21 @@ def learning_gate_status(paper):
 
 
 def enforce_closed_outcome_gate(brain, paper):
-    """Never use a legacy or historical-candle model before the closed-signal gate."""
+    """Use only models explicitly trained from closed tracked-signal outcomes."""
     status = learning_gate_status(paper)
-    if not status["ready"]:
+    legacy_model = brain.ready and brain.info.get("learning_source") != "closed_tracked_signals_v1"
+    if not status["ready"] or legacy_model:
         brain.nn = brain.gbm = None
         brain.mu = brain.sd = None
         brain.thrs, brain.mode, brain.auc, brain.info = {}, None, None, {}
+        # Remove old model artifacts so the dashboard and next runner cannot mistake them for an active model.
+        for model_path in (CFG["MODEL"], CFG["GBM"], CFG["META"]):
+            try:
+                if os.path.exists(model_path):
+                    os.remove(model_path)
+            except OSError as exc:
+                log.warning("could not remove non-compliant model artifact %s: %s", model_path, exc)
+    if not status["ready"]:
         # Prevent an old pattern file from influencing ranking before the closed-outcome gate.
         pattern_path = os.path.join(CFG["DIR"], "winning_patterns.json")
         try:
@@ -1362,6 +1371,11 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
                 "wins": status["wins"], "losses": status["losses"], "n": status["total"]}
     ds = collect_training_data(paper, universe, refresh)
     info = brain.fit(ds["X"], ds["y"], ds["ts"], ds["ret"])
+    if info.get("accepted") and brain.ready:
+        # Stamp and persist provenance so future runs never reactivate a legacy model.
+        info["learning_source"] = "closed_tracked_signals_v1"
+        brain.info["learning_source"] = "closed_tracked_signals_v1"
+        brain.save(N_FEATURES)
     paper._set("last_train_sig", paper.count("signals", "labeled=1"))
     aucs = " | ".join(f"{k}:{v:.3f}" for k, v in info["aucs"].items())
     top = info.get("val_top_net")
