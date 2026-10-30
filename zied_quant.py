@@ -931,17 +931,21 @@ class Paper:
         signal_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(signals)")}
         if "feature_ts" not in signal_columns:
             self.db.execute("ALTER TABLE signals ADD COLUMN feature_ts REAL")
+        if "prob_source" not in signal_columns:
+            self.db.execute("ALTER TABLE signals ADD COLUMN prob_source TEXT NOT NULL DEFAULT 'legacy_unknown'")
         tracked_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(tracked_signals)")}
         for column, declaration in (
             ("regime", "TEXT"), ("entry_score", "REAL"), ("peak_price", "REAL"),
             ("trailing_sl", "REAL"), ("trail_active", "INTEGER DEFAULT 0"),
             ("exit_sl_mult", "REAL"), ("exit_tp_mult", "REAL"),
             ("trail_activation_atr", "REAL"), ("trail_distance_atr", "REAL"),
-            ("max_hold_bars", "INTEGER")
+            ("max_hold_bars", "INTEGER"), ("prob_source", "TEXT NOT NULL DEFAULT 'legacy_unknown'")
         ):
             if column not in tracked_columns:
                 self.db.execute(f"ALTER TABLE tracked_signals ADD COLUMN {column} {declaration}")
         self.db.execute("UPDATE signals SET feature_ts=ts WHERE feature_ts IS NULL")
+        if "prob_source" not in tracked_columns:
+            self.db.execute("ALTER TABLE tracked_signals ADD COLUMN prob_source TEXT NOT NULL DEFAULT 'legacy_unknown'")
         self.db.execute("UPDATE tracked_signals SET peak_price=entry WHERE peak_price IS NULL")
         self.db.commit()
 
@@ -965,11 +969,12 @@ class Paper:
     def log_signals(self, rows):
         now = time.time()
         self.db.executemany(
-            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts) VALUES(?,?,?,?,?,?,?,?)",
+            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts,prob_source) VALUES(?,?,?,?,?,?,?,?,?)",
             [(float(r.get("ts", now)), r["inst"], r["price"], r["atr"],
               json.dumps([float(x) for x in r["feats"]]),
               None if r["prob"] is None or np.isnan(r["prob"]) else float(r["prob"]),
-              r["rank"], float(r.get("feature_ts", r.get("ts", now)))) for r in rows])
+              r["rank"], float(r.get("feature_ts", r.get("ts", now))),
+              str(r.get("prob_source") or "ranking_exploration")) for r in rows])
         self.db.commit()
 
     @locked
@@ -1049,16 +1054,18 @@ class Paper:
         entry_score = float(row.get("entry_score", 0.0))
         feats = json.dumps([float(x) for x in row["feats"]])
         cur = self.db.execute(
-            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,feature_ts) VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,feature_ts,prob_source) VALUES(?,?,?,?,?,?,?,?,?,?)",
             (now, inst, entry, atr_pct, feats, None if row.get("prob") is None else float(row["prob"]),
-             int(row["rank"]), 0, float(row.get("feature_ts", now))))
+             int(row["rank"]), 0, float(row.get("feature_ts", now)),
+             str(row.get("prob_source") or "ranking_exploration")))
         sid = int(cur.lastrowid)
         self.db.execute(
-            "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,regime,entry_score,peak_price,trailing_sl,trail_active) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,regime,entry_score,peak_price,trailing_sl,trail_active,prob_source) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (sid, inst, now, entry, sl, tp, atr_pct,
              None if row.get("prob") is None else float(row["prob"]), int(row["rank"]), feats,
-             regime, entry_score, entry, sl, 0))
+             regime, entry_score, entry, sl, 0,
+             str(row.get("prob_source") or "ranking_exploration")))
         self.db.commit()
         return dict(id=sid, inst=inst, entry=entry, sl=sl, tp=tp, prob=row.get("prob"),
                     rank=int(row["rank"]), regime=regime, entry_score=entry_score)
@@ -1684,7 +1691,7 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         return R
     paper.log_signals([dict(inst=i, price=float(uni.loc[i, "last"]), atr=float(X.loc[i, "1H_atr_pct"]),
                             feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]),
-                            feature_ts=feature_ts[i])
+                            prob_source=str(R.loc[i, "prediction_source"]), feature_ts=feature_ts[i])
                        for i in R.index[:CFG["LOG_TOP"]]])
     if ai_prediction_error is not None:
         log.error("AI prediction failed (%s); entries blocked for this cycle", ai_prediction_error)
@@ -1715,7 +1722,8 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         sig = paper.create_tracked_signal(dict(
             inst=inst, price=float(uni.loc[inst, "last"]), atr=float(X.loc[inst, "1H_atr_pct"]),
             feats=X.loc[inst, FEATURE_COLS].values,
-            prob=(float(rr["ai_probability"]) if brain.ready else None), rank=int(rr["rank"]),
+            prob=(float(rr["ai_probability"]) if brain.ready else None),
+            prob_source=("validated_ai" if brain.ready else "ranking_exploration"), rank=int(rr["rank"]),
             feature_ts=feature_ts[inst], regime=str(rr["regime"]),
             entry_score=float(rr["entry_score"])))
         if sig:
