@@ -137,8 +137,7 @@ def run_evolution(universe, get_candles, state_dir, telegram=None, max_coins=8):
         old = json.load(open(path, encoding="utf-8"))
     except (OSError, ValueError):
         old = {}
-    if now - float(old.get("last_run", 0)) < 23 * 3600:
-        return {"status": "skipped_recent", "champion": old.get("champion")}
+    # Run in every unified analysis cycle; persisted champion remains a fallback.
     frames, symbols = [], []
     for inst in list(universe.index[:max_coins]):
         try:
