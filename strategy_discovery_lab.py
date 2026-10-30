@@ -106,7 +106,7 @@ def _missed_and_timing(zq, paper, limit=120):
             "SELECT s.id,s.inst,COALESCE(s.feature_ts,s.ts) feature_ts,s.ts,s.price,s.atr,s.rank,s.prob,s.label,s.ret "
             "FROM signals s WHERE s.labeled=1 AND s.ret IS NOT NULL "
             "AND NOT EXISTS(SELECT 1 FROM tracked_signals t WHERE t.signal_id=s.id) "
-            "AND NOT EXISTS(SELECT 1 FROM discovery_missed d WHERE d.signal_id=s.id) "
+            "AND NOT EXISTS(SELECT 1 FROM discovery_timing d WHERE d.signal_id=s.id) "
             "ORDER BY s.ts DESC LIMIT ?", (int(limit),)).fetchall()]
     done = 0
     for row in rows:
