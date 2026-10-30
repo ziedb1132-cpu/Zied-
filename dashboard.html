@@ -1,1 +1,254 @@
 <!doctype html>
+<html lang="fr" dir="ltr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Zied Quant — Tableau de bord</title>
+<style>
+:root{
+ --bg:#f5f7fb;--panel:#ffffff;--line:#e5eaf2;--txt:#17243a;--mut:#718096;
+ --green:#12805c;--red:#d6455d;--blue:#315fbd;--gold:#a66b12;
+ --shadow:0 5px 22px rgba(25,45,80,.055);--radius:16px
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.65 system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+header{padding:18px clamp(14px,3vw,34px);position:sticky;top:0;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line);z-index:5;backdrop-filter:blur(12px);box-shadow:0 3px 14px rgba(20,40,70,.035)}
+.top,.controls,.tabs,.brand{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.top{justify-content:space-between}
+.brand h1{margin:0;font-size:20px;font-weight:800;letter-spacing:-.35px;color:#14233b}
+.logo{background:linear-gradient(145deg,#315fbd,#234583);color:#fff;padding:11px 13px;border-radius:14px;font-weight:850;box-shadow:0 5px 12px rgba(49,95,189,.2)}
+.muted,.sub,.status{color:var(--mut);font-size:12px}
+main{max-width:1480px;margin:auto;padding:22px clamp(12px,2.5vw,30px) 36px}
+.notice{background:#eff5ff;border:1px solid #d8e6ff;color:#34517f;padding:13px 16px;border-radius:13px;margin:12px 0}
+#error{background:#fff1f1;border-color:#ffd7dc;color:#9c3042}
+.controls{margin:16px 0;padding:13px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+input,select{background:#fff;border:1px solid #dce3ed;color:var(--txt);border-radius:10px;padding:10px 12px;min-width:110px;flex:1;outline:none;transition:border .15s,box-shadow .15s}
+input:focus,select:focus{border-color:#83a5e8;box-shadow:0 0 0 3px rgba(49,95,189,.1)}
+button{background:#fff;border:1px solid #dce3ed;color:#34445d;border-radius:10px;padding:9px 13px;cursor:pointer;white-space:nowrap;font-weight:650;transition:background .15s,border .15s,transform .15s}
+button:hover{background:#f3f6fc;border-color:#bdcbe0}
+button:active{transform:translateY(1px)}
+.primary,.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.primary:hover,.active:hover{background:#274f9e;border-color:#274f9e;color:#fff}
+.tabs{overflow:auto;margin:18px 0 20px;padding:5px 2px 9px;gap:8px}
+.tabs button{border-radius:999px;padding:9px 16px;box-shadow:0 2px 7px rgba(20,40,70,.035)}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:17px;min-width:0;box-shadow:var(--shadow)}
+.label{color:var(--mut);font-size:12px;font-weight:600}
+.value{font-size:25px;font-weight:800;margin:5px 0;color:#172b4d;overflow-wrap:anywhere;letter-spacing:-.4px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:14px}
+.section{margin-top:15px}.chartgrid{display:grid;grid-template-columns:1.5fr 1fr;gap:13px;margin-top:14px}.charthead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.charthead h2{margin:0}.chartbox{width:100%;min-height:220px;margin-top:12px;overflow:hidden}.chartbox svg{display:block;width:100%;height:auto}.chartlegend{display:flex;gap:14px;flex-wrap:wrap;color:var(--mut);font-size:11px;margin-top:8px}.legenddot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-left:5px}@media(max-width:900px){.chartgrid{grid-template-columns:1fr}}
+.section h2,.card h2{font-size:15px;font-weight:750;margin:0 0 12px;color:#1b2d49}
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:9px;background:#fff}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;white-space:nowrap}
+th,td{text-align:right;padding:11px 12px;border-bottom:1px solid #edf0f5;max-width:360px}
+td{overflow:hidden;text-overflow:ellipsis;max-width:300px;color:#35445b}
+th{background:#f2f5fa;color:#42536d;position:sticky;top:0;font-weight:750}
+tbody tr:hover{background:#f8faff}
+tr:last-child td{border-bottom:0}
+.empty{padding:26px;text-align:center;color:var(--mut)}
+.row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #edf0f5;overflow-wrap:anywhere}
+.row:last-child{border:0}
+
+.closed-kpis{grid-template-columns:repeat(3,minmax(0,1fr));margin:12px 0 14px}.closed-kpis .value{font-size:23px}.closed-kpis .card:nth-child(1) .value{color:var(--green)}.closed-kpis .card:nth-child(2) .value{color:var(--red)}.closed-kpis .card:nth-child(3) .value{color:var(--blue)}
+.eval-panel{display:grid;gap:14px}
+.eval-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.eval-kpi{border:1px solid #e8edf4;background:linear-gradient(180deg,#fff,#f9fbfe);border-radius:13px;padding:13px;min-width:0}
+.eval-kpi .k{font-size:11px;color:var(--mut);font-weight:650;line-height:1.4}
+.eval-kpi .v{font-size:22px;font-weight:800;letter-spacing:-.4px;margin-top:5px;color:#1b2d49;overflow-wrap:anywhere}
+.eval-kpi .d{font-size:11px;color:#8290a4;margin-top:2px}
+.eval-block{border:1px solid var(--line);border-radius:13px;padding:14px;background:#fff}
+.eval-block-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:11px}
+.eval-block-head strong{font-size:13px;color:#263a58}
+.eval-tag{font-size:10px;font-weight:750;padding:4px 8px;border-radius:999px;background:#eef3fb;color:#526783}
+.eval-tag.ready{background:#e8f6ef;color:#16724f}
+.eval-tag.wait{background:#fff5e6;color:#98610d}
+.eval-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.eval-stat{background:#f7f9fc;border-radius:10px;padding:10px}
+.eval-stat span{display:block;font-size:11px;color:var(--mut)}
+.eval-stat b{display:block;font-size:17px;margin-top:2px;color:#263a58}
+.eval-progress-row{display:grid;grid-template-columns:90px 1fr 65px;align-items:center;gap:9px;margin:10px 0}
+.eval-progress-row .name{font-size:11px;color:#52627a;font-weight:650}
+.eval-track{height:9px;border-radius:99px;background:#edf1f6;overflow:hidden}
+.eval-fill{height:100%;border-radius:99px;background:#315fbd}
+.eval-fill.loss{background:#d6455d}
+.eval-progress-row .pct{text-align:right;font-size:11px;font-weight:750;color:#52627a}
+.eval-note{font-size:11px;line-height:1.6;color:#718096;background:#f7f9fc;border-left:3px solid #9db4df;padding:10px 12px;border-radius:7px}
+@media(max-width:650px){.eval-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.eval-kpi .v{font-size:19px}.eval-progress-row{grid-template-columns:75px 1fr 58px}}
+
+.hide{display:none!important}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-left:6px;box-shadow:0 0 0 3px rgba(166,107,18,.1)}
+.good{color:var(--green);font-weight:700}
+.bad{color:var(--red);font-weight:700}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;border:1px solid var(--line);color:#34445d;padding:14px;border-radius:12px;max-height:65vh;overflow:auto;font-size:12px}
+.foot{text-align:center;color:#8a96a8;font-size:11px;margin:28px 0 8px}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}}
+@media(max-width:560px){main{padding:12px 10px 28px}.grid{gap:8px}.card{padding:12px;border-radius:13px}.value{font-size:21px}header{padding:11px 12px}.brand h1{font-size:16px}.logo{padding:9px 11px}.controls{padding:10px}.controls input{min-width:100%;flex-basis:100%}.controls button{flex:1}.tabs{margin:12px 0 15px}.tabs button{padding:8px 12px;font-size:12px}.notice{font-size:12px;padding:11px 12px}}
+</style></head>
+<body>
+<header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Données du programme</h1><div class="muted">Tableau en lecture seule · fichier récapitulatif actualisé à chaque cycle</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
+<main>
+<div class="notice">Tableau en lecture seule. GitHub Actions génère un fichier récapitulatif après chaque cycle. Le navigateur lit uniquement ce fichier et ne télécharge ni la base de données, ni ses fragments, ni les fichiers d’entraînement.</div>
+<div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
+<div class="controls"><input id="owner" value="ziedb1132-cpu" aria-label="Propriétaire du dépôt" placeholder="Propriétaire du dépôt"><input id="repo" value="Zied-" aria-label="Dépôt" placeholder="Dépôt"><input id="branch" value="state-data" aria-label="Branche des données" placeholder="Branche des données"><input id="token" type="password" autocomplete="off" aria-label="GitHub read-only token" placeholder="Jeton en lecture seule (dépôt privé)"><button id="connect" class="primary">Actualiser les données</button></div>
+<div class="tabs"><button class="active" data-tab="overview">Vue d’ensemble</button><button data-tab="trackedOpen">Signaux ouverts</button><button data-tab="trackedClosed">Signaux clôturés</button><button data-tab="recentSignals">Signaux récents</button><button data-tab="signals">Tous les signaux</button><button data-tab="ai">Intelligence artificielle</button><button data-tab="ranking">Classement des actifs</button><button data-tab="files">Tous les fichiers</button><button data-tab="raw">Données techniques</button></div>
+<section id="page-overview"><div id="metrics" class="grid"></div><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2><span id="chartReturnMeta" class="muted">En attente de données</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats des signaux</h2><span class="muted">Parmi les signaux suivis et clôturés</span></div><div id="outcomeChart" class="chartbox"></div></div></div><div class="cols"><div class="card"><h2>État du système</h2><div id="system"></div></div><div class="card"><h2>Résultats de l’évaluation des signaux</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div></section>
+<section id="page-trackedOpen" class="hide section"><h2>Signaux ouverts suivis</h2><p class="muted">Signaux qui ne sont pas encore clôturés.</p><div id="trackedOpen" class="tablewrap"></div></section>
+<section id="page-trackedClosed" class="hide section"><h2>Les 100 derniers signaux clôturés</h2><p class="muted">Classement par date de clôture décroissante. Les sorties TRAIL sont comptabilisées dans SL, car elles sont déclenchées par le stop suiveur.</p><div id="closedKpis" class="grid closed-kpis"></div><div class="chartgrid closed-charts"><div class="card"><div class="charthead"><h2>Répartition des clôtures</h2><span class="muted">100 derniers signaux</span></div><div id="closedReasonChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Rendement cumulé réalisé</h2><span class="muted">Ordre chronologique</span></div><div id="closedReturnChart" class="chartbox"></div></div></div><div id="trackedClosed" class="tablewrap"></div></section>
+<section id="page-recentSignals" class="hide section"><h2>Signaux récents</h2><div id="recent" class="tablewrap"></div></section>
+<section id="page-signals" class="hide section"><h2>Historique des signaux de la base de données</h2><p class="muted">Affiche les 500 derniers signaux enregistrés dans SQLite. Ces résultats ne correspondent pas à des transactions réelles.</p><div id="signals" class="tablewrap"></div></section>
+<section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>Toutes les clés meta enregistrées</h2><div id="metaTable" class="tablewrap"></div></div><div class="card section"><h2>Résumé des fichiers du modèle et de l’entraînement</h2><div id="aiFiles" class="tablewrap"></div></div></section>
+<section id="page-ranking" class="hide section"><h2>Dernier classement enregistré des actifs</h2><p class="muted">Lu depuis ranking.csv s’il existe dans le stockage des données.</p><div id="ranking" class="tablewrap"></div><div class="card section"><h2>Évolution et découverte des stratégies</h2><pre id="evolution">Aucun fichier de stratégie n’a été chargé.</pre></div></section>
+<section id="page-files" class="hide section"><h2>Tous les fichiers répertoriés dans le manifeste</h2><div id="files" class="tablewrap"></div><div class="card section"><h2>Erreurs de chargement</h2><pre id="errors">Aucune erreur.</pre></div></section>
+<section id="page-raw" class="hide section"><h2>Schéma de la base de données</h2><div id="schema" class="tablewrap"></div><div class="card section"><h2>Échantillon des données brutes</h2><select id="rawSelect"></select><pre id="rawData">Sélectionnez un fichier pour afficher ses détails.</pre></div></section>
+<div class="foot">Tableau de bord Zied Quant · API GitHub · Lecture seule</div>
+</main>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const esc=x=>String(x===null||x===undefined?"—":x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=x=>x===null||x===undefined||x===""?"—":typeof x==="number"?x.toLocaleString("en-US",{maximumFractionDigits:5}):String(x);
+const priceFmt=x=>{if(x===null||x===undefined||x==="")return "—";const n=Number(x);return Number.isFinite(n)?n.toFixed(10):String(x)};
+const timeFmt=x=>{if(x===null||x===undefined||x==="")return "—";let n=Number(x);if(Number.isFinite(n)&&n>1000000000){if(n<100000000000)n*=1000;return new Date(n).toLocaleString()}return String(x)};
+let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
+function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>{const value=typeof c[1]==="function"?c[1](r):r[c[1]];const retClass=c[0]==="Rendement réalisé"&&r.ret!==null&&r.ret!==undefined&&r.ret!==""?(Number(r.ret)>0?"good":Number(r.ret)<0?"bad":""):"";return '<td'+(retClass?' class="'+retClass+'"':'')+' title="'+esc(value)+'">'+esc(value)+'</td>'}).join("")+'</tr>').join("")+'</tbody></table>'}
+function metric(label,value,sub){return '<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(value)+'</div><div class="sub">'+esc(sub||"")+'</div></div>'}
+function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="row"><span class="muted">'+esc(k)+'</span><b>'+esc(typeof v==="string"?v:JSON.stringify(v))+'</b></div>').join("")||'<div class="empty">Aucune donnée meta disponible.</div>'}
+function dbQuery(sql){try{if(!state.db)return [];let r=state.db.exec(sql);if(!r.length)return [];return r[0].values.map(row=>Object.fromEntries(r[0].columns.map((c,i)=>[c,row[i]])))}catch(e){return []}}
+function fileText(path){let x=state.contents[path];return typeof x==="string"?x:x===undefined?"":JSON.stringify(x,null,2)}
+function parseCSV(text){const lines=text.trim().split(/\r?\n/);if(lines.length<2)return [];const parse=line=>{let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===","&&!q){out.push(cur);cur=""}else cur+=c}out.push(cur);return out};const headers=parse(lines[0]).map((h,i)=>h.trim()||(i===0?"inst":"column_"+i));return lines.slice(1).filter(Boolean).map(line=>{const vals=parse(line),o={};headers.forEach((h,i)=>o[h]=vals[i]??"");return o})}
+let currentLang="fr";
+function setLanguage(){document.documentElement.lang="fr";document.documentElement.dir="ltr";}
+function renderCharts(){
+ const closed=state.tracked.filter(r=>r.status==="CLOSED"&&Number.isFinite(Number(r.ret))).sort((a,b)=>Number(a.closed_ts||a.opened_ts||0)-Number(b.closed_ts||b.opened_ts||0));
+ const wins=closed.filter(r=>Number(r.ret)>0).length,losses=closed.filter(r=>Number(r.ret)<0).length,flat=closed.length-wins-losses;
+ const W=720,H=220,L=48,R=16,T=16,B=34;
+ if(!closed.length){$("returnChart").innerHTML='<div class="empty">Aucun signal clôturé avec un rendement numérique suffisant pour tracer la courbe.</div>';$("outcomeChart").innerHTML='<div class="empty">La répartition des résultats apparaîtra après la clôture des signaux.</div>';$("chartReturnMeta").textContent="0 signal clôturé";return;}
+ let cumulative=0;const points=closed.map((r,i)=>{cumulative+=Number(r.ret)*100;return {x:i,y:cumulative}});
+ const min=Math.min(0,...points.map(p=>p.y)),max=Math.max(0,...points.map(p=>p.y)),span=max-min||1;
+ const px=i=>L+(points.length===1?0:i/(points.length-1))*(W-L-R),py=y=>T+(max-y)/span*(H-T-B);
+ const poly=points.map((p,i)=>(i?"L":"M")+px(i).toFixed(1)+","+py(p.y).toFixed(1)).join(" "),zero=py(0),last=points[points.length-1].y;
+ const grid=[max,(max+min)/2,min].map(v=>'<line x1="'+L+'" y1="'+py(v)+'" x2="'+(W-R)+'" y2="'+py(v)+'" stroke="#e8edf4" stroke-dasharray="4 5"/><text x="'+(L-8)+'" y="'+(py(v)+4)+'" text-anchor="end" fill="#718096" font-size="11">'+v.toFixed(1)+'%</text>').join("");
+ $("returnChart").innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Courbe du rendement cumulé des signaux clôturés">'+grid+'<line x1="'+L+'" y1="'+zero+'" x2="'+(W-R)+'" y2="'+zero+'" stroke="#aab6c7"/><path d="'+poly+'" fill="none" stroke="#315fbd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="'+px(points.length-1)+'" cy="'+py(last)+'" r="5" fill="#315fbd"/><text x="'+L+'" y="'+(H-8)+'" fill="#718096" font-size="11">Signal le plus ancien</text><text x="'+(W-R)+'" y="'+(H-8)+'" text-anchor="end" fill="#718096" font-size="11">Signal le plus récent</text></svg><div class="chartlegend"><span><i class="legenddot" style="background:#315fbd"></i>Rendement cumulé théorique : <b>'+last.toFixed(2)+'%</b></span><span>Nombre de signaux : '+closed.length+'</span></div>';
+ $("chartReturnMeta").textContent=closed.length+" signal clôturé";
+ const counts=[{name:"Gagnant",v:wins,color:"#12805c"},{name:"Perdant",v:losses,color:"#d6455d"},{name:"À l’équilibre",v:flat,color:"#9aa6b7"}],maxCount=Math.max(1,...counts.map(x=>x.v));
+ $("outcomeChart").innerHTML='<svg viewBox="0 0 480 220" role="img" aria-label="Répartition des signaux gagnants, perdants et à l’équilibre">'+counts.map((x,i)=>{const y=22+i*62,w=x.v/maxCount*300;return '<text x="465" y="'+(y+16)+'" text-anchor="end" fill="#42536d" font-size="13">'+x.name+'</text><rect x="12" y="'+y+'" width="300" height="20" rx="7" fill="#edf1f6"/><rect x="12" y="'+y+'" width="'+w+'" height="20" rx="7" fill="'+x.color+'"/><text x="325" y="'+(y+16)+'" fill="#17243a" font-size="13" font-weight="700">'+x.v+'</text>'}).join("")+'</svg><div class="chartlegend"><span>Total : <b>'+closed.length+'</b></span><span>Taux de réussite : <b>'+(wins/closed.length*100).toFixed(1)+'%</b></span></div>';
+}
+function render(){
+ renderCharts();
+ const total=Number(state.summary.total)||0, labeledCount=Number(state.summary.labeled)||0, pending=Math.max(0,total-labeledCount);
+ const wins=Number(state.summary.wins)||0,losses=Number(state.summary.losses)||0,avg=state.summary.avgRet;
+ const gateWins=Number(state.summary.gateWins)||0,gateLosses=Number(state.summary.gateLosses)||0,gateTotal=Number(state.summary.gateTotal)||0;
+ const gateReady=gateWins>=500&&gateLosses>=500;
+ const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
+ $("metrics").innerHTML=metric("Tous les signaux enregistrés",total,"Table signals dans SQLite")+metric("Signaux évalués",labeledCount,"Y compris les signaux non suivis")+metric("Signaux suivis ouverts",state.summary.openTracked,"Statut OPEN")+metric("Signaux suivis clôturés",state.summary.closedTracked,"Statut CLOSED")+metric("Gagnants admissibles à l’entraînement",gateWins,"Clôturés + rendement positif")+metric("Perdants admissibles à l’entraînement",gateLosses,"Clôturés + rendement négatif")+metric("Seuil d’entraînement",gateReady?"Prête":"En attente des résultats",gateWins+"/500 Gagnant · "+gateLosses+"/500 Perdant");
+ $("system").innerHTML=showRows({"Dépôt":$("owner").value+"/"+$("repo").value,"Branche des données":$("branch").value,"Cycle d’analyse":cycle,"Enregistrement des signaux":paused?"Temporairement suspendu":"Actif selon meta","Base de données":"Non téléchargée dans le navigateur — conservée dans state-data","Fichiers du manifeste":state.files.length,"Données": "Lecture seule — aucune transaction"});
+ const winRate=labeledCount?(wins/labeledCount*100):null;
+ const avgLabel=avg===null||avg===undefined?"—":(Number(avg)*100).toFixed(3)+"%";
+ const winProgress=Math.min(100,gateWins/5),lossProgress=Math.min(100,gateLosses/5);
+ const fmtPct=n=>Number(n).toFixed(1)+"%";
+ $("labelSummary").innerHTML='<div class="eval-panel">'+
+ '<div class="eval-kpis">'+
+ '<div class="eval-kpi"><div class="k">Signaux enregistrés</div><div class="v">'+fmt(total)+'</div><div class="d">Historique complet SQLite</div></div>'+
+ '<div class="eval-kpi"><div class="k">Signaux évalués</div><div class="v">'+fmt(labeledCount)+'</div><div class="d">'+fmt(pending)+' en attente d’évaluation</div></div>'+
+ '<div class="eval-kpi"><div class="k">Taux de réussite</div><div class="v">'+(winRate===null?"—":fmtPct(winRate))+'</div><div class="d">'+fmt(wins)+' gagnants sur '+fmt(labeledCount)+' évalués</div></div>'+
+ '</div>'+
+ '<div class="eval-block"><div class="eval-block-head"><strong>Performance globale de l’évaluation</strong><span class="eval-tag">Tous les signaux évalués</span></div>'+
+ '<div class="eval-stats"><div class="eval-stat"><span>Signaux gagnants</span><b class="good">'+fmt(wins)+'</b></div><div class="eval-stat"><span>Signaux perdants / non positifs</span><b class="bad">'+fmt(losses)+'</b></div><div class="eval-stat"><span>Rendement théorique moyen</span><b>'+esc(avgLabel)+'</b></div><div class="eval-stat"><span>Signaux non encore évalués</span><b>'+fmt(pending)+'</b></div></div></div>'+
+ '<div class="eval-block"><div class="eval-block-head"><strong>Signaux réellement suivis</strong><span class="eval-tag">Suivi des positions virtuelles</span></div>'+
+ '<div class="eval-stats"><div class="eval-stat"><span>Encore ouverts</span><b>'+fmt(state.summary.openTracked)+'</b></div><div class="eval-stat"><span>Clôturés et évaluables</span><b>'+fmt(state.summary.closedTracked)+'</b></div></div></div>'+
+ '<div class="eval-block"><div class="eval-block-head"><strong>Progression vers l’admissibilité à l’entraînement</strong><span class="eval-tag '+(gateWins>=500&&gateLosses>=500?"ready":"wait")+'">'+(gateWins>=500&&gateLosses>=500?"Seuil atteint":"Collecte en cours")+'</span></div>'+
+ '<div class="eval-progress-row"><span class="name">Gagnants</span><div class="eval-track"><div class="eval-fill" style="width:'+winProgress+'%"></div></div><span class="pct">'+fmt(gateWins)+' / 500</span></div>'+
+ '<div class="eval-progress-row"><span class="name">Perdants</span><div class="eval-track"><div class="eval-fill loss" style="width:'+lossProgress+'%"></div></div><span class="pct">'+fmt(gateLosses)+' / 500</span></div>'+
+ '<div class="eval-stats"><div class="eval-stat"><span>Total des résultats admissibles</span><b>'+fmt(gateTotal)+'</b></div><div class="eval-stat"><span>Condition d’activation</span><b>'+(gateWins>=500&&gateLosses>=500?"Remplie":"1 000 résultats requis")+'</b></div></div></div>'+
+ '<div class="eval-note">Seuls les signaux suivis puis clôturés sont comptabilisés dans le seuil d’entraînement. Les signaux non suivis et ceux qui sont encore ouverts restent exclus de ce compteur. Les résultats globaux et les résultats admissibles à l’entraînement sont présentés séparément.</div></div>';
+ const sigCols=[["Date d’enregistrement",r=>timeFmt(r.ts)],["Actif","inst"],["Prix",r=>priceFmt(r.price)],["Probabilité IA",r=>r.prob===null||r.prob===undefined?"—":(Number(r.prob)*100).toFixed(2)+"%"],["Rang","rank"],["Évaluation terminée",r=>Number(r.labeled)===1?"Oui":"Non"],["Résultat",r=>r.label===null||r.label===undefined?"—":Number(r.label)===1&&Number(r.ret)>0?"Gagnant":"Perdant / non positif"],["Rendement théorique",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["Durée d’évaluation (heures)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
+ const ordered=state.signals.slice().sort((a,b)=>Number(b.ts||0)-Number(a.ts||0));
+ $("recent").innerHTML=table(ordered.slice(0,10),sigCols);$("signals").innerHTML=table(ordered.slice(0,500),sigCols);
+ const trackedCols=[["Actif","inst"],["Statut","status"],["Prix d’entrée",r=>priceFmt(r.entry)],["Prix de sortie",r=>priceFmt(r.exit_price)],["Stop-loss",r=>priceFmt(r.sl)],["Objectif",r=>priceFmt(r.tp)],["Probabilité IA",r=>r.prob===null||r.prob===undefined?"—":(Number(r.prob)*100).toFixed(2)+"%"],["Date d’ouverture",r=>timeFmt(r.opened_ts)],["Date de clôture",r=>timeFmt(r.closed_ts)],["Motif de clôture",r=>r.close_reason||"—"],["Résultat",r=>r.outcome||"—"],["Rendement réalisé",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["Durée de détention (heures)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
+ const closedLatest=state.tracked.filter(r=>String(r.status).toUpperCase()==="CLOSED").sort((a,b)=>Number(b.closed_ts||0)-Number(a.closed_ts||0)).slice(0,100);
+ const reasonOf=r=>String(r.close_reason||r.outcome||"").trim().toUpperCase().replace(/[ -]+/g,"_");
+ const tpCount=closedLatest.filter(r=>reasonOf(r)==="TP").length;
+ const slCount=closedLatest.filter(r=>["SL","TRAIL","STOP","STOP_LOSS","TRAILING_STOP"].includes(reasonOf(r))).length;
+ const timeCount=closedLatest.filter(r=>["TIME","TIME_EXIT","TIMEOUT","MAX_HOLD"].includes(reasonOf(r))).length;
+ $("closedKpis").innerHTML=metric("TP",tpCount,"Objectif atteint")+metric("SL",slCount,"Inclut les sorties par trailing stop")+metric("TIME EXIT",timeCount,"Fermeture par limite de durée");
+ const reasonBars=[{name:"TP",v:tpCount,color:"#12805c"},{name:"SL",v:slCount,color:"#d6455d"},{name:"TIME EXIT",v:timeCount,color:"#315fbd"}],maxReason=Math.max(1,...reasonBars.map(x=>x.v));
+ $("closedReasonChart").innerHTML='<svg viewBox="0 0 480 220" role="img" aria-label="Nombre de clôtures TP, SL et TIME EXIT">'+reasonBars.map((x,i)=>{const y=24+i*62,w=x.v/maxReason*300;return '<text x="12" y="'+(y+15)+'" fill="#42536d" font-size="13" font-weight="700">'+x.name+'</text><rect x="112" y="'+y+'" width="300" height="20" rx="7" fill="#edf1f6"/><rect x="112" y="'+y+'" width="'+w+'" height="20" rx="7" fill="'+x.color+'"/><text x="424" y="'+(y+15)+'" fill="#17243a" font-size="13" font-weight="700">'+x.v+'</text>'}).join("")+'</svg><div class="chartlegend"><span>Total classé : <b>'+reasonBars.reduce((s,x)=>s+x.v,0)+'</b> / '+closedLatest.length+'</span></div>';
+ const chronological=closedLatest.filter(r=>Number.isFinite(Number(r.ret))).slice().sort((a,b)=>Number(a.closed_ts||a.opened_ts||0)-Number(b.closed_ts||b.opened_ts||0));
+ if(!chronological.length){$("closedReturnChart").innerHTML='<div class="empty">Aucun rendement numérique disponible pour les signaux clôturés.</div>';}
+ else{
+  let run=0;const pts=chronological.map((r,i)=>({i,y:(run+=Number(r.ret)*100)}));
+  const W=480,H=220,L=48,R=16,T=16,B=30,min=Math.min(0,...pts.map(p=>p.y)),max=Math.max(0,...pts.map(p=>p.y)),span=max-min||1;
+  const px=i=>L+(pts.length===1?0:i/(pts.length-1))*(W-L-R),py=y=>T+(max-y)/span*(H-T-B);
+  const path=pts.map((p,i)=>(i?"L":"M")+px(i).toFixed(1)+","+py(p.y).toFixed(1)).join(" ");
+  const ticks=[max,(max+min)/2,min].map(v=>'<line x1="'+L+'" y1="'+py(v)+'" x2="'+(W-R)+'" y2="'+py(v)+'" stroke="#e8edf4" stroke-dasharray="4 5"/><text x="'+(L-7)+'" y="'+(py(v)+4)+'" text-anchor="end" fill="#718096" font-size="10">'+v.toFixed(1)+'%</text>').join("");
+  const last=pts[pts.length-1].y;
+  $("closedReturnChart").innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Évolution du rendement cumulé des 100 derniers signaux clôturés">'+ticks+'<line x1="'+L+'" y1="'+py(0)+'" x2="'+(W-R)+'" y2="'+py(0)+'" stroke="#aab6c7"/><path d="'+path+'" fill="none" stroke="#315fbd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="'+px(pts.length-1)+'" cy="'+py(last)+'" r="4.5" fill="#315fbd"/><text x="'+L+'" y="'+(H-7)+'" fill="#718096" font-size="10">Ancien</text><text x="'+(W-R)+'" y="'+(H-7)+'" text-anchor="end" fill="#718096" font-size="10">Récent</text></svg><div class="chartlegend"><span>Rendement cumulé simple : <b>'+last.toFixed(2)+'%</b></span><span>'+chronological.length+' signaux évalués</span></div>';
+ }
+ $("trackedOpen").innerHTML=table(state.tracked.filter(r=>String(r.status).toUpperCase()==="OPEN"),trackedCols);$("trackedClosed").innerHTML=table(closedLatest,trackedCols);
+ $("metaPreview").innerHTML=showRows(Object.fromEntries(Object.entries(state.meta).slice(0,12)));
+ const modelMeta=state.contents["meta.json"]; const modelReady=!!(modelMeta&&typeof modelMeta==="object"&&modelMeta.mode&&Number(modelMeta.n_in)>0); $("aiMetrics").innerHTML=metric("État du modèle",modelReady?("Modèle enregistré : "+modelMeta.mode):"Aucun modèle valide n’est enregistré dans state-data")+metric("Signaux gagnants clôturés / 500",gateWins,Math.min(100,gateWins/5).toFixed(1)+"% du seuil")+metric("Signaux perdants clôturés / 500",gateLosses,Math.min(100,gateLosses/5).toFixed(1)+"% du seuil")+metric("Échantillons admissibles à l’entraînement",gateTotal,"Total actuel des signaux suivis et clôturés")+metric("Seuil du modèle",modelReady?(modelMeta.thrs?.[modelMeta.mode]??"Non enregistré"):"—")+metric("AUC du modèle",modelReady?(modelMeta.auc??modelMeta.info?.auc??"Non enregistré"):"—")+metric("Dernier cycle",cycle);
+ $("metaTable").innerHTML=table(Object.entries(state.meta).map(([key,value])=>({key,value:typeof value==="string"?value:JSON.stringify(value)})),[["Clé","key"],["Valeur","value"]]);
+ const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
+ $("aiFiles").innerHTML=table(modelNames.map(name=>({file:name,status:state.files.some(f=>f.path===name)?"Présent dans le manifeste":(state.contents[name]!==undefined?"Chargé":"Absent du manifeste"),detail:name==="paper.db"?"SQLite: meta + signals":name==="train.npz"?"Données d’entraînement binaires ; non affichables en texte":name==="model.pt"||name==="gbm.pkl"?"Fichier de modèle binaire":"Fichier de données"})),[["Fichier","file"],["Statut","status"],["Description","detail"]]);
+ $("ranking").innerHTML=table(state.ranking,[["Actif",r=>r.inst||r.symbol||r["Unnamed: 0"]||r.coin||"—"],["Rang",r=>r.rank??r.Rank??"—"],["Score",r=>{const v=Number(r.score??r.Score);return Number.isFinite(v)?v.toFixed(4):(r.score??r.Score??"—")}],["Probabilité IA",r=>{const raw=r.prob??r.probability;if(raw===null||raw===undefined||raw==="")return "—";const n=Number(raw);return Number.isFinite(n)?(n<=1?n*100:n).toFixed(2)+"%":raw}]]);const rankTable=$("ranking").querySelector("table");if(rankTable){rankTable.style.tableLayout="fixed";rankTable.style.whiteSpace="normal";rankTable.querySelectorAll("th,td").forEach(cell=>{cell.style.whiteSpace="normal";cell.style.overflowWrap="anywhere";cell.style.maxWidth="none"});const widths=["42%","16%","21%","21%"];rankTable.querySelectorAll("th").forEach((th,i)=>th.style.width=widths[i]||"auto")}
+ const evolution=state.contents["strategy_evolution.json"];$("evolution").textContent=evolution===undefined?"Le fichier strategy_evolution.json ne figure pas parmi les fichiers chargés.":(typeof evolution==="string"?evolution:JSON.stringify(evolution,null,2)).slice(0,30000);
+ $("files").innerHTML=table(state.files.map(f=>({path:f.path||f.name||"—",size:f.size??"—",chunks:(f.chunks||[]).length,status:state.contents[f.path]!==undefined?"Résumé disponible dans le tableau de bord":"Fichier enregistré, non téléchargé dans le navigateur"})),[["Chemin","path"],["Taille en octets","size"],["Fragments","chunks"],["Statut","status"]]);
+ $("errors").textContent=state.errors.length?state.errors.join("\n"):"Aucune erreur de chargement enregistrée.";
+ $("schema").innerHTML=table(state.schema,[["Table","table"],["Colonne","name"],["Type","type"],["Clé","pk"]]);
+ const select=$("rawSelect"),old=select.value;select.innerHTML=Object.keys(state.contents).map(k=>'<option value="'+esc(k)+'">'+esc(k)+'</option>').join("");if(Object.keys(state.contents).includes(old))select.value=old;renderRaw();
+}
+function renderRaw(){const key=$("rawSelect").value;if(!key){$("rawData").textContent="Aucun fichier texte à afficher.";return}let val=state.contents[key];$("rawData").textContent=(typeof val==="string"?val:JSON.stringify(val,null,2)).slice(0,50000)}
+async function connect(){
+ const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data";
+ if(!owner||!repo){alert("Saisissez le propriétaire et le nom du dépôt");return}
+ $("error").style.display="none";$("error").textContent="";
+ $("status").textContent="Connexion à GitHub…";$("dot").style.background="var(--gold)";
+ state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
+ try{
+  const token=$("token").value.trim();
+  const rawUrl="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/dashboard_data.json?ts="+Date.now();
+  let data=null,source="raw.githubusercontent.com",rawError="";
+  const rawResponse=await fetch(rawUrl,{cache:"no-store",headers:{Accept:"application/json"}});
+  if(rawResponse.ok){
+   data=await rawResponse.json();
+  }else{
+   rawError="Raw GitHub HTTP "+rawResponse.status;
+   const headers={Accept:"application/vnd.github+json"};
+   if(token)headers.Authorization="Bearer "+token;
+   const apiUrl="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/dashboard_data.json?ref="+encodeURIComponent(branch);
+   const response=await fetch(apiUrl,{headers,cache:"no-store"});
+   if(!response.ok)throw new Error(rawError+" ; GitHub API HTTP "+response.status+" — vérifiez le dépôt, la branche et les autorisations.");
+   const file=await response.json();
+   if(!file.content)throw new Error("GitHub API : le fichier dashboard_data.json est vide ou illisible.");
+   const binary=atob(file.content.replace(/\\s/g,""));
+   const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+   data=JSON.parse(new TextDecoder().decode(bytes));
+   source="api.github.com";
+  }
+  if(!data||typeof data!=="object"||!data.summary||!Array.isArray(data.signals))throw new Error("Le fichier dashboard_data.json ne contient pas le format attendu.");
+  state.meta=data.meta||{};state.summary={...state.summary,...(data.summary||{})};
+  state.signals=Array.isArray(data.signals)?data.signals:[];
+  state.tracked=Array.isArray(data.tracked)?data.tracked:[];
+  state.ranking=Array.isArray(data.ranking)?data.ranking:[];
+  state.files=Array.isArray(data.files)?data.files:[];
+  state.contents=data.contents||{};state.schema=Array.isArray(data.schema)?data.schema:[];
+  state.manifest={generated_at:data.generated_at};
+  $("status").textContent="Connecté · "+(data.generated_at||"Heure indisponible")+" · "+source;
+  $("dot").style.background="var(--green)";
+ }catch(e){
+  const message=e&&e.message?e.message:String(e);
+  state.errors.push(message);$("status").textContent="Échec de la connexion";
+  $("dot").style.background="var(--red)";$("error").style.display="block";
+  $("error").textContent="Impossible de charger dashboard_data.json depuis "+owner+"/"+repo+" (branche "+branch+").\\nDétail : "+message+"\\nVérifiez que le fichier existe dans state-data et rechargez la page.";
+ }
+ render();
+}
+$("connect").addEventListener("click",connect);$("rawSelect").addEventListener("change",renderRaw);
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+b.dataset.tab))});
+currentLang="fr"
+render();
+setLanguage();
+
+window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000)});
+</script></body></html>
