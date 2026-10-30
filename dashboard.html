@@ -334,6 +334,35 @@ header{padding-left:278px}
 }
 </style>
 
+
+<style id="mobile-kv-table-final">
+@media screen and (max-width:760px){
+  .tablewrap{width:100%!important;max-width:100%!important;overflow-x:auto!important}
+  .tablewrap table.kv-table{
+    display:table!important;width:100%!important;min-width:100%!important;
+    table-layout:fixed!important;white-space:normal!important
+  }
+  .tablewrap table.kv-table tr{display:table-row!important}
+  .tablewrap table.kv-table th,
+  .tablewrap table.kv-table td{
+    display:table-cell!important;white-space:normal!important;
+    overflow:visible!important;text-overflow:clip!important;
+    overflow-wrap:break-word!important;word-break:normal!important;
+    hyphens:none!important;vertical-align:middle!important;
+    padding:13px 9px!important;line-height:1.45!important
+  }
+  .tablewrap table.kv-table th:first-child,
+  .tablewrap table.kv-table td:first-child{
+    width:42%!important;text-align:left!important
+  }
+  .tablewrap table.kv-table th:last-child,
+  .tablewrap table.kv-table td:last-child{
+    width:58%!important;text-align:right!important
+  }
+  .tablewrap table.data-table{min-width:620px!important}
+}
+</style>
+
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
@@ -398,7 +427,7 @@ const priceFmt=x=>{if(x===null||x===undefined||x==="")return "—";const n=Numbe
 const timeFmt=x=>{if(x===null||x===undefined||x==="")return "—";let n=Number(x);if(Number.isFinite(n)&&n>1000000000){if(n<100000000000)n*=1000;return new Date(n).toLocaleString()}return String(x)};
 const DASHBOARD_REPOSITORY={owner:"ziedb1132-cpu",repo:"Zied-",branch:"state-data"};
 let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
-function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>{const value=typeof c[1]==="function"?c[1](r):r[c[1]];const retClass=c[0]==="Rendement réalisé"&&r.ret!==null&&r.ret!==undefined&&r.ret!==""?(Number(r.ret)>0?"good":Number(r.ret)<0?"bad":""):"";return '<td'+(retClass?' class="'+retClass+'"':'')+' title="'+esc(value)+'">'+esc(value)+'</td>'}).join("")+'</tr>').join("")+'</tbody></table>'}
+function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table class="'+(cols.length===2?'kv-table':'data-table')+'"><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>{const value=typeof c[1]==="function"?c[1](r):r[c[1]];const retClass=c[0]==="Rendement réalisé"&&r.ret!==null&&r.ret!==undefined&&r.ret!==""?(Number(r.ret)>0?"good":Number(r.ret)<0?"bad":""):"";return '<td'+(retClass?' class="'+retClass+'"':'')+' title="'+esc(value)+'">'+esc(value)+'</td>'}).join("")+'</tr>').join("")+'</tbody></table>'}
 function metric(label,value,sub){return '<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(value)+'</div><div class="sub">'+esc(sub||"")+'</div></div>'}
 function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="row"><span class="muted">'+esc(k)+'</span><b>'+esc(typeof v==="string"?v:JSON.stringify(v))+'</b></div>').join("")||'<div class="empty">Aucune donnée meta disponible.</div>'}
 function dbQuery(sql){try{if(!state.db)return [];let r=state.db.exec(sql);if(!r.length)return [];return r[0].values.map(row=>Object.fromEntries(r[0].columns.map((c,i)=>[c,row[i]])))}catch(e){return []}}
