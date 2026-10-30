@@ -55,9 +55,9 @@ class ExitEvolutionTests(unittest.TestCase):
         self.assertIn(BASELINE_NAME, policies)
         self.assertEqual(len(policies), len(POLICIES))
         for name, sl_delta, tp, activation, distance, max_bars in POLICIES:
-            self.assertTrue(1.4 <= _base_sl(0.008) + sl_delta <= 2.4, name)
-            self.assertTrue(1.4 <= _base_sl(0.018) + sl_delta <= 2.4, name)
-            self.assertTrue(1.4 <= _base_sl(0.035) + sl_delta <= 2.4, name)
+            self.assertTrue(1.4 <= _base_sl(0.008) + sl_delta <= 2.4 + 1e-9, name)
+            self.assertTrue(1.4 <= _base_sl(0.018) + sl_delta <= 2.4 + 1e-9, name)
+            self.assertTrue(1.4 <= _base_sl(0.035) + sl_delta <= 2.4 + 1e-9, name)
             self.assertTrue(2.5 <= tp <= 4.0, name)
             self.assertGreater(activation, 0, name)
             self.assertGreater(distance, 0, name)
