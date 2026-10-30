@@ -1090,7 +1090,7 @@ class Paper:
             (now, inst, entry, atr_pct, feats, None if row.get("prob") is None else float(row["prob"]),
              int(row["rank"]), 0, float(row.get("feature_ts", now)),
              str(row.get("prob_source") or "ranking_exploration"),
-             300, feature_names, schema_version))
+             required_count, feature_names, schema_version))
         sid = int(cur.lastrowid)
         self.db.execute(
             "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,regime,entry_score,peak_price,trailing_sl,trail_active,prob_source,"
