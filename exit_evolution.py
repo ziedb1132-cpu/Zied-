@@ -328,6 +328,52 @@ def _selected(paper, atr):
     return next((p for p in POLICIES if p[0] == name), POLICIES[0])
 
 
+def _exit_learning_report(paper):
+    """Compact actual TP/SL/TRAIL/TIME feedback plus shadow-sample coverage."""
+    _ensure(paper)
+    with paper.lock:
+        rows = paper.db.execute(
+            "SELECT close_reason,COUNT(*) AS n,AVG(ret) AS avg_ret,"
+            "SUM(CASE WHEN ret>0 THEN 1 ELSE 0 END) AS wins "
+            "FROM tracked_signals WHERE status='CLOSED' AND ret IS NOT NULL "
+            "GROUP BY close_reason"
+        ).fetchall()
+        shadow = paper.db.execute(
+            "SELECT COUNT(DISTINCT tracked_id) AS signals,COUNT(*) AS samples "
+            "FROM exit_policy_shadow_v2"
+        ).fetchone()
+        champions = paper.db.execute(
+            "SELECT regime,policy FROM exit_policy_champion_v2 ORDER BY regime"
+        ).fetchall()
+    grouped = {}
+    for row in rows:
+        reason = _canonical_reason(row["close_reason"])
+        item = grouped.setdefault(reason, {"n": 0, "wins": 0, "ret_sum": 0.0})
+        item["n"] += int(row["n"])
+        item["wins"] += int(row["wins"] or 0)
+        item["ret_sum"] += float(row["avg_ret"] or 0.0) * int(row["n"])
+    lines = ["🧠 تعلم إدارة المخارج من النتائج الفعلية:"]
+    for reason in ("TP", "SL", "TRAIL", "TIME", "UNKNOWN"):
+        item = grouped.get(reason)
+        if not item:
+            continue
+        avg = item["ret_sum"] / max(1, item["n"])
+        wr = item["wins"] / max(1, item["n"]) * 100
+        lines.append(
+            f"{reason}: {item['n']} | نجاح {wr:.1f}% | متوسط صافي {avg*100:+.2f}%"
+        )
+    lines.append(
+        f"المسارات المقارنة: {int(shadow['signals'] or 0)} إشارة / "
+        f"{int(shadow['samples'] or 0)} نتيجة سياسة"
+    )
+    if champions:
+        lines.append("السياسات المعتمدة: " + " | ".join(
+            f"{r['regime']}={r['policy']}" for r in champions))
+    else:
+        lines.append("السياسة الحالية لم تتغير؛ انتظار 500 رابحة و500 خاسرة واختبار مستقل.")
+    return "\\n".join(lines)
+
+
 def install(zq):
     if getattr(zq, "_exit_policy_v2_installed", False):
         return
@@ -376,4 +422,15 @@ def install(zq):
 
     zq.Paper.create_tracked_signal = create_with_policy
     zq.monitor_tracked_signals = monitor_and_learn
+    original_stats_msg = zq.stats_msg
+
+    def stats_with_exit_learning(paper, *args, **kwargs):
+        base = original_stats_msg(paper, *args, **kwargs)
+        try:
+            return base + "\\n\\n" + _exit_learning_report(paper)
+        except Exception as exc:
+            zq.log.warning("exit learning report unavailable: %s", exc)
+            return base
+
+    zq.stats_msg = stats_with_exit_learning
     zq._exit_policy_v2_installed = True
