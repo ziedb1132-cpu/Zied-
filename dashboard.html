@@ -139,6 +139,55 @@ tbody tr:hover{background:#f0f5fd}
 }
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 </style>
+<style id="executive-theme">
+:root{--bg:#f2f5fa;--panel:#fff;--line:#e4eaf2;--txt:#17243a;--mut:#748198;--green:#07966b;--red:#df5268;--blue:#3569c8;--gold:#d59a37;--shadow:0 10px 30px rgba(20,39,70,.055);--radius:17px}
+body{background:#f2f5fa;color:#17243a;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+header{height:78px;padding:12px 30px 12px 280px;background:#101d33;border:0;box-shadow:0 5px 24px rgba(8,20,40,.2)}
+.brand h1{color:#f4f7fc;font-size:18px;letter-spacing:-.45px}.brand .muted{color:#91a3bf;font-size:11px}.logo{width:42px;height:42px;display:grid;place-items:center;padding:0;border-radius:12px;background:linear-gradient(145deg,#6b98e8,#315fbd);font-size:15px}
+.status{color:#d9e6f8;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:8px 12px;font-size:11px}.dot{margin:0}
+main{max-width:none;margin:0 0 0 252px;padding:28px clamp(16px,2.5vw,38px) 42px}
+.tabs{position:fixed;z-index:8;left:0;top:0;bottom:0;width:252px;margin:0;padding:112px 15px 22px;background:#14233c;border:0;border-right:1px solid #263a59;border-radius:0;display:flex;flex-direction:column;align-items:stretch;gap:7px;overflow-y:auto}
+.tabs:before{content:"ZIED QUANT  /  WORKSPACE";position:absolute;top:83px;left:23px;color:#8295b3;font-size:9px;letter-spacing:1.4px;font-weight:800}
+.tabs:after{content:"SYSTEM MONITORING  •  READ ONLY";position:absolute;bottom:23px;left:22px;color:#7186a6;font-size:9px;letter-spacing:.8px}
+.tabs button{display:flex;align-items:center;gap:11px;width:100%;text-align:left;white-space:normal;border:1px solid transparent;border-radius:11px;padding:12px 13px;background:transparent;color:#aebdd2;font-size:12px;font-weight:650;box-shadow:none}
+.tabs button:before{content:"";width:7px;height:7px;border-radius:2px;background:#536987;flex:0 0 7px}
+.tabs button:hover{background:#1c3151;color:#fff}
+.tabs button.active{background:linear-gradient(100deg,#294a7c,#203c67);border-color:#355783;color:#fff;box-shadow:inset 3px 0 #75a3f1}
+.tabs button.active:before{background:#8eb6ff;box-shadow:0 0 0 4px rgba(142,182,255,.12)}
+.executive-hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.8fr);gap:24px;align-items:center;padding:25px 28px;margin:0 0 18px;border-radius:20px;background:linear-gradient(112deg,#172943 0%,#203c62 58%,#315c91 100%);color:#fff;box-shadow:0 14px 35px rgba(24,48,82,.16);position:relative;overflow:hidden}
+.executive-hero:after{content:"";position:absolute;width:340px;height:340px;border:1px solid rgba(255,255,255,.08);border-radius:50%;right:18%;top:-230px;box-shadow:0 0 0 35px rgba(255,255,255,.025),0 0 0 75px rgba(255,255,255,.02);pointer-events:none}
+.hero-copy,.hero-side{position:relative;z-index:1}.eyebrow{display:flex;align-items:center;gap:8px;color:#a9c5ef;font-size:9px;font-weight:800;letter-spacing:1.5px}.pulse{width:7px;height:7px;border-radius:50%;background:#51d6a5;box-shadow:0 0 0 5px rgba(81,214,165,.12)}
+.hero-copy h2{font-size:25px;line-height:1.2;margin:13px 0 7px;color:#fff;letter-spacing:-.7px}.hero-copy p{color:#c1d0e4;font-size:12px;margin:0;max-width:560px}
+.hero-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:19px}.hero-chip{font-size:9px;letter-spacing:.7px;font-weight:800;color:#d7e5f9;border:1px solid rgba(255,255,255,.17);background:rgba(255,255,255,.07);padding:7px 10px;border-radius:7px}
+.refresh-btn{border:1px solid rgba(255,255,255,.22);background:#f5f8fd;color:#203b61;padding:7px 11px;font-size:10px;border-radius:8px}.refresh-btn:hover{background:#fff}
+.hero-side{border-left:1px solid rgba(255,255,255,.16);padding-left:23px}.hero-cycle span,.hero-mini span{display:block;color:#aebfda;font-size:10px}.hero-cycle strong{display:block;font-size:28px;line-height:1.2;margin-top:2px;color:#fff;font-variant-numeric:tabular-nums}
+.hero-mini{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin-top:15px}.hero-mini b{display:block;font-size:14px;color:#fff;margin-top:2px;font-variant-numeric:tabular-nums}
+#metrics{grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
+#metrics .card{position:relative;overflow:hidden;padding:17px 18px 15px;border:1px solid #e5ebf3;border-radius:15px;box-shadow:0 5px 18px rgba(26,48,82,.04)}
+#metrics .card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#5d85cf}
+#metrics .card:nth-child(5):before{background:#0b9b70}#metrics .card:nth-child(6):before{background:#df5268}#metrics .card:nth-child(7):before{background:#d59a37}
+.label{font-size:10px;text-transform:uppercase;letter-spacing:.45px;color:#7a879b}.value{font-size:25px;color:#1a2e4b;line-height:1.2;margin:9px 0 5px;font-variant-numeric:tabular-nums}.sub{font-size:10px;color:#8b97a8}
+.card{border:1px solid #e5ebf3;border-radius:16px;box-shadow:0 6px 22px rgba(25,45,75,.04);padding:18px}
+.card h2,.section h2{color:#203653;font-size:13px;font-weight:800;letter-spacing:.05px}
+.chartgrid,.cols{gap:14px;margin-top:14px}.chartgrid>.card,.cols>.card{padding:18px}
+.charthead h2{font-size:13px}.chartbox{min-height:220px}
+.tablewrap{border:1px solid #e5ebf3;border-radius:13px;box-shadow:0 4px 15px rgba(25,45,75,.025)}
+table{font-size:11px}th{background:#f3f6fb;color:#60718a;text-transform:uppercase;letter-spacing:.4px;font-size:9px;padding:12px}td{padding:11px 12px;font-variant-numeric:tabular-nums}tbody tr:nth-child(even){background:#fafbfd}tbody tr:hover{background:#eff5fd}
+.good{color:#07845f}.bad{color:#d6455d}.eval-block,.eval-kpi{border-color:#e5ebf3;border-radius:13px}.eval-kpi .v{font-variant-numeric:tabular-nums}
+.foot{border-top:1px solid #e2e8f0;padding-top:18px;color:#8c98aa}
+@media(max-width:1050px){#metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.executive-hero{grid-template-columns:1fr}.hero-side{border-left:0;border-top:1px solid rgba(255,255,255,.16);padding:14px 0 0}}
+@media(max-width:760px){
+ header{height:auto;min-height:70px;padding:11px 13px}main{margin:0;padding:14px 11px 30px}
+ .tabs{position:sticky;top:0;bottom:auto;width:auto;margin:0 -11px 15px;padding:8px 10px;background:#14233c;flex-direction:row;overflow-x:auto;align-items:center;gap:6px;box-shadow:0 5px 15px rgba(15,31,55,.14)}
+ .tabs:before,.tabs:after{display:none}.tabs button{width:auto;flex:0 0 auto;padding:9px 11px;font-size:10px}
+ .executive-hero{padding:20px 17px;border-radius:15px;gap:17px}.hero-copy h2{font-size:21px}.hero-side{padding-top:12px}
+ #metrics{gap:8px}#metrics .card{padding:13px 11px}.value{font-size:20px}
+ .chartgrid,.cols{grid-template-columns:1fr}.chartgrid>.card,.cols>.card{padding:13px}
+ .brand h1{font-size:15px}.brand .muted{font-size:10px}.logo{width:36px;height:36px}
+ .status{font-size:9px;padding:6px 8px}.top{gap:8px}
+}
+@media(max-width:390px){#metrics{grid-template-columns:1fr 1fr}.hero-mini{gap:8px}.hero-mini b{font-size:12px}}
+</style>
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
@@ -146,7 +195,11 @@ tbody tr:hover{background:#f0f5fd}
 <div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
 
 <div class="tabs"><button class="active" data-tab="overview">Vue d’ensemble</button><button data-tab="trackedOpen">Signaux ouverts</button><button data-tab="trackedClosed">Signaux clôturés</button><button data-tab="recentSignals">Signaux récents</button><button data-tab="signals">Tous les signaux</button><button data-tab="ai">Intelligence artificielle</button></div>
-<section id="page-overview"><div id="metrics" class="grid"></div><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2><span id="chartReturnMeta" class="muted">En attente de données</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats des signaux</h2><span class="muted">Parmi les signaux suivis et clôturés</span></div><div id="outcomeChart" class="chartbox"></div></div></div><div class="cols"><div class="card"><h2>État du système</h2><div id="system"></div></div><div class="card"><h2>Résultats de l’évaluation des signaux</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div></section>
+<section id="page-overview"><div class="executive-hero">
+ <div class="hero-copy"><div class="eyebrow"><span class="pulse"></span> QUANTITATIVE MONITORING</div><h2>Vue stratégique du portefeuille</h2><p>Surveillance des signaux, suivi des clôtures et progression de l’apprentissage IA.</p>
+ <div class="hero-actions"><span class="hero-chip">SPOT · USDT</span><span class="hero-chip">PAPER TRADING</span><button type="button" class="refresh-btn" onclick="connect()">↻ Actualiser les données</button></div></div>
+ <div class="hero-side"><div class="hero-cycle"><span>Cycle actif</span><strong id="heroCycle">—</strong></div><div class="hero-mini"><div><span>Signaux suivis</span><b id="heroTracked">—</b></div><div><span>Signaux évalués</span><b id="heroEvaluated">—</b></div><div><span>Dernière mise à jour</span><b id="heroUpdated">—</b></div></div></div>
+</div><div id="metrics" class="grid"></div><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2><span id="chartReturnMeta" class="muted">En attente de données</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats des signaux</h2><span class="muted">Parmi les signaux suivis et clôturés</span></div><div id="outcomeChart" class="chartbox"></div></div></div><div class="cols"><div class="card"><h2>État du système</h2><div id="system"></div></div><div class="card"><h2>Résultats de l’évaluation des signaux</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div></section>
 <section id="page-trackedOpen" class="hide section"><h2>Signaux ouverts suivis</h2><p class="muted">Signaux qui ne sont pas encore clôturés.</p><div id="trackedOpen" class="tablewrap"></div></section>
 <section id="page-trackedClosed" class="hide section"><h2>Les 100 derniers signaux clôturés</h2><p class="muted">Classement par date de clôture décroissante. Les sorties TRAIL sont comptabilisées dans SL, car elles sont déclenchées par le stop suiveur.</p><div id="closedKpis" class="grid closed-kpis"></div><div class="chartgrid closed-charts"><div class="card"><div class="charthead"><h2>Répartition des clôtures</h2><span class="muted">100 derniers signaux</span></div><div id="closedReasonChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Rendement cumulé réalisé</h2><span class="muted">Ordre chronologique</span></div><div id="closedReturnChart" class="chartbox"></div></div></div><div id="trackedClosed" class="tablewrap"></div></section>
 <section id="page-recentSignals" class="hide section"><h2>Signaux récents</h2><div id="recent" class="tablewrap"></div></section>
@@ -193,6 +246,11 @@ function render(){
  const wins=Number(state.summary.wins)||0,losses=Number(state.summary.losses)||0,avg=state.summary.avgRet;
  const gateWins=Number(state.summary.gateWins)||0,gateLosses=Number(state.summary.gateLosses)||0,gateTotal=Number(state.summary.gateTotal)||0;
  const gateReady=gateWins>=500&&gateLosses>=500;
+ const heroCycle=$("heroCycle"),heroTracked=$("heroTracked"),heroEvaluated=$("heroEvaluated"),heroUpdated=$("heroUpdated");
+ if(heroCycle)heroCycle.textContent=String(cycle);
+ if(heroTracked)heroTracked.textContent=fmt(Number(state.summary.openTracked||0)+Number(state.summary.closedTracked||0));
+ if(heroEvaluated)heroEvaluated.textContent=fmt(labeledCount);
+ if(heroUpdated)heroUpdated.textContent=state.manifest?.generated_at?timeFmt(state.manifest.generated_at):"—";
  const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
  $("metrics").innerHTML=metric("Tous les signaux enregistrés",total,"Table signals dans SQLite")+metric("Signaux évalués",labeledCount,"Y compris les signaux non suivis")+metric("Signaux suivis ouverts",state.summary.openTracked,"Statut OPEN")+metric("Signaux suivis clôturés",state.summary.closedTracked,"Statut CLOSED")+metric("Gagnants admissibles à l’entraînement",gateWins,"Clôturés + rendement positif")+metric("Perdants admissibles à l’entraînement",gateLosses,"Clôturés + rendement négatif")+metric("Seuil d’entraînement",gateReady?"Prête":"En attente des résultats",gateWins+"/500 Gagnant · "+gateLosses+"/500 Perdant");
  $("system").innerHTML=showRows({"Dépôt":DASHBOARD_REPOSITORY.owner+"/"+DASHBOARD_REPOSITORY.repo,"Branche des données":DASHBOARD_REPOSITORY.branch,"Cycle d’analyse":cycle,"Enregistrement des signaux":paused?"Temporairement suspendu":"Actif selon meta","Base de données":"Non téléchargée dans le navigateur — conservée dans state-data","Données": "Lecture seule — aucune transaction"});
