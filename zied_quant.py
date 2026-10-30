@@ -1428,9 +1428,11 @@ def top_msg():
     if not os.path.exists(p):
         return "لا يوجد تصنيف بعد."
     R = pd.read_csv(p, index_col=0).head(10)
-    return "📊 أفضل 10 عملات\n" + "\n".join(
-        f"{int(r['rank'])}. {i.replace('-USDT', '')} نقاط {r['score']:+.2f}"
-        + (f" AI {r['prob'] * 100:.0f}%" if not pd.isna(r["prob"]) else "") for i, r in R.iterrows())
+    return "📊 أفضل 10 عملات — ترتيب القوة النسبية\n" + "\n".join(
+        f"{int(r['rank'])}. {i.replace('-USDT', '')} | Ranking Score {r['ranking_score']:+.2f}"
+        + (f" | AI Probability {r['ai_probability'] * 100:.1f}%"
+           if "ai_probability" in R.columns and not pd.isna(r["ai_probability"])
+           else " | AI: غير متاح") for i, r in R.iterrows())
 
 def handle_command(text, paper, brain):
     cmd = text.split()[0].split("@")[0].lower()
@@ -1653,40 +1655,46 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                             feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]),
                             feature_ts=feature_ts[i])
                        for i in R.index[:CFG["LOG_TOP"]]])
-    if ai_prediction_error is not None or not np.isfinite(R["prob"].dropna().to_numpy(dtype=float)).all():
-        log.error("AI probabilities invalid (%s); scan is ranking-only and no entries are allowed",
-                  ai_prediction_error or "non-finite values")
-        tg("⚠️ Zied Quant: خرجت احتمالات AI بقيم غير صالحة (NaN/Inf). تم منع جميع أوامر الدخول في هذه الدورة.")
-        return R
     if ai_prediction_error is not None:
+        log.error("AI prediction failed (%s); entries blocked for this cycle", ai_prediction_error)
+        tg("⚠️ تعذر حساب احتمال النموذج؛ تم منع الدخول في هذه الدورة.")
         return R
-    prob_min = CFG["PROB_MIN"]
-    if prob_min is None:
-        prob_min = float(CFG["EXPLORATION_PROB_MIN"]) if not brain.ready else 0.55
+    if brain.ready and not np.isfinite(R["ai_probability"].dropna().to_numpy(dtype=float)).all():
+        log.error("validated AI returned invalid probabilities; entries blocked")
+        tg("⚠️ احتمالات النموذج غير صالحة؛ تم منع الدخول في هذه الدورة.")
+        return R
+    prob_min = CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else 0.55
     # Entry universe is strictly the top 10 by cross-sectional rank.
     # Do not backfill from rank 11+ when a top-10 coin is already open or fails
     # the AI threshold; duplicates are skipped, never replaced by coin #11.
     eligible_rows = []
     for inst, rr in R.iterrows():
-        if int(rr["rank"]) > 10 or pd.isna(rr["prob"]) or float(rr["prob"]) < float(prob_min):
+        if int(rr["rank"]) > 10:
             continue
         threshold, regime_stats = regime_entry_threshold(paper, rr["regime"])
         if bool(rr["stretched"]) or float(rr["entry_score"]) < threshold:
             continue
+        if brain.ready and (pd.isna(rr["ai_probability"]) or float(rr["ai_probability"]) < float(prob_min)):
+            continue
         eligible_rows.append(inst)
-    eligible = R.loc[eligible_rows].sort_values(["prob", "score"], ascending=False)
+    sort_columns = ["ai_probability", "ranking_score"] if brain.ready else ["ranking_score"]
+    eligible = R.loc[eligible_rows].sort_values(sort_columns, ascending=False, na_position="last")
     created = []
     for inst, rr in eligible.iterrows():
         sig = paper.create_tracked_signal(dict(
             inst=inst, price=float(uni.loc[inst, "last"]), atr=float(X.loc[inst, "1H_atr_pct"]),
-            feats=X.loc[inst, FEATURE_COLS].values, prob=float(rr["prob"]), rank=int(rr["rank"]),
+            feats=X.loc[inst, FEATURE_COLS].values,
+            prob=(float(rr["ai_probability"]) if brain.ready else None), rank=int(rr["rank"]),
             feature_ts=feature_ts[inst], regime=str(rr["regime"]),
             entry_score=float(rr["entry_score"])))
         if sig:
             created.append(sig)
+            probability_line = (f"احتمال AI المعتمد: {float(sig['prob'])*100:.1f}%"
+                                if brain.ready and sig.get("prob") is not None
+                                else "المصدر: ترتيب استكشافي فقط — لا يوجد احتمال AI")
             tg(f"🟢 إشارة تداول ورقي #{sig['id']}\n"
-               f"العملة: {inst} | الترتيب: {sig['rank']}/50\n"
-               f"احتمال النموذج: {float(sig['prob'])*100:.1f}%\n"
+               f"العملة: {inst} | الترتيب: {sig['rank']}/50 | نقاط الترتيب: {float(rr['ranking_score']):+.2f}\n"
+               f"{probability_line}\n"
                f"الدخول الافتراضي: {sig['entry']:.8g}\n"
                f"وقف الخسارة: {sig['sl']:.8g} | الهدف: {sig['tp']:.8g}\n"
                f"جودة الدخول: {sig['entry_score']:.0f}/100 | حالة السوق: {sig['regime']}\n"
