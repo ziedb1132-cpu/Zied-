@@ -48,6 +48,32 @@ tr:last-child td{border-bottom:0}
 .empty{padding:26px;text-align:center;color:var(--mut)}
 .row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #edf0f5;overflow-wrap:anywhere}
 .row:last-child{border:0}
+
+.eval-panel{display:grid;gap:14px}
+.eval-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.eval-kpi{border:1px solid #e8edf4;background:linear-gradient(180deg,#fff,#f9fbfe);border-radius:13px;padding:13px;min-width:0}
+.eval-kpi .k{font-size:11px;color:var(--mut);font-weight:650;line-height:1.4}
+.eval-kpi .v{font-size:22px;font-weight:800;letter-spacing:-.4px;margin-top:5px;color:#1b2d49;overflow-wrap:anywhere}
+.eval-kpi .d{font-size:11px;color:#8290a4;margin-top:2px}
+.eval-block{border:1px solid var(--line);border-radius:13px;padding:14px;background:#fff}
+.eval-block-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:11px}
+.eval-block-head strong{font-size:13px;color:#263a58}
+.eval-tag{font-size:10px;font-weight:750;padding:4px 8px;border-radius:999px;background:#eef3fb;color:#526783}
+.eval-tag.ready{background:#e8f6ef;color:#16724f}
+.eval-tag.wait{background:#fff5e6;color:#98610d}
+.eval-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.eval-stat{background:#f7f9fc;border-radius:10px;padding:10px}
+.eval-stat span{display:block;font-size:11px;color:var(--mut)}
+.eval-stat b{display:block;font-size:17px;margin-top:2px;color:#263a58}
+.eval-progress-row{display:grid;grid-template-columns:90px 1fr 65px;align-items:center;gap:9px;margin:10px 0}
+.eval-progress-row .name{font-size:11px;color:#52627a;font-weight:650}
+.eval-track{height:9px;border-radius:99px;background:#edf1f6;overflow:hidden}
+.eval-fill{height:100%;border-radius:99px;background:#315fbd}
+.eval-fill.loss{background:#d6455d}
+.eval-progress-row .pct{text-align:right;font-size:11px;font-weight:750;color:#52627a}
+.eval-note{font-size:11px;line-height:1.6;color:#718096;background:#f7f9fc;border-left:3px solid #9db4df;padding:10px 12px;border-radius:7px}
+@media(max-width:650px){.eval-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.eval-kpi .v{font-size:19px}.eval-progress-row{grid-template-columns:75px 1fr 58px}}
+
 .hide{display:none!important}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-left:6px;box-shadow:0 0 0 3px rgba(166,107,18,.1)}
 .good{color:var(--green);font-weight:700}
@@ -116,7 +142,25 @@ function render(){
  const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
  $("metrics").innerHTML=metric("Tous les signaux enregistrés",total,"Table signals dans SQLite")+metric("Signaux évalués",labeledCount,"Y compris les signaux non suivis")+metric("Signaux suivis ouverts",state.summary.openTracked,"Statut OPEN")+metric("Signaux suivis clôturés",state.summary.closedTracked,"Statut CLOSED")+metric("Gagnants admissibles à l’entraînement",gateWins,"Clôturés + rendement positif")+metric("Perdants admissibles à l’entraînement",gateLosses,"Clôturés + rendement négatif")+metric("Seuil d’entraînement",gateReady?"Prête":"En attente des résultats",gateWins+"/500 Gagnant · "+gateLosses+"/500 Perdant");
  $("system").innerHTML=showRows({"Dépôt":$("owner").value+"/"+$("repo").value,"Branche des données":$("branch").value,"Cycle d’analyse":cycle,"Enregistrement des signaux":paused?"Temporairement suspendu":"Actif selon meta","Base de données":"Non téléchargée dans le navigateur — conservée dans state-data","Fichiers du manifeste":state.files.length,"Données": "Lecture seule — aucune transaction"});
- $("labelSummary").innerHTML=showRows({"Nombre total de signaux dans SQLite":total,"Signaux évalués":labeledCount,"Non évalués":pending,"Signaux gagnants parmi tous les signaux évalués":wins,"Signaux perdants ou non positifs parmi tous les signaux évalués":losses,"Taux de réussite de tous les signaux":labeledCount?(wins/labeledCount*100).toFixed(2)+"%":"—","Rendement théorique moyen":avg===null||avg===undefined?"—":(Number(avg)*100).toFixed(3)+"%","Signaux suivis ouverts":state.summary.openTracked,"Signaux suivis clôturés":state.summary.closedTracked,"Signaux gagnants clôturés admissibles à l’entraînement":gateWins,"Signaux perdants clôturés admissibles à l’entraînement":gateLosses,"Nombre total de résultats admissibles à l’entraînement":gateTotal,"Progression vers le seuil d’entraînement":Math.min(100,gateWins/5).toFixed(1)+"% du seuil des gagnants et"+Math.min(100,gateLosses/5).toFixed(1)+"% du seuil des perdants","Seuil d’entraînement":"500 signaux gagnants clôturés + 500 signaux perdants clôturés ; le programme utilise les résultats admissibles cumulés","Remarque":"Les signaux non suivis ne sont pas comptabilisés dans le seuil d’entraînement des résultats clôturés"});
+ const winRate=labeledCount?(wins/labeledCount*100):null;
+ const avgLabel=avg===null||avg===undefined?"—":(Number(avg)*100).toFixed(3)+"%";
+ const winProgress=Math.min(100,gateWins/5),lossProgress=Math.min(100,gateLosses/5);
+ const fmtPct=n=>Number(n).toFixed(1)+"%";
+ $("labelSummary").innerHTML='<div class="eval-panel">'+
+ '<div class="eval-kpis">'+
+ '<div class="eval-kpi"><div class="k">Signaux enregistrés</div><div class="v">'+fmt(total)+'</div><div class="d">Historique complet SQLite</div></div>'+
+ '<div class="eval-kpi"><div class="k">Signaux évalués</div><div class="v">'+fmt(labeledCount)+'</div><div class="d">'+fmt(pending)+' en attente d’évaluation</div></div>'+
+ '<div class="eval-kpi"><div class="k">Taux de réussite</div><div class="v">'+(winRate===null?"—":fmtPct(winRate))+'</div><div class="d">'+fmt(wins)+' gagnants sur '+fmt(labeledCount)+' évalués</div></div>'+
+ '</div>'+
+ '<div class="eval-block"><div class="eval-block-head"><strong>Performance globale de l’évaluation</strong><span class="eval-tag">Tous les signaux évalués</span></div>'+
+ '<div class="eval-stats"><div class="eval-stat"><span>Signaux gagnants</span><b class="good">'+fmt(wins)+'</b></div><div class="eval-stat"><span>Signaux perdants / non positifs</span><b class="bad">'+fmt(losses)+'</b></div><div class="eval-stat"><span>Rendement théorique moyen</span><b>'+esc(avgLabel)+'</b></div><div class="eval-stat"><span>Signaux non encore évalués</span><b>'+fmt(pending)+'</b></div></div></div>'+
+ '<div class="eval-block"><div class="eval-block-head"><strong>Signaux réellement suivis</strong><span class="eval-tag">Suivi des positions virtuelles</span></div>'+
+ '<div class="eval-stats"><div class="eval-stat"><span>Encore ouverts</span><b>'+fmt(state.summary.openTracked)+'</b></div><div class="eval-stat"><span>Clôturés et évaluables</span><b>'+fmt(state.summary.closedTracked)+'</b></div></div></div>'+
+ '<div class="eval-block"><div class="eval-block-head"><strong>Progression vers l’admissibilité à l’entraînement</strong><span class="eval-tag '+(gateWins>=500&&gateLosses>=500?"ready":"wait")+'">'+(gateWins>=500&&gateLosses>=500?"Seuil atteint":"Collecte en cours")+'</span></div>'+
+ '<div class="eval-progress-row"><span class="name">Gagnants</span><div class="eval-track"><div class="eval-fill" style="width:'+winProgress+'%"></div></div><span class="pct">'+fmt(gateWins)+' / 500</span></div>'+
+ '<div class="eval-progress-row"><span class="name">Perdants</span><div class="eval-track"><div class="eval-fill loss" style="width:'+lossProgress+'%"></div></div><span class="pct">'+fmt(gateLosses)+' / 500</span></div>'+
+ '<div class="eval-stats"><div class="eval-stat"><span>Total des résultats admissibles</span><b>'+fmt(gateTotal)+'</b></div><div class="eval-stat"><span>Condition d’activation</span><b>'+(gateWins>=500&&gateLosses>=500?"Remplie":"1 000 résultats requis")+'</b></div></div></div>'+
+ '<div class="eval-note">Seuls les signaux suivis puis clôturés sont comptabilisés dans le seuil d’entraînement. Les signaux non suivis et ceux qui sont encore ouverts restent exclus de ce compteur. Les résultats globaux et les résultats admissibles à l’entraînement sont présentés séparément.</div></div>'; le programme utilise les résultats admissibles cumulés","Remarque":"Les signaux non suivis ne sont pas comptabilisés dans le seuil d’entraînement des résultats clôturés"});
  const sigCols=[["Date d’enregistrement",r=>timeFmt(r.ts)],["Actif","inst"],["Prix","price"],["Probabilité IA",r=>r.prob===null||r.prob===undefined?"—":(Number(r.prob)*100).toFixed(2)+"%"],["Rang","rank"],["Évaluation terminée",r=>Number(r.labeled)===1?"Oui":"Non"],["Résultat",r=>r.label===null||r.label===undefined?"—":Number(r.label)===1&&Number(r.ret)>0?"Gagnant":"Perdant / non positif"],["Rendement théorique",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["Durée d’évaluation (heures)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
  const ordered=state.signals.slice().sort((a,b)=>Number(b.ts||0)-Number(a.ts||0));
  $("recent").innerHTML=table(ordered.slice(0,10),sigCols);$("signals").innerHTML=table(ordered.slice(0,500),sigCols);
