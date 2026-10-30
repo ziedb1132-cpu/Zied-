@@ -1616,7 +1616,11 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     if X.empty:
         log.warning("no data"); return None
     score = rank_universe(X, uni["vol"])
-    R = pd.DataFrame({"score": score}); R["rank"] = np.arange(1, len(R) + 1); R["prob"] = np.nan
+    R = pd.DataFrame({"ranking_score": score, "score": score})
+    R["rank"] = np.arange(1, len(R) + 1)
+    R["ai_probability"] = np.nan
+    R["prob"] = np.nan
+    R["prediction_source"] = "RANKING_EXPLORATION"
     entry_quality = {i: evaluate_entry_quality(X.loc[i]) for i in R.index}
     R["entry_score"] = [entry_quality[i][0] for i in R.index]
     R["stretched"] = [entry_quality[i][1] for i in R.index]
@@ -1624,18 +1628,20 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     ai_prediction_error = None
     learning_mode = not brain.ready
     if learning_mode:
-        log.warning("AI bootstrap exploration active: rank-derived exploration scores, threshold=%.2f; risk controls remain active",
-                    float(CFG.get("EXPLORATION_PROB_MIN", 0.65)))
+        log.warning("AI model unavailable: ranking-only exploration; AI probability remains NULL")
     top = list(R.index[:CFG["TOP_AI"]])
     if brain.ready:
         try:
-            R.loc[top, "prob"] = brain.predict(X.loc[top, FEATURE_COLS].values)
+            predictions = np.asarray(brain.predict(X.loc[top, FEATURE_COLS].values), dtype=float)
+            if len(predictions) != len(top) or not np.isfinite(predictions).all():
+                raise ValueError("model returned invalid probability vector")
+            R.loc[top, "ai_probability"] = predictions
+            R.loc[top, "prob"] = predictions
+            R.loc[top, "prediction_source"] = "VALIDATED_AI"
         except Exception as e:
             ai_prediction_error = str(e)
             log.exception("AI prediction invalid; all new entries will be blocked")
-    else:
-        # Paper-only exploration breaks the cold-start deadlock without approving AI.
-        R.loc[top, "prob"] = np.linspace(0.78, 0.60, len(top)) if top else []
+    # Ranking-only exploration intentionally leaves AI probability empty.
     R.to_csv(os.path.join(CFG["DIR"], "ranking.csv"))
     log.info("top 5:\n%s", R.head(5))
     if not trade:
