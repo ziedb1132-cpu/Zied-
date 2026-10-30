@@ -190,13 +190,73 @@ table{font-size:11px}th{background:#f3f6fb;color:#60718a;text-transform:uppercas
 }
 @media(max-width:390px){#metrics{grid-template-columns:1fr 1fr}.hero-mini{gap:8px}.hero-mini b{font-size:12px}}
 </style>
+
+<style id="navigation-redesign">
+/* Clear, grouped navigation */
+header{padding-left:290px}
+.page-nav{position:fixed;inset:0 auto 0 0;width:258px;height:100dvh;margin:0;padding:24px 15px 18px;display:flex;flex-direction:column;align-items:stretch;gap:17px;overflow-y:auto;overflow-x:hidden;background:#101d33;border:0;border-right:1px solid #263a59;border-radius:0;z-index:30;box-shadow:8px 0 28px rgba(8,20,40,.08)}
+.page-nav:before,.page-nav:after{display:none}
+.nav-brand{display:flex;align-items:center;gap:11px;padding:3px 8px 19px;border-bottom:1px solid rgba(255,255,255,.09);color:#fff}
+.nav-mark{width:39px;height:39px;display:grid;place-items:center;border-radius:12px;background:linear-gradient(145deg,#79a5f1,#3569c8);font-weight:900;font-size:14px;box-shadow:0 5px 14px rgba(0,0,0,.2)}
+.nav-brand b{display:block;font-size:12px;letter-spacing:1.15px}.nav-brand small{display:block;color:#8296b5;font-size:8px;letter-spacing:1.25px;margin-top:3px}
+.nav-group{display:grid;gap:4px}
+.nav-caption{padding:0 11px 5px;color:#7186a5;font-size:9px;font-weight:850;letter-spacing:1.35px}
+.page-nav button{display:flex;align-items:center;gap:12px;width:100%;min-height:39px;padding:8px 11px;border:1px solid transparent;border-radius:9px;background:transparent;color:#aebdd2;text-align:left;font-size:11.5px;font-weight:650;box-shadow:none;white-space:nowrap}
+.page-nav button i{width:19px;flex:0 0 19px;text-align:center;font-style:normal;font-size:16px;line-height:1;color:#8298b8}
+.page-nav button span{overflow:hidden;text-overflow:ellipsis}
+.page-nav button:hover{background:#1a2e4b;color:#fff}
+.page-nav button.active{background:linear-gradient(100deg,#294a7c,#203c67);border-color:#355783;color:#fff;box-shadow:inset 3px 0 #83adf5}
+.page-nav button.active i{color:#a9c9ff}
+.nav-footer{margin-top:auto;padding:15px 9px 2px;border-top:1px solid rgba(255,255,255,.09);color:#91a5c2;font-size:8px;letter-spacing:1px;font-weight:800}
+.nav-footer small{display:block;margin:5px 0 0 14px;color:#647b9d;font-size:8px}
+.nav-live{display:inline-block;width:7px;height:7px;margin-right:7px;border-radius:50%;background:#4bd1a0;box-shadow:0 0 0 4px rgba(75,209,160,.1)}
+main{margin-left:258px}
+.nav-toggle,.nav-scrim{display:none}
+@media(max-width:760px){
+ header{height:auto;min-height:67px;padding:10px 14px 10px 58px}
+ main{margin:0;padding:17px 13px 35px}
+ .page-nav{width:min(290px,84vw);transform:translateX(-105%);transition:transform .22s ease;box-shadow:16px 0 40px rgba(0,0,0,.24);padding-top:22px}
+ body.nav-open .page-nav{transform:translateX(0)}
+ .nav-toggle{display:grid;place-items:center;position:fixed;z-index:42;left:12px;top:13px;width:36px;height:36px;padding:0;border-radius:10px;background:#203b61;color:#fff;border:1px solid rgba(255,255,255,.16);font-size:17px}
+ .nav-scrim{display:block;position:fixed;inset:0;background:rgba(8,18,34,.48);z-index:25;opacity:0;pointer-events:none;transition:opacity .2s}
+ body.nav-open .nav-scrim{opacity:1;pointer-events:auto}
+}
+@media(min-width:761px){.page-nav{transform:none!important}}
+</style>
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
 <main>
 <div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
 
-<nav class="tabs page-nav" aria-label="Dashboard pages"><button type="button" class="active" data-tab="overview">Overview</button><button type="button" class="" data-tab="portfolio">Portfolio</button><button type="button" class="" data-tab="signals">Signals</button><button type="button" class="" data-tab="closedTrades">Closed Trades</button><button type="button" class="" data-tab="aiIntelligence">AI Intelligence</button><button type="button" class="" data-tab="featureAnalysis">Feature Analysis</button><button type="button" class="" data-tab="marketRegime">Market Regime</button><button type="button" class="" data-tab="exitIntelligence">Exit Intelligence</button><button type="button" class="" data-tab="modelHealth">Model Health</button><button type="button" class="" data-tab="learningHistory">Learning History</button><button type="button" class="" data-tab="backtestValidation">Backtest & Validation</button><button type="button" class="" data-tab="systemLogs">System Logs</button></nav>
+<nav class="tabs page-nav" id="dashboardNav" aria-label="Dashboard pages">
+<div class="nav-brand"><span class="nav-mark">ZQ</span><div><b>ZIED QUANT</b><small>TRADING INTELLIGENCE</small></div></div>
+<div class="nav-group"><span class="nav-caption">WORKSPACE</span>
+<button type="button" class="active" data-tab="overview"><i>◫</i><span>Overview</span></button>
+</div>
+<div class="nav-group"><span class="nav-caption">TRADING</span>
+<button type="button" data-tab="portfolio"><i>▤</i><span>Portfolio</span></button>
+<button type="button" data-tab="signals"><i>⌁</i><span>Signals</span></button>
+<button type="button" data-tab="closedTrades"><i>↗</i><span>Closed Trades</span></button>
+</div>
+<div class="nav-group"><span class="nav-caption">INTELLIGENCE</span>
+<button type="button" data-tab="aiIntelligence"><i>✧</i><span>AI Intelligence</span></button>
+<button type="button" data-tab="featureAnalysis"><i>⌗</i><span>Feature Analysis</span></button>
+<button type="button" data-tab="marketRegime"><i>◉</i><span>Market Regime</span></button>
+<button type="button" data-tab="exitIntelligence"><i>⇥</i><span>Exit Intelligence</span></button>
+</div>
+<div class="nav-group"><span class="nav-caption">MODEL & RESEARCH</span>
+<button type="button" data-tab="modelHealth"><i>♡</i><span>Model Health</span></button>
+<button type="button" data-tab="learningHistory"><i>⟳</i><span>Learning History</span></button>
+<button type="button" data-tab="backtestValidation"><i>▥</i><span>Backtest & Validation</span></button>
+</div>
+<div class="nav-group"><span class="nav-caption">SYSTEM</span>
+<button type="button" data-tab="systemLogs"><i>≡</i><span>System Logs</span></button>
+</div>
+<div class="nav-footer"><span class="nav-live"></span> SYSTEM MONITORING <small>READ ONLY</small></div>
+</nav>
+<button type="button" id="navToggle" class="nav-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
+<div id="navScrim" class="nav-scrim"></div>
 <section id="page-overview"><div class="executive-hero">
  <div class="hero-copy"><div class="eyebrow"><span class="pulse"></span> QUANTITATIVE MONITORING</div><h2>Vue stratégique du portefeuille</h2><p>Surveillance des signaux, suivi des clôtures et progression de l’apprentissage IA.</p>
  <div class="hero-actions"><span class="hero-chip">SPOT · USDT</span><span class="hero-chip">PAPER TRADING</span><button type="button" class="refresh-btn" onclick="connect()">↻ Actualiser les données</button></div></div>
@@ -443,7 +503,9 @@ async function connect(){
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
 function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
-document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b)showDashboardPage(b.dataset.tab);});
+document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showDashboardPage(b.dataset.tab);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");}});
+document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
+document.getElementById("navScrim")?.addEventListener("click",()=>{document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
 window.addEventListener("hashchange",()=>showDashboardPage(location.hash.slice(1),false));
 currentLang="fr"
 showDashboardPage(location.hash.slice(1)||"overview",false);
