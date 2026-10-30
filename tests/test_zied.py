@@ -66,10 +66,11 @@ def test_no_lookahead():
 # ---------------------------------------------------------------- labels
 def _brute(c, h, l, atr, i, H):
     a = min(max(atr, 0.004), 0.06); e = c[i]
-    sl, tp = e * (1 - zq.CFG["SL_ATR"] * a), e * (1 + zq.CFG["TP_ATR"] * a)
+    sl_mult = zq.sl_atr_multiplier(a)
+    sl, tp = e * (1 - sl_mult * a), e * (1 + zq.CFG["TP_ATR"] * a)
     for k in range(1, H + 1):
         if l[i + k] <= sl:
-            return -zq.CFG["SL_ATR"] * a - zq.CFG["BT_COST"], k
+            return -sl_mult * a - zq.CFG["BT_COST"], k
         if h[i + k] >= tp:
             return zq.CFG["TP_ATR"] * a - zq.CFG["BT_COST"], k
     return c[i + H] / e - 1 - zq.CFG["BT_COST"], H
