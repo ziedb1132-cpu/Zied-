@@ -52,7 +52,7 @@ def _ensure(paper):
           test_n INTEGER NOT NULL, test_avg REAL NOT NULL, test_pf REAL NOT NULL,
           baseline_avg REAL NOT NULL, updated_ts REAL NOT NULL);
         """)
-        # Upgrade existing databases without dropping previously collected shadow samples.
+        # Upgrade existing databases without dropping previously collected samples.
         columns = {r["name"] for r in paper.db.execute(
             "PRAGMA table_info(exit_policy_shadow_v2)").fetchall()}
         for name, declaration in (
@@ -63,6 +63,13 @@ def _ensure(paper):
             if name not in columns:
                 paper.db.execute(
                     f"ALTER TABLE exit_policy_shadow_v2 ADD COLUMN {name} {declaration}")
+        tracked_columns = {r["name"] for r in paper.db.execute(
+            "PRAGMA table_info(tracked_signals)").fetchall()}
+        if tracked_columns and "exit_policy" not in tracked_columns:
+            paper.db.execute("ALTER TABLE tracked_signals ADD COLUMN exit_policy TEXT")
+        if tracked_columns:
+            paper.db.execute(
+                "UPDATE tracked_signals SET exit_policy='current' WHERE exit_policy IS NULL")
         paper.db.commit()
 
 
@@ -119,6 +126,29 @@ def _pf(values):
     return gains / losses if losses > 0 else (999.0 if gains > 0 else 0.0)
 
 
+def _holdout_metrics(candidate, baseline, actual):
+    """Paired, same-signal holdout comparison against shadow baseline and actual exits."""
+    c, b, a = (np.asarray(v, dtype=float) for v in (candidate, baseline, actual))
+    if not len(c) or not (len(c) == len(b) == len(a)):
+        return None
+    if not (np.isfinite(c).all() and np.isfinite(b).all() and np.isfinite(a).all()):
+        return None
+    return {
+        "n": int(len(c)), "avg": float(c.mean()), "pf": float(_pf(c)),
+        "baseline_avg": float(b.mean()), "actual_avg": float(a.mean()),
+        "paired_win_rate": float(np.mean(c > a)),
+    }
+
+
+def _holdout_passes(metrics):
+    """Require a positive net edge over both simulated baseline and real exits."""
+    return bool(metrics and metrics["n"] >= MIN_TEST
+                and metrics["avg"] > 0.0 and metrics["pf"] > 1.05
+                and metrics["avg"] > metrics["baseline_avg"] + 0.001
+                and metrics["avg"] > metrics["actual_avg"] + 0.001
+                and metrics["paired_win_rate"] >= 0.55)
+
+
 def _promote(paper, zq):
     gate = zq.learning_gate_status(paper)
     if not gate["ready"]:
@@ -131,8 +161,9 @@ def _promote(paper, zq):
             "SELECT DISTINCT regime FROM exit_policy_shadow_v2").fetchall()]
         for regime in regimes:
             rows = paper.db.execute(
-                "SELECT tracked_id,opened_ts,policy,net_ret FROM exit_policy_shadow_v2 "
-                "WHERE regime=? ORDER BY opened_ts,tracked_id", (regime,)).fetchall()
+                "SELECT tracked_id,opened_ts,policy,net_ret,actual_reason,actual_net_ret "
+                "FROM exit_policy_shadow_v2 WHERE regime=? ORDER BY opened_ts,tracked_id",
+                (regime,)).fetchall()
             ids = sorted({int(r["tracked_id"]) for r in rows},
                          key=lambda sid: min(float(x["opened_ts"]) for x in rows
                                              if int(x["tracked_id"]) == sid))
@@ -143,11 +174,18 @@ def _promote(paper, zq):
             if len(train_ids) < MIN_TRAIN or len(test_ids) < MIN_TEST:
                 continue
             by_policy = {}
+            actual_by_id = {}
+            reason_counts = {}
             for row in rows:
-                by_policy.setdefault(row["policy"], {})[int(row["tracked_id"])] = float(row["net_ret"])
+                sid = int(row["tracked_id"])
+                by_policy.setdefault(row["policy"], {})[sid] = float(row["net_ret"])
+                if row["actual_net_ret"] is not None:
+                    actual_by_id[sid] = float(row["actual_net_ret"])
+                reason = _canonical_reason(row["actual_reason"])
+                reason_counts[reason] = reason_counts.get(reason, 0) + 1
             baseline = by_policy.get(BASELINE_NAME, {})
             base_train_ids = {i for i in train_ids if i in baseline}
-            base_test_ids = {i for i in test_ids if i in baseline}
+            base_test_ids = {i for i in test_ids if i in baseline and i in actual_by_id}
             if len(base_test_ids) < MIN_TEST:
                 continue
             trials = []
@@ -155,40 +193,47 @@ def _promote(paper, zq):
                 common_train = base_train_ids.intersection(values)
                 common_test = base_test_ids.intersection(values)
                 train = [values[i] for i in common_train]
-                test = [values[i] for i in common_test]
-                if len(train) >= MIN_TRAIN and len(test) >= MIN_TEST:
-                    trials.append((float(np.mean(train)), name, test,
-                                   sorted(common_test)))
+                if len(train) >= MIN_TRAIN and len(common_test) >= MIN_TEST:
+                    trials.append((float(np.mean(train)), name, sorted(common_test)))
             if not trials:
                 continue
-            _, winner, _, comparable_test_ids = max(trials, key=lambda x: x[0])
+            _, winner, comparable_test_ids = max(trials, key=lambda x: x[0])
+            if winner == BASELINE_NAME:
+                continue
             winner_values = by_policy[winner]
             test = [winner_values[i] for i in comparable_test_ids]
             base_test = [baseline[i] for i in comparable_test_ids]
-            if len(test) < MIN_TEST:
+            actual_test = [actual_by_id[i] for i in comparable_test_ids]
+            metrics = _holdout_metrics(test, base_test, actual_test)
+            # Compare each candidate on identical untouched signals with actual TP/SL/TRAIL exits.
+            if not _holdout_passes(metrics):
                 continue
-            test_avg, test_pf = float(np.mean(test)), _pf(test)
-            baseline_avg = float(np.mean(base_test))
-            # Do not promote merely for beating the baseline by noise.
-            if (winner == BASELINE_NAME or test_avg <= 0 or test_pf <= 1.05
-                    or test_avg <= baseline_avg + 0.001):
-                continue
+            test_avg, test_pf = metrics["avg"], metrics["pf"]
+            baseline_avg = metrics["baseline_avg"]
             policy = next(p for p in POLICIES if p[0] == winner)
             paper.db.execute(
                 "INSERT OR REPLACE INTO exit_policy_champion_v2 "
                 "(regime,policy,train_n,test_n,test_avg,test_pf,baseline_avg,updated_ts) "
                 "VALUES(?,?,?,?,?,?,?,?)",
-                (regime, winner, len(train_ids), len(test), test_avg, test_pf,
+                (regime, winner, len(train_ids), metrics["n"], test_avg, test_pf,
                  baseline_avg, time.time()))
-            promoted.append((regime, winner, len(test), test_avg, test_pf, baseline_avg))
+            promoted.append((regime, winner, metrics["n"], test_avg, test_pf,
+                             baseline_avg, metrics["actual_avg"],
+                             metrics["paired_win_rate"], reason_counts))
         paper.db.commit()
-    for regime, name, n, avg, pf, base in promoted:
-        zq.log.info("AI EXIT POLICY promoted regime=%s policy=%s holdout=%d avg=%.4f PF=%.2f baseline=%.4f",
-                    regime, name, n, avg, pf, base)
-        zq.tg("🧠 اعتماد سياسة مخارج جديدة بعد اختبار مستقل\n"
-              f"تقلب السوق: {regime} | السياسة: {name}\n"
-              f"اختبار: {n} إشارة | صافي متوسط: {avg*100:+.2f}% | PF: {pf:.2f}\n"
-              f"الأساس الحالي: {base*100:+.2f}%")
+    for regime, name, n, avg, pf, base, actual_avg, paired_wr, reason_counts in promoted:
+        reason_text = " | ".join(
+            f"{reason}:{count}" for reason, count in sorted(reason_counts.items()))
+        zq.log.info(
+            "AI EXIT POLICY promoted regime=%s policy=%s holdout=%d avg=%.4f PF=%.2f "
+            "baseline=%.4f actual=%.4f paired_win=%.1f%% reasons=%s",
+            regime, name, n, avg, pf, base, actual_avg, paired_wr * 100, reason_text)
+        zq.tg("🧠 اعتماد سياسة مخارج جديدة بعد اختبار مستقل\\n"
+              f"تقلب السوق: {regime} | السياسة: {name}\\n"
+              f"اختبار مستقل: {n} إشارة | صافي المتوسط: {avg*100:+.2f}% | PF: {pf:.2f}\\n"
+              f"الخط الأساسي: {base*100:+.2f}% | الخروج الفعلي: {actual_avg*100:+.2f}%\\n"
+              f"تفوق على الخروج الفعلي في {paired_wr*100:.1f}% من الإشارات\\n"
+              f"أسباب الإغلاق الفعلية: {reason_text}")
     return promoted
 
 
@@ -300,9 +345,9 @@ def install(zq):
         with self.lock:
             self.db.execute(
                 "UPDATE tracked_signals SET sl=?,tp=?,exit_sl_mult=?,exit_tp_mult=?,"
-                "trail_activation_atr=?,trail_distance_atr=?,max_hold_bars=? "
+                "trail_activation_atr=?,trail_distance_atr=?,max_hold_bars=?,exit_policy=? "
                 "WHERE id=? AND status='OPEN'",
-                (sl, target, sl_mult, tp, activation, distance, max_bars, signal["id"]))
+                (sl, target, sl_mult, tp, activation, distance, max_bars, name, signal["id"]))
             self.db.commit()
         signal.update(sl=sl, tp=target, exit_policy=name, sl_mult=sl_mult,
                       tp_mult=tp, trail_activation_atr=activation,
