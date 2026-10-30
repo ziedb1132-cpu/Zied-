@@ -67,6 +67,7 @@ CFG = dict(
     EXPLORATION_PROB_MIN=0.65,          # rank-based paper exploration while no validated AI model exists
     # historical backtest constraints only; no live or virtual portfolio
     MAX_OPEN=5, POS_FRAC=0.15, RISK_PER_TRADE=0.005, MAX_PORTFOLIO_RISK=0.02,
+    MAX_OPEN_CORR=0.85,                 # reject a new paper entry if abs(correlation) to an open coin is higher
     # self-learning
     RETRAIN_SIGNALS=500,               # outcomes required between scheduled retraining checks
     DIR="zied_data",
@@ -80,6 +81,8 @@ CFG["TRAINSET"] = os.path.join(CFG["DIR"], "train.npz")
 
 TFS, BASE = CFG["TFS"], CFG["BASE_TF"]
 EPS = 1e-12
+FEATURE_DRIFT_HOOK = None
+PORTFOLIO_CORRELATION_HOOK = None
 DATA_VER = 3
 
 # =====================================================================
@@ -870,7 +873,8 @@ class Brain:
             self.mu, self.sd, self.thrs, self.mode, self.auc, self.info = mu, sd, thrs, mode, gate_auc, info
             if self.persist:
                 self.save(X.shape[1])
-        self.last_fit = dict(info=info, pv=ps, yv=ys, gate_p=pg, gate_y=yg)
+        self.last_fit = dict(info=info, pv=ps, yv=ys, gate_p=pg, gate_y=yg,
+                             X_gate=np.asarray(X[gate_start:], dtype=np.float64))
         return info
 
 # =====================================================================
@@ -1691,6 +1695,15 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     feature_ts = {k: v[1] for k, v in res.items() if v is not None}
     if X.empty:
         log.warning("no data"); return None
+    if callable(FEATURE_DRIFT_HOOK):
+        try:
+            drift = FEATURE_DRIFT_HOOK(brain, X)
+            if drift.get("status") == "ok":
+                log.info("feature drift: %.1f%% of features shifted >=2 training std; %d/%d unstable scales",
+                         drift["drift_fraction"] * 100, drift["unstable_scale_feature_count"],
+                         drift["feature_count"])
+        except Exception as exc:
+            log.warning("feature drift monitoring skipped: %s", exc)
     score = rank_universe(X, uni["vol"])
     R = pd.DataFrame({"ranking_score": score, "score": score})
     R["rank"] = np.arange(1, len(R) + 1)
@@ -1742,6 +1755,7 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     # Do not backfill from rank 11+ when a top-10 coin is already open or fails
     # the AI threshold; duplicates are skipped, never replaced by coin #11.
     eligible_rows = []
+    correlation_cache = {}
     for inst, rr in R.iterrows():
         if int(rr["rank"]) > 10:
             continue
@@ -1750,6 +1764,17 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
             continue
         if brain.ready and (pd.isna(rr["ai_probability"]) or float(rr["ai_probability"]) < float(prob_min)):
             continue
+        if callable(PORTFOLIO_CORRELATION_HOOK):
+            try:
+                correlation = PORTFOLIO_CORRELATION_HOOK(paper, inst, correlation_cache)
+                if not correlation.get("allowed", True):
+                    log.info("portfolio diversification: skipped %s; max_abs_corr=%.3f threshold=%.3f",
+                             inst, float(correlation.get("max_abs_correlation") or 0.0),
+                             float(correlation.get("threshold", CFG["MAX_OPEN_CORR"])))
+                    continue
+            except Exception as exc:
+                # Missing market data must not silently change signal eligibility.
+                log.warning("portfolio correlation check failed open for %s: %s", inst, exc)
         eligible_rows.append(inst)
     sort_columns = ["ai_probability", "ranking_score"] if brain.ready else ["ranking_score"]
     eligible = R.loc[eligible_rows].sort_values(sort_columns, ascending=False, na_position="last")
