@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ar" dir="rtl">
+<html lang="fr" dir="ltr">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Zied Quant — لوحة بيانات البرنامج</title>
@@ -62,7 +62,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;border:1px so
 <main>
 <div class="notice">لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب.</div>
 <div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
-<div class="controls"><select id="language" aria-label="Language" style="max-width:150px;flex:0 0 150px"><option value="ar">العربية</option><option value="fr">Français</option><option value="en">English</option><option value="es">Español</option><option value="tr">Türkçe</option></select><input id="owner" value="ziedb1132-cpu" aria-label="مالك المستودع" placeholder="مالك المستودع"><input id="repo" value="Zied-" aria-label="المستودع" placeholder="المستودع"><input id="branch" value="state-data" aria-label="فرع البيانات" placeholder="فرع البيانات"><input id="token" type="password" autocomplete="off" aria-label="GitHub read-only token" placeholder="رمز وصول للقراءة فقط (للمستودع الخاص)"><button id="connect" class="primary">تحديث البيانات</button></div>
+<div class="controls"><select id="language" aria-label="Language" style="max-width:150px;flex:0 0 150px"><option value="fr">Français</option><option value="ar">العربية</option><option value="en">English</option><option value="es">Español</option><option value="tr">Türkçe</option></select><input id="owner" value="ziedb1132-cpu" aria-label="مالك المستودع" placeholder="مالك المستودع"><input id="repo" value="Zied-" aria-label="المستودع" placeholder="المستودع"><input id="branch" value="state-data" aria-label="فرع البيانات" placeholder="فرع البيانات"><input id="token" type="password" autocomplete="off" aria-label="GitHub read-only token" placeholder="رمز وصول للقراءة فقط (للمستودع الخاص)"><button id="connect" class="primary">تحديث البيانات</button></div>
 <div class="tabs"><button class="active" data-tab="overview">نظرة عامة</button><button data-tab="trackedOpen">الإشارات المفتوحة</button><button data-tab="trackedClosed">الإشارات المغلقة</button><button data-tab="recentSignals">أحدث الإشارات</button><button data-tab="signals">كل الإشارات</button><button data-tab="ai">الذكاء الاصطناعي</button><button data-tab="ranking">ترتيب العملات</button><button data-tab="files">جميع الملفات</button><button data-tab="raw">بيانات تقنية</button></div>
 <section id="page-overview"><div id="metrics" class="grid"></div><div class="chartgrid"><div class="card"><div class="charthead"><h2>العائد التراكمي للإشارات المغلقة</h2><span id="chartReturnMeta" class="muted">بانتظار البيانات</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>توزيع نتائج الإشارات</h2><span class="muted">من الإشارات المتتبعة المغلقة</span></div><div id="outcomeChart" class="chartbox"></div></div></div><div class="cols"><div class="card"><h2>حالة التشغيل</h2><div id="system"></div></div><div class="card"><h2>نتائج تقييم الإشارات</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>ملخص الذاكرة المحفوظة</h2><div id="metaPreview"></div></div></section>
 <section id="page-trackedOpen" class="hide section"><h2>الإشارات المتتبعة المفتوحة</h2><p class="muted">الإشارات التي لم تُغلق بعد.</p><div id="trackedOpen" class="tablewrap"></div></section>
@@ -216,7 +216,7 @@ I18N["من فرع"]=["depuis la branche","من فرع","من فرع","من فر�
 I18N["تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data."]=["Vérifiez que le cycle GitHub Actions est terminé et que le fichier existe dans la branche state-data.","تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data.","تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data.","تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data."];
 I18N["رابحة ·"]=["Gagnants ·","رابحة ·","رابحة ·","رابحة ·"];
 I18N["إشارة مغلقة"]=["Signal clôturé","إشارة مغلقة","إشارة مغلقة","إشارة مغلقة"];
-const LANGS=["ar","fr","en","es","tr"];let currentLang="ar";
+const LANGS=["ar","fr","en","es","tr"];let currentLang="fr";
 const originalText=new WeakMap(),originalAttrs=new WeakMap();
 const translatableAttrs=["placeholder","aria-label","title"];
 function translateValue(value,lang){
@@ -253,9 +253,9 @@ function collectAndTranslate(root,lang){
  });
 }
 function setLanguage(lang){
- if(!LANGS.includes(lang))lang="ar";
+ if(!LANGS.includes(lang))lang="fr";
  currentLang=lang;
- try{localStorage.setItem("ziedQuantDashboardLanguage",lang)}catch(e){}
+ try{localStorage.setItem("ziedQuantDashboardLanguageV2",lang)}catch(e){}
  document.documentElement.lang=lang;
  document.documentElement.dir=lang==="ar"?"rtl":"ltr";
  const select=document.getElementById("language");if(select)select.value=lang;
@@ -349,7 +349,7 @@ async function connect(){
 }
 $("connect").addEventListener("click",connect);$("rawSelect").addEventListener("change",renderRaw);
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+b.dataset.tab))});
-try{currentLang=localStorage.getItem("ziedQuantDashboardLanguage")||"ar"}catch(e){currentLang="ar"}
+try{currentLang=localStorage.getItem("ziedQuantDashboardLanguageV2")||"fr"}catch(e){currentLang="fr"}
 render();
 setLanguage(currentLang);
 $("language").addEventListener("change",e=>setLanguage(e.target.value));
