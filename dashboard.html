@@ -92,12 +92,60 @@ function fileText(path){let x=state.contents[path];return typeof x==="string"?x:
 function parseCSV(text){const lines=text.trim().split(/\r?\n/);if(lines.length<2)return [];const parse=line=>{let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===","&&!q){out.push(cur);cur=""}else cur+=c}out.push(cur);return out};const headers=parse(lines[0]).map((h,i)=>h.trim()||(i===0?"inst":"column_"+i));return lines.slice(1).filter(Boolean).map(line=>{const vals=parse(line),o={};headers.forEach((h,i)=>o[h]=vals[i]??"");return o})}
 const I18N={"نظرة عامة":["Vue d’ensemble","Overview","Resumen","Genel Bakış"],"الإشارات المفتوحة":["Signaux ouverts","Open Signals","Señales abiertas","Açık Sinyaller"],"الإشارات المغلقة":["Signaux clôturés","Closed Signals","Señales cerradas","Kapanan Sinyaller"],"أحدث الإشارات":["Signaux récents","Recent Signals","Señales recientes","Son Sinyaller"],"كل الإشارات":["Tous les signaux","All Signals","Todas las señales","Tüm Sinyaller"],"الذكاء الاصطناعي":["Intelligence artificielle","AI","Inteligencia artificial","Yapay Zekâ"],"ترتيب العملات":["Classement des actifs","Asset Ranking","Clasificación de activos","Varlık Sıralaması"],"جميع الملفات":["Tous les fichiers","All Files","Todos los archivos","Tüm Dosyalar"],"بيانات تقنية":["Données techniques","Technical Data","Datos técnicos","Teknik Veriler"],"حالة التشغيل":["État du système","System Status","Estado del sistema","Sistem Durumu"],"نتائج تقييم الإشارات":["Résultats d’évaluation","Signal Evaluation Results","Resultados de evaluación","Sinyal Değerlendirme Sonuçları"],"ملخص الذاكرة المحفوظة":["Résumé de la mémoire","Saved Memory Summary","Resumen de memoria guardada","Kayıtlı Bellek Özeti"],"الإشارات المتتبعة المفتوحة":["Signaux suivis ouverts","Tracked Open Signals","Señales abiertas en seguimiento","Takipteki Açık Sinyaller"],"الإشارات المتتبعة المغلقة وتقييمها":["Signaux suivis clôturés et évaluation","Tracked Closed Signals & Evaluation","Señales cerradas y evaluación","Takip Edilen Kapanmış Sinyaller"],"أحدث ترتيب محفوظ للعملات":["Dernier classement enregistré","Latest Saved Ranking","Última clasificación guardada","Kaydedilmiş Son Sıralama"],"توزيع نتائج الإشارات":["Répartition des résultats","Signal Outcome Distribution","Distribución de resultados","Sinyal Sonuç Dağılımı"],"العائد التراكمي للإشارات المغلقة":["Rendement cumulé des signaux clôturés","Cumulative Return of Closed Signals","Rentabilidad acumulada de señales cerradas","Kapanan Sinyallerin Birikimli Getirisi"],"بانتظار البيانات":["En attente de données","Waiting for data","Esperando datos","Veri bekleniyor"],"الإجمالي:":["Total :","Total:","Total:","Toplam:"],"نسبة الفوز:":["Taux de réussite :","Win rate:","Tasa de aciertos:","Kazanma oranı:"],"رابحة":["Gagnant","Winning","Ganadora","Kazanan"],"خاسرة":["Perdant","Losing","Perdedora","Kaybeden"],"تعادل":["Égalité","Breakeven","Empate","Başa baş"],"أقدم إشارة":["Signal la plus ancienne","Oldest signal","Señal más antigua","En eski sinyal"],"أحدث إشارة":["Signal la plus récente","Newest signal","Señal más reciente","En yeni sinyal"],"تحديث البيانات":["Actualiser les données","Refresh data","Actualizar datos","Verileri yenile"],"لم يتم الاتصال":["Non connecté","Not connected","No conectado","Bağlı değil"],"مالك المستودع":["Propriétaire du dépôt","Repository owner","Propietario del repositorio","Depo sahibi"],"فرع البيانات":["Branche des données","Data branch","Rama de datos","Veri dalı"],"المستودع":["Dépôt","Repository","Repositorio","Depo"],"أخطاء التحميل":["Erreurs de chargement","Loading Errors","Errores de carga","Yükleme Hataları"],"مخطط قاعدة البيانات":["Schéma de la base de données","Database Schema","Esquema de la base de datos","Veritabanı Şeması"],"عينة البيانات الخام":["Extrait des données brutes","Raw Data Sample","Muestra de datos sin procesar","Ham Veri Örneği"],"كل مفاتيح meta المحفوظة":["Toutes les clés meta enregistrées","All Saved Meta Keys","Todas las claves meta guardadas","Kayıtlı Tüm Meta Anahtarları"],"ملخص ملفات النموذج والتدريب":["Résumé des fichiers du modèle et de l’entraînement","Model & Training Files Summary","Resumen de archivos del modelo y entrenamiento","Model ve Eğitim Dosyalarının Özeti"],"لا توجد بيانات محفوظة لهذا القسم.":["Aucune donnée enregistrée pour cette section.","No saved data for this section.","No hay datos guardados para esta sección.","Bu bölüm için kayıtlı veri yok."],"جار قراءة ملف العرض الصغير…":["Lecture du fichier récapitulatif…","Reading compact dashboard file…","Leyendo archivo compacto…","Kompakt pano dosyası okunuyor…"],"تعذر قراءة ملف العرض":["Impossible de lire le fichier d’affichage","Could not read dashboard file","No se pudo leer el archivo del panel","Pano dosyası okunamadı"]};
 const LANGS=["ar","fr","en","es","tr"];let currentLang="ar";
-function trText(value,lang){if(lang==="ar")return value;let out=value;for(const key of Object.keys(I18N).sort((a,b)=>b.length-a.length)){const v=I18N[key][LANGS.indexOf(lang)-1];if(v)out=out.split(key).join(v)}return out}
-function translateTree(root,lang){if(!root)return;const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);const nodes=[];while(w.nextNode())nodes.push(w.currentNode);nodes.forEach(n=>{if(!n.parentElement.closest("script,style,pre,code,option"))n.nodeValue=trText(n.nodeValue,lang)});root.querySelectorAll?.("[placeholder],[aria-label],[title]").forEach(el=>["placeholder","aria-label","title"].forEach(a=>{const v=el.getAttribute(a);if(v)el.setAttribute(a,trText(v,lang))}))}
-function setLanguage(lang){if(!LANGS.includes(lang))lang="ar";currentLang=lang;document.documentElement.lang=lang;document.documentElement.dir=lang==="ar"?"rtl":"ltr";document.getElementById("language").value=lang;translateTree(document.body,lang)}
-const langObserver=new MutationObserver(rs=>{if(currentLang==="ar")return;rs.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===Node.TEXT_NODE)n.nodeValue=trText(n.nodeValue,currentLang);else if(n.nodeType===Node.ELEMENT_NODE)translateTree(n,currentLang)}))});
+const originalText=new WeakMap(),originalAttrs=new WeakMap();
+const translatableAttrs=["placeholder","aria-label","title"];
+function translateValue(value,lang){
+ if(lang==="ar")return value;
+ let out=value;
+ for(const key of Object.keys(I18N).sort((x,y)=>y.length-x.length)){
+  const translated=I18N[key][LANGS.indexOf(lang)-1];
+  if(translated)out=out.split(key).join(translated);
+ }
+ return out;
+}
+function collectAndTranslate(root,lang){
+ if(!root)return;
+ const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+ const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+ nodes.forEach(node=>{
+  const parent=node.parentElement;
+  if(!parent||parent.closest("script,style,pre,code,option"))return;
+  if(!originalText.has(node))originalText.set(node,node.nodeValue);
+  node.nodeValue=translateValue(originalText.get(node),lang);
+ });
+ const elements=[];
+ if(root.nodeType===Node.ELEMENT_NODE)elements.push(root);
+ root.querySelectorAll?.("*").forEach(el=>elements.push(el));
+ elements.forEach(el=>{
+  if(!originalAttrs.has(el))originalAttrs.set(el,{});
+  const saved=originalAttrs.get(el);
+  translatableAttrs.forEach(attr=>{
+   if(el.hasAttribute(attr)){
+    if(!(attr in saved))saved[attr]=el.getAttribute(attr);
+    el.setAttribute(attr,translateValue(saved[attr],lang));
+   }
+  });
+ });
+}
+function setLanguage(lang){
+ if(!LANGS.includes(lang))lang="ar";
+ currentLang=lang;
+ document.documentElement.lang=lang;
+ document.documentElement.dir=lang==="ar"?"rtl":"ltr";
+ const select=document.getElementById("language");if(select)select.value=lang;
+ collectAndTranslate(document.body,lang);
+}
+const langObserver=new MutationObserver(records=>{
+ if(currentLang==="ar")return;
+ records.forEach(record=>record.addedNodes.forEach(node=>{
+  if(node.nodeType===Node.TEXT_NODE){
+   if(!originalText.has(node))originalText.set(node,node.nodeValue);
+   const p=node.parentElement;
+   if(p&&!p.closest("script,style,pre,code,option"))node.nodeValue=translateValue(originalText.get(node),currentLang);
+  }else if(node.nodeType===Node.ELEMENT_NODE)collectAndTranslate(node,currentLang);
+ }));
+});
 langObserver.observe(document.body,{childList:true,subtree:true});
-
 function renderCharts(){
  const closed=state.tracked.filter(r=>r.status==="CLOSED"&&Number.isFinite(Number(r.ret))).sort((a,b)=>Number(a.closed_ts||a.opened_ts||0)-Number(b.closed_ts||b.opened_ts||0));
  const wins=closed.filter(r=>Number(r.ret)>0).length,losses=closed.filter(r=>Number(r.ret)<0).length,flat=closed.length-wins-losses;
