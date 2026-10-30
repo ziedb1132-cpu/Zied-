@@ -1042,19 +1042,13 @@ class Paper:
 # SIGNAL LABELLING# =====================================================================
 # SIGNAL LABELLING (triple barrier on real later prices)
 # =====================================================================
-def future_candles_for_signal(candles, created_ts):
-    """Return only 1H candles whose opening time is not before signal creation.
-
-    OKX candle timestamps are candle *start* times, while a live signal can be
-    created partway through an hour. Starting at feature_ts would include the
-    in-progress candle that contains the entry time, leaking pre-entry movement
-    into the outcome. Round the creation time up to the next candle boundary.
-    """
+def future_candles_for_signal(candles, created_ts, timeframe="1H"):
+    """Return only candles whose opening time is not before signal creation."""
     if candles is None or candles.empty:
         return candles
     created_ms = int(float(created_ts) * 1000)
-    hour_ms = CFG["TF_SEC"]["1H"] * 1000
-    first_future_start = ((created_ms + hour_ms - 1) // hour_ms) * hour_ms
+    interval_ms = CFG["TF_SEC"][timeframe] * 1000
+    first_future_start = ((created_ms + interval_ms - 1) // interval_ms) * interval_ms
     return candles[candles["ts"] >= first_future_start]
 
 
@@ -1123,20 +1117,23 @@ def classify_exit_return(entry, exit_price):
 
 
 def monitor_tracked_signals(paper):
-    """Resolve paper signals from later closed 1H candles; stop-loss wins candle ties."""
+    """Resolve paper signals from completed 5m candles; stop-loss wins candle ties."""
     opened = paper.open_tracked_signals()
     if not opened:
         return 0
+    monitor_tf = "5m"
+    max_hold_bars = 24 * 60 // 5  # preserve the existing 24-hour maximum horizon
     now, closed = time.time(), 0
     for s in opened:
         try:
-            d = get_candles(s["inst"], "1H", min(80, CFG["BARRIER_H"] + 5))
-            path = future_candles_for_signal(d, s["opened_ts"])
+            # 288 completed 5m bars cover 24 hours; keep extra bars for boundary alignment.
+            d = get_candles(s["inst"], monitor_tf, max_hold_bars + 5)
+            path = future_candles_for_signal(d, s["opened_ts"], monitor_tf)
             if path is None or path.empty:
                 continue
             elapsed = 0
             for _, candle in path.iterrows():
-                if float(candle["ts"]) / 1000 + CFG["TF_SEC"]["1H"] > now:
+                if float(candle["ts"]) / 1000 + CFG["TF_SEC"][monitor_tf] > now:
                     continue
                 elapsed += 1
                 low, high, close = float(candle["l"]), float(candle["h"]), float(candle["c"])
@@ -1146,8 +1143,7 @@ def monitor_tracked_signals(paper):
                     reason, outcome, exit_price = "SL", "SL", float(s["sl"])
                 elif high >= s["tp"]:
                     reason, outcome, exit_price = "TP", "TP", float(s["tp"])
-                elif elapsed >= CFG["BARRIER_H"]:
-                    # Close at the completed candle's close when the holding horizon expires.
+                elif elapsed >= max_hold_bars:
                     reason = "TIME"
                 if reason:
                     ret, net_outcome = classify_exit_return(s["entry"], exit_price)
@@ -1160,13 +1156,13 @@ def monitor_tracked_signals(paper):
                     if paper.close_tracked_signal(s["id"], now, exit_price, outcome, ret, elapsed, reason):
                         closed += 1
                         emoji = "✅" if reason == "TP" else ("⏳" if reason == "TIME" else "🛑")
-                        tg(f"{emoji} إغلاق إشارة ورقية: {s['inst']}\n"
-                           f"السبب: {reason} | الدخول: {s['entry']:.8g} | الخروج: {exit_price:.8g}\n"
-                           f"العائد النظري بعد التكاليف: {ret*100:+.2f}% | المدة: {elapsed} ساعة")
+                        tg(f"{emoji} إغلاق إشارة ورقية: {s['inst']}\\n"
+                           f"السبب: {reason} | الدخول: {s['entry']:.8g} | الخروج: {exit_price:.8g}\\n"
+                           f"العائد النظري بعد التكاليف: {ret*100:+.2f}% | المدة: {elapsed * 5} دقيقة")
                     break
         except Exception as exc:
             log.warning("paper signal monitor failed for %s: %s", s["inst"], exc)
-    log.info("paper signal monitor: open=%d closed_now=%d", paper.tracked_count("status='OPEN'"), closed)
+    log.info("paper signal monitor (5m): open=%d closed_now=%d", paper.tracked_count("status='OPEN'"), closed)
     return closed
 
 
