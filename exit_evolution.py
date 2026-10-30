@@ -164,6 +164,9 @@ def _evaluate(paper, zq):
     if not gate["ready"]:
         return 0
     horizon = max(p[5] for p in POLICIES)
+    # Keep a 25-hour grace window so hourly / two-hour Actions schedules can
+    # still replay the complete 24-hour path from the retained 5m candles.
+    replay_depth = horizon + 300
     now = time.time()
     with paper.lock:
         pending = [dict(r) for r in paper.db.execute(
@@ -171,7 +174,7 @@ def _evaluate(paper, zq):
             "WHERE t.status='CLOSED' AND t.opened_ts>=? AND t.opened_ts<=? AND NOT EXISTS "
             "(SELECT 1 FROM exit_policy_shadow_v2 e WHERE e.tracked_id=t.id) "
             "ORDER BY t.opened_ts LIMIT 300",
-            (now - (horizon + 20) * 300, now - (horizon + 3) * 300)).fetchall()]
+            (now - replay_depth * 300, now - (horizon + 3) * 300)).fetchall()]
     if not pending:
         return 0
     grouped = {}
@@ -180,7 +183,7 @@ def _evaluate(paper, zq):
     evaluated = 0
     for inst, signals in grouped.items():
         try:
-            candles = zq.get_candles(inst, "5m", horizon + 20)
+            candles = zq.get_candles(inst, "5m", replay_depth + 20)
             if candles is None or candles.empty:
                 continue
         except Exception as exc:
