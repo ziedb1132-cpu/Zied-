@@ -189,13 +189,11 @@ function render(){
 
 }
 async function connect(){
- const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data";
- if(!owner||!repo){alert("Saisissez le propriétaire et le nom du dépôt");return}
+ const {owner,repo,branch}=DASHBOARD_REPOSITORY;
  $("error").style.display="none";$("error").textContent="";
  $("status").textContent="Connexion à GitHub…";$("dot").style.background="var(--gold)";
  state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
  try{
-  const token=$("token").value.trim();
   const rawUrl="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/dashboard_data.json?ts="+Date.now();
   let data=null,source="raw.githubusercontent.com",rawError="";
   const rawResponse=await fetch(rawUrl,{cache:"no-store",headers:{Accept:"application/json"}});
@@ -204,7 +202,6 @@ async function connect(){
   }else{
    rawError="Raw GitHub HTTP "+rawResponse.status;
    const headers={Accept:"application/vnd.github+json"};
-   if(token)headers.Authorization="Bearer "+token;
    const apiUrl="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/dashboard_data.json?ref="+encodeURIComponent(branch);
    const response=await fetch(apiUrl,{headers,cache:"no-store"});
    if(!response.ok)throw new Error(rawError+" ; GitHub API HTTP "+response.status+" — vérifiez le dépôt, la branche et les autorisations.");
