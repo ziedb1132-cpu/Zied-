@@ -1854,5 +1854,9 @@ def main(argv):
     else:
         run()
 
+# Install the adaptive paper-exit selector after all core classes/functions exist.
+import exit_evolution
+exit_evolution.install(sys.modules[__name__])
+
 if __name__ == "__main__":
     main(sys.argv)
