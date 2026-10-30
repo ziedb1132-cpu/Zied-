@@ -96,7 +96,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;border:1px so
 <section id="page-trackedClosed" class="hide section"><h2>Les 100 derniers signaux clôturés</h2><p class="muted">Classement par date de clôture décroissante. Les sorties TRAIL sont comptabilisées dans SL, car elles sont déclenchées par le stop suiveur.</p><div id="closedKpis" class="grid closed-kpis"></div><div class="chartgrid closed-charts"><div class="card"><div class="charthead"><h2>Répartition des clôtures</h2><span class="muted">100 derniers signaux</span></div><div id="closedReasonChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Rendement cumulé réalisé</h2><span class="muted">Ordre chronologique</span></div><div id="closedReturnChart" class="chartbox"></div></div></div><div id="trackedClosed" class="tablewrap"></div></section>
 <section id="page-recentSignals" class="hide section"><h2>Signaux récents</h2><div id="recent" class="tablewrap"></div></section>
 <section id="page-signals" class="hide section"><h2>Historique des signaux de la base de données</h2><p class="muted">Affiche les 500 derniers signaux enregistrés dans SQLite. Ces résultats ne correspondent pas à des transactions réelles.</p><div id="signals" class="tablewrap"></div></section>
-<section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>Toutes les clés meta enregistrées</h2><div id="metaTable" class="tablewrap"></div></div><div class="card section"><h2>Résumé des fichiers du modèle et de l’entraînement</h2><div id="aiFiles" class="tablewrap"></div></div></section>
+<section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>Toutes les clés meta enregistrées</h2><div id="metaTable" class="tablewrap"></div></div></section>
 <div class="foot">Tableau de bord Zied Quant · API GitHub · Lecture seule</div>
 </main>
 
@@ -139,7 +139,7 @@ function render(){
  const gateReady=gateWins>=500&&gateLosses>=500;
  const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
  $("metrics").innerHTML=metric("Tous les signaux enregistrés",total,"Table signals dans SQLite")+metric("Signaux évalués",labeledCount,"Y compris les signaux non suivis")+metric("Signaux suivis ouverts",state.summary.openTracked,"Statut OPEN")+metric("Signaux suivis clôturés",state.summary.closedTracked,"Statut CLOSED")+metric("Gagnants admissibles à l’entraînement",gateWins,"Clôturés + rendement positif")+metric("Perdants admissibles à l’entraînement",gateLosses,"Clôturés + rendement négatif")+metric("Seuil d’entraînement",gateReady?"Prête":"En attente des résultats",gateWins+"/500 Gagnant · "+gateLosses+"/500 Perdant");
- $("system").innerHTML=showRows({"Dépôt":$("owner").value+"/"+$("repo").value,"Branche des données":$("branch").value,"Cycle d’analyse":cycle,"Enregistrement des signaux":paused?"Temporairement suspendu":"Actif selon meta","Base de données":"Non téléchargée dans le navigateur — conservée dans state-data","Fichiers du manifeste":state.files.length,"Données": "Lecture seule — aucune transaction"});
+ $("system").innerHTML=showRows({"Dépôt":$("owner").value+"/"+$("repo").value,"Branche des données":$("branch").value,"Cycle d’analyse":cycle,"Enregistrement des signaux":paused?"Temporairement suspendu":"Actif selon meta","Base de données":"Non téléchargée dans le navigateur — conservée dans state-data","Données": "Lecture seule — aucune transaction"});
  const winRate=labeledCount?(wins/labeledCount*100):null;
  const avgLabel=avg===null||avg===undefined?"—":(Number(avg)*100).toFixed(3)+"%";
  const winProgress=Math.min(100,gateWins/5),lossProgress=Math.min(100,gateLosses/5);
@@ -187,7 +187,7 @@ function render(){
  const modelMeta=state.contents["meta.json"]; const modelReady=!!(modelMeta&&typeof modelMeta==="object"&&modelMeta.mode&&Number(modelMeta.n_in)>0); $("aiMetrics").innerHTML=metric("État du modèle",modelReady?("Modèle enregistré : "+modelMeta.mode):"Aucun modèle valide n’est enregistré dans state-data")+metric("Signaux gagnants clôturés / 500",gateWins,Math.min(100,gateWins/5).toFixed(1)+"% du seuil")+metric("Signaux perdants clôturés / 500",gateLosses,Math.min(100,gateLosses/5).toFixed(1)+"% du seuil")+metric("Échantillons admissibles à l’entraînement",gateTotal,"Total actuel des signaux suivis et clôturés")+metric("Seuil du modèle",modelReady?(modelMeta.thrs?.[modelMeta.mode]??"Non enregistré"):"—")+metric("AUC du modèle",modelReady?(modelMeta.auc??modelMeta.info?.auc??"Non enregistré"):"—")+metric("Dernier cycle",cycle);
  $("metaTable").innerHTML=table(Object.entries(state.meta).map(([key,value])=>({key,value:typeof value==="string"?value:JSON.stringify(value)})),[["Clé","key"],["Valeur","value"]]);
  const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
- $("aiFiles").innerHTML=table(modelNames.map(name=>({file:name,status:state.files.some(f=>f.path===name)?"Présent dans le manifeste":(state.contents[name]!==undefined?"Chargé":"Absent du manifeste"),detail:name==="paper.db"?"SQLite: meta + signals":name==="train.npz"?"Données d’entraînement binaires ; non affichables en texte":name==="model.pt"||name==="gbm.pkl"?"Fichier de modèle binaire":"Fichier de données"})),[["Fichier","file"],["Statut","status"],["Description","detail"]]);
+
 }
 async function connect(){
  const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data";
@@ -220,9 +220,9 @@ async function connect(){
   state.meta=data.meta||{};state.summary={...state.summary,...(data.summary||{})};
   state.signals=Array.isArray(data.signals)?data.signals:[];
   state.tracked=Array.isArray(data.tracked)?data.tracked:[];
-  state.ranking=Array.isArray(data.ranking)?data.ranking:[];
-  state.files=Array.isArray(data.files)?data.files:[];
-  state.contents=data.contents||{};state.schema=Array.isArray(data.schema)?data.schema:[];
+  
+  
+  state.contents=data.contents||{};
   state.manifest={generated_at:data.generated_at};
   $("status").textContent="Connecté · "+(data.generated_at||"Heure indisponible")+" · "+source;
   $("dot").style.background="var(--green)";
