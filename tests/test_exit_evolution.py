@@ -1,5 +1,7 @@
 import os
+import sqlite3
 import sys
+import threading
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -7,6 +9,7 @@ from exit_evolution import (
     BASELINE_NAME,
     POLICIES,
     _base_sl,
+    _ensure,
     _regime,
     _canonical_reason,
     _simulate,
@@ -50,6 +53,34 @@ class ExitEvolutionTests(unittest.TestCase):
         net_ret, reason, _ = result
         self.assertEqual(reason, "TRAIL")
         self.assertGreaterEqual(net_ret + self.COST, 0.01 - 1e-12)
+
+    def test_existing_shadow_database_is_upgraded_without_data_loss(self):
+        class Paper:
+            def __init__(self):
+                self.lock = threading.RLock()
+                self.db = sqlite3.connect(":memory:")
+                self.db.row_factory = sqlite3.Row
+
+        paper = Paper()
+        paper.db.execute(
+            "CREATE TABLE exit_policy_shadow_v2("
+            "tracked_id INTEGER NOT NULL, regime TEXT NOT NULL, policy TEXT NOT NULL,"
+            "net_ret REAL NOT NULL, reason TEXT NOT NULL, hold_bars INTEGER NOT NULL,"
+            "opened_ts REAL NOT NULL, PRIMARY KEY(tracked_id,policy))"
+        )
+        paper.db.execute(
+            "INSERT INTO exit_policy_shadow_v2 VALUES(1,'LOW','current',0.01,'TP',3,1.0)"
+        )
+        _ensure(paper)
+        columns = {r["name"] for r in paper.db.execute(
+            "PRAGMA table_info(exit_policy_shadow_v2)"
+        )}
+        self.assertTrue({"actual_reason", "actual_net_ret", "actual_hold_bars"}.issubset(columns))
+        old = paper.db.execute(
+            "SELECT net_ret,reason FROM exit_policy_shadow_v2 WHERE tracked_id=1"
+        ).fetchone()
+        self.assertAlmostEqual(old["net_ret"], 0.01)
+        self.assertEqual(old["reason"], "TP")
 
     def test_actual_exit_reasons_are_normalized_for_learning(self):
         self.assertEqual(_canonical_reason("TP"), "TP")
