@@ -51,7 +51,7 @@ if db_path.exists():
             data["schema"].append({"table":t["name"],"name":col["name"],"type":col["type"],"pk":col["pk"]})
     conn.close()
 
-manifest = safe_json(root.parent / "zied_data_store" / "manifest.json")
+manifest = safe_json(Path("zied_data_store") / "manifest.json")
 if manifest and isinstance(manifest.get("files"), list):
     data["files"] = [{"path":f.get("path"),"size":f.get("size"),"chunks":f.get("chunks",[])} for f in manifest["files"]]
 for name in ("meta.json","strategy_evolution.json","strategy_discovery_lab.json","top_gainer_learning.json","entry_method_memory.json","candle_patterns.json","news_sentiment.json"):
