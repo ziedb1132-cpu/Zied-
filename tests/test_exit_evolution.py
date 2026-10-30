@@ -8,6 +8,7 @@ from exit_evolution import (
     POLICIES,
     _base_sl,
     _regime,
+    _canonical_reason,
     _simulate,
 )
 
@@ -49,6 +50,13 @@ class ExitEvolutionTests(unittest.TestCase):
         net_ret, reason, _ = result
         self.assertEqual(reason, "TRAIL")
         self.assertGreaterEqual(net_ret + self.COST, 0.01 - 1e-12)
+
+    def test_actual_exit_reasons_are_normalized_for_learning(self):
+        self.assertEqual(_canonical_reason("TP"), "TP")
+        self.assertEqual(_canonical_reason("SL"), "SL")
+        self.assertEqual(_canonical_reason("TRAILING_STOP"), "TRAIL")
+        self.assertEqual(_canonical_reason("TIME_EXIT"), "TIME")
+        self.assertEqual(_canonical_reason(None), "UNKNOWN")
 
     def test_policy_grid_contains_baseline_and_is_bounded(self):
         policies = {p[0]: p for p in POLICIES}
