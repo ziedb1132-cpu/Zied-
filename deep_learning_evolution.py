@@ -88,6 +88,7 @@ def _install_features(zq):
     zq.tf_features = expanded_tf_features
     # Old cached arrays/models use 200 columns and must be rebuilt, not padded.
     zq.DATA_VER = 4
+    zq.CFG["REQUIRED_SIGNAL_FEATURES"] = 300
     zq.CFG["TOP_AI"] = 50
     zq.CFG["LOG_TOP"] = 50
     zq.CFG["MAX_OPEN"] = 10
