@@ -934,7 +934,10 @@ class Paper:
         tracked_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(tracked_signals)")}
         for column, declaration in (
             ("regime", "TEXT"), ("entry_score", "REAL"), ("peak_price", "REAL"),
-            ("trailing_sl", "REAL"), ("trail_active", "INTEGER DEFAULT 0")
+            ("trailing_sl", "REAL"), ("trail_active", "INTEGER DEFAULT 0"),
+            ("exit_sl_mult", "REAL"), ("exit_tp_mult", "REAL"),
+            ("trail_activation_atr", "REAL"), ("trail_distance_atr", "REAL"),
+            ("max_hold_bars", "INTEGER")
         ):
             if column not in tracked_columns:
                 self.db.execute(f"ALTER TABLE tracked_signals ADD COLUMN {column} {declaration}")
@@ -1192,7 +1195,7 @@ def monitor_tracked_signals(paper):
                     reason, outcome, exit_price = "TRAIL" if active_sl > float(s["sl"]) + 1e-12 else "SL", "SL", active_sl
                 elif high >= s["tp"]:
                     reason, outcome, exit_price = "TP", "TP", float(s["tp"])
-                elif elapsed >= max_hold_bars:
+                elif elapsed >= int(s.get("max_hold_bars") or max_hold_bars):
                     reason = "TIME"
                 if reason is None:
                     old_peak = float(s.get("peak_price") or s["entry"])
@@ -1201,11 +1204,13 @@ def monitor_tracked_signals(paper):
                     atr_pct = float(s["atr_pct"])
                     # Keep the existing +1.5 ATR trigger, but never activate
                     # until the +1% profit-protection stop is below market.
-                    activation_gain = max(1.5 * atr_pct, 0.01)
+                    activation_atr = float(s.get("trail_activation_atr") or 1.5)
+                    trail_distance_atr = float(s.get("trail_distance_atr") or 1.8)
+                    activation_gain = max(activation_atr * atr_pct, 0.01)
                     activation = entry_price * (1.0 + activation_gain)
                     active = bool(s.get("trail_active")) or peak >= activation
                     trail = max(float(s["sl"]), entry_price * 1.01,
-                                peak * (1.0 - 1.8 * atr_pct)) if active else float(s["sl"])
+                                peak * (1.0 - trail_distance_atr * atr_pct)) if active else float(s["sl"])
                     paper.update_trailing(s["id"], peak, trail, active)
                     s["peak_price"], s["trailing_sl"], s["trail_active"] = peak, trail, int(active)
                 if reason:
