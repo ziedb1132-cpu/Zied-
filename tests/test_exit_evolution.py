@@ -12,6 +12,8 @@ from exit_evolution import (
     _ensure,
     _regime,
     _canonical_reason,
+    _holdout_metrics,
+    _holdout_passes,
     _simulate,
 )
 
@@ -88,6 +90,54 @@ class ExitEvolutionTests(unittest.TestCase):
         self.assertEqual(_canonical_reason("TRAILING_STOP"), "TRAIL")
         self.assertEqual(_canonical_reason("TIME_EXIT"), "TIME")
         self.assertEqual(_canonical_reason(None), "UNKNOWN")
+
+    def test_holdout_requires_beating_actual_tp_sl_trailing_results(self):
+        candidate = [0.025, 0.030, 0.018, 0.022, 0.027] * 4
+        baseline = [0.010, 0.012, 0.009, 0.011, 0.010] * 4
+        actual = [0.008, 0.009, 0.007, 0.008, 0.009] * 4
+        metrics = _holdout_metrics(candidate, baseline, actual)
+        self.assertTrue(_holdout_passes(metrics))
+        self.assertEqual(metrics["n"], 20)
+        self.assertGreater(metrics["paired_win_rate"], 0.99)
+
+    def test_holdout_rejects_candidate_that_only_beats_shadow_baseline(self):
+        candidate = [0.012] * 20
+        baseline = [0.005] * 20
+        actual = [0.020] * 20
+        metrics = _holdout_metrics(candidate, baseline, actual)
+        self.assertFalse(_holdout_passes(metrics))
+
+    def test_holdout_rejects_nonpositive_or_small_samples(self):
+        self.assertFalse(_holdout_passes(_holdout_metrics(
+            [-0.01] * 20, [-0.02] * 20, [-0.03] * 20)))
+        self.assertFalse(_holdout_passes(_holdout_metrics(
+            [0.03] * 10, [0.01] * 10, [0.005] * 10)))
+
+    def test_selected_exit_policy_is_migrated_without_dropping_tracked_rows(self):
+        class Paper:
+            def __init__(self):
+                self.lock = threading.RLock()
+                self.db = sqlite3.connect(":memory:")
+                self.db.row_factory = sqlite3.Row
+
+        paper = Paper()
+        paper.db.execute(
+            "CREATE TABLE tracked_signals(id INTEGER PRIMARY KEY, status TEXT, "
+            "regime TEXT, close_reason TEXT, outcome TEXT, ret REAL, hold REAL, "
+            "opened_ts REAL, closed_ts REAL)"
+        )
+        paper.db.execute(
+            "INSERT INTO tracked_signals VALUES(1,'CLOSED','LOW','TRAIL','WIN',0.01,4,1,2)"
+        )
+        _ensure(paper)
+        columns = {r["name"] for r in paper.db.execute(
+            "PRAGMA table_info(tracked_signals)"
+        )}
+        self.assertIn("exit_policy", columns)
+        row = paper.db.execute(
+            "SELECT exit_policy FROM tracked_signals WHERE id=1"
+        ).fetchone()
+        self.assertEqual(row["exit_policy"], "legacy_unknown")
 
     def test_policy_grid_contains_baseline_and_is_bounded(self):
         policies = {p[0]: p for p in POLICIES}
