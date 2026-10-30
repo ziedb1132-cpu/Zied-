@@ -2,7 +2,7 @@
 <html lang="fr" dir="ltr">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Zied Quant — لوحة بيانات البرنامج</title>
+<title>Zied Quant — Tableau de bord</title>
 <style>
 :root{
  --bg:#f5f7fb;--panel:#ffffff;--line:#e5eaf2;--txt:#17243a;--mut:#718096;
@@ -58,21 +58,21 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;border:1px so
 @media(max-width:560px){main{padding:12px 10px 28px}.grid{gap:8px}.card{padding:12px;border-radius:13px}.value{font-size:21px}header{padding:11px 12px}.brand h1{font-size:16px}.logo{padding:9px 11px}.controls{padding:10px}.controls input{min-width:100%;flex-basis:100%}.controls button{flex:1}.tabs{margin:12px 0 15px}.tabs button{padding:8px 12px;font-size:12px}.notice{font-size:12px;padding:11px 12px}}
 </style></head>
 <body>
-<header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — بيانات البرنامج</h1><div class="muted">لوحة قراءة فقط · تقرأ ملفًا مختصرًا يُحدّث مع كل دورة</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">لم يتم الاتصال</span></span></div></header>
+<header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Données du programme</h1><div class="muted">Tableau en lecture seule · fichier récapitulatif actualisé à chaque cycle</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
 <main>
-<div class="notice">لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب.</div>
+<div class="notice">Tableau en lecture seule. GitHub Actions génère un fichier récapitulatif après chaque cycle. Le navigateur lit uniquement ce fichier et ne télécharge ni la base de données, ni ses fragments, ni les fichiers d’entraînement.</div>
 <div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
-<div class="controls"><select id="language" aria-label="Language" style="max-width:150px;flex:0 0 150px"><option value="fr">Français</option><option value="ar">العربية</option><option value="en">English</option><option value="es">Español</option><option value="tr">Türkçe</option></select><input id="owner" value="ziedb1132-cpu" aria-label="مالك المستودع" placeholder="مالك المستودع"><input id="repo" value="Zied-" aria-label="المستودع" placeholder="المستودع"><input id="branch" value="state-data" aria-label="فرع البيانات" placeholder="فرع البيانات"><input id="token" type="password" autocomplete="off" aria-label="GitHub read-only token" placeholder="رمز وصول للقراءة فقط (للمستودع الخاص)"><button id="connect" class="primary">تحديث البيانات</button></div>
-<div class="tabs"><button class="active" data-tab="overview">نظرة عامة</button><button data-tab="trackedOpen">الإشارات المفتوحة</button><button data-tab="trackedClosed">الإشارات المغلقة</button><button data-tab="recentSignals">أحدث الإشارات</button><button data-tab="signals">كل الإشارات</button><button data-tab="ai">الذكاء الاصطناعي</button><button data-tab="ranking">ترتيب العملات</button><button data-tab="files">جميع الملفات</button><button data-tab="raw">بيانات تقنية</button></div>
-<section id="page-overview"><div id="metrics" class="grid"></div><div class="chartgrid"><div class="card"><div class="charthead"><h2>العائد التراكمي للإشارات المغلقة</h2><span id="chartReturnMeta" class="muted">بانتظار البيانات</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>توزيع نتائج الإشارات</h2><span class="muted">من الإشارات المتتبعة المغلقة</span></div><div id="outcomeChart" class="chartbox"></div></div></div><div class="cols"><div class="card"><h2>حالة التشغيل</h2><div id="system"></div></div><div class="card"><h2>نتائج تقييم الإشارات</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>ملخص الذاكرة المحفوظة</h2><div id="metaPreview"></div></div></section>
-<section id="page-trackedOpen" class="hide section"><h2>الإشارات المتتبعة المفتوحة</h2><p class="muted">الإشارات التي لم تُغلق بعد.</p><div id="trackedOpen" class="tablewrap"></div></section>
-<section id="page-trackedClosed" class="hide section"><h2>الإشارات المتتبعة المغلقة وتقييمها</h2><p class="muted">يشمل سبب الإغلاق TP / SL / TIME، سعر الخروج، العائد المحقق ومدة الاحتفاظ.</p><div id="trackedClosed" class="tablewrap"></div></section>
-<section id="page-recentSignals" class="hide section"><h2>أحدث الإشارات</h2><div id="recent" class="tablewrap"></div></section>
-<section id="page-signals" class="hide section"><h2>سجل الإشارات من قاعدة البيانات</h2><p class="muted">تعرض آخر 500 إشارة محفوظة في SQLite. النتائج لا تعني تنفيذ صفقات فعلية.</p><div id="signals" class="tablewrap"></div></section>
-<section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>كل مفاتيح meta المحفوظة</h2><div id="metaTable" class="tablewrap"></div></div><div class="card section"><h2>ملخص ملفات النموذج والتدريب</h2><div id="aiFiles" class="tablewrap"></div></div></section>
-<section id="page-ranking" class="hide section"><h2>أحدث ترتيب محفوظ للعملات</h2><p class="muted">يُقرأ من ranking.csv إن كان موجودًا في مخزن البيانات.</p><div id="ranking" class="tablewrap"></div><div class="card section"><h2>تطور الاستراتيجيات / الاكتشاف</h2><pre id="evolution">لم يتم تحميل ملف استراتيجية.</pre></div></section>
-<section id="page-files" class="hide section"><h2>كل الملفات المذكورة في manifest</h2><div id="files" class="tablewrap"></div><div class="card section"><h2>أخطاء التحميل</h2><pre id="errors">لا توجد أخطاء.</pre></div></section>
-<section id="page-raw" class="hide section"><h2>مخطط قاعدة البيانات</h2><div id="schema" class="tablewrap"></div><div class="card section"><h2>عينة البيانات الخام</h2><select id="rawSelect"></select><pre id="rawData">اختر ملفًا لعرض تفاصيله.</pre></div></section>
+<div class="controls"><input id="owner" value="ziedb1132-cpu" aria-label="Propriétaire du dépôt" placeholder="Propriétaire du dépôt"><input id="repo" value="Zied-" aria-label="Dépôt" placeholder="Dépôt"><input id="branch" value="state-data" aria-label="Branche des données" placeholder="Branche des données"><input id="token" type="password" autocomplete="off" aria-label="GitHub read-only token" placeholder="Jeton en lecture seule (dépôt privé)"><button id="connect" class="primary">Actualiser les données</button></div>
+<div class="tabs"><button class="active" data-tab="overview">Vue d’ensemble</button><button data-tab="trackedOpen">Signaux ouverts</button><button data-tab="trackedClosed">Signaux clôturés</button><button data-tab="recentSignals">Signaux récents</button><button data-tab="signals">Tous les signaux</button><button data-tab="ai">Intelligence artificielle</button><button data-tab="ranking">Classement des actifs</button><button data-tab="files">Tous les fichiers</button><button data-tab="raw">Données techniques</button></div>
+<section id="page-overview"><div id="metrics" class="grid"></div><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2><span id="chartReturnMeta" class="muted">En attente de données</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats des signaux</h2><span class="muted">Parmi les signaux suivis et clôturés</span></div><div id="outcomeChart" class="chartbox"></div></div></div><div class="cols"><div class="card"><h2>État du système</h2><div id="system"></div></div><div class="card"><h2>Résultats de l’évaluation des signaux</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div></section>
+<section id="page-trackedOpen" class="hide section"><h2>Signaux ouverts suivis</h2><p class="muted">Signaux qui ne sont pas encore clôturés.</p><div id="trackedOpen" class="tablewrap"></div></section>
+<section id="page-trackedClosed" class="hide section"><h2>Signaux clôturés suivis et leur évaluation</h2><p class="muted">Inclut le motif de clôture (TP / SL / TIME), le prix de sortie, le rendement réalisé et la durée de détention.</p><div id="trackedClosed" class="tablewrap"></div></section>
+<section id="page-recentSignals" class="hide section"><h2>Signaux récents</h2><div id="recent" class="tablewrap"></div></section>
+<section id="page-signals" class="hide section"><h2>Historique des signaux de la base de données</h2><p class="muted">Affiche les 500 derniers signaux enregistrés dans SQLite. Ces résultats ne correspondent pas à des transactions réelles.</p><div id="signals" class="tablewrap"></div></section>
+<section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>Toutes les clés meta enregistrées</h2><div id="metaTable" class="tablewrap"></div></div><div class="card section"><h2>Résumé des fichiers du modèle et de l’entraînement</h2><div id="aiFiles" class="tablewrap"></div></div></section>
+<section id="page-ranking" class="hide section"><h2>Dernier classement enregistré des actifs</h2><p class="muted">Lu depuis ranking.csv s’il existe dans le stockage des données.</p><div id="ranking" class="tablewrap"></div><div class="card section"><h2>Évolution et découverte des stratégies</h2><pre id="evolution">Aucun fichier de stratégie n’a été chargé.</pre></div></section>
+<section id="page-files" class="hide section"><h2>Tous les fichiers répertoriés dans le manifeste</h2><div id="files" class="tablewrap"></div><div class="card section"><h2>Erreurs de chargement</h2><pre id="errors">Aucune erreur.</pre></div></section>
+<section id="page-raw" class="hide section"><h2>Schéma de la base de données</h2><div id="schema" class="tablewrap"></div><div class="card section"><h2>Échantillon des données brutes</h2><select id="rawSelect"></select><pre id="rawData">Sélectionnez un fichier pour afficher ses détails.</pre></div></section>
 <div class="foot">Zied Quant Dashboard · GitHub API · قراءة فقط</div>
 </main>
 
@@ -84,234 +84,28 @@ const fmt=x=>x===null||x===undefined||x===""?"—":typeof x==="number"?x.toLocal
 const money=x=>x===null||x===undefined?"—":Number(x).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
 const timeFmt=x=>{if(x===null||x===undefined||x==="")return "—";let n=Number(x);if(Number.isFinite(n)&&n>1000000000){if(n<100000000000)n*=1000;return new Date(n).toLocaleString()}return String(x)};
 let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
-function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">لا توجد بيانات محفوظة لهذا القسم.</div>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td title="'+esc(typeof c[1]==="function"?c[1](r):(r[c[1]]))+'">'+esc(typeof c[1]==="function"?c[1](r):(r[c[1]]))+'</td>').join("")+'</tr>').join("")+'</tbody></table>'}
+function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>'<td title="'+esc(typeof c[1]==="function"?c[1](r):(r[c[1]]))+'">'+esc(typeof c[1]==="function"?c[1](r):(r[c[1]]))+'</td>').join("")+'</tr>').join("")+'</tbody></table>'}
 function metric(label,value,sub){return '<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(value)+'</div><div class="sub">'+esc(sub||"")+'</div></div>'}
-function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="row"><span class="muted">'+esc(k)+'</span><b>'+esc(typeof v==="string"?v:JSON.stringify(v))+'</b></div>').join("")||'<div class="empty">لا توجد بيانات meta.</div>'}
+function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="row"><span class="muted">'+esc(k)+'</span><b>'+esc(typeof v==="string"?v:JSON.stringify(v))+'</b></div>').join("")||'<div class="empty">Aucune donnée meta disponible.</div>'}
 function dbQuery(sql){try{if(!state.db)return [];let r=state.db.exec(sql);if(!r.length)return [];return r[0].values.map(row=>Object.fromEntries(r[0].columns.map((c,i)=>[c,row[i]])))}catch(e){return []}}
 function fileText(path){let x=state.contents[path];return typeof x==="string"?x:x===undefined?"":JSON.stringify(x,null,2)}
 function parseCSV(text){const lines=text.trim().split(/\r?\n/);if(lines.length<2)return [];const parse=line=>{let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===","&&!q){out.push(cur);cur=""}else cur+=c}out.push(cur);return out};const headers=parse(lines[0]).map((h,i)=>h.trim()||(i===0?"inst":"column_"+i));return lines.slice(1).filter(Boolean).map(line=>{const vals=parse(line),o={};headers.forEach((h,i)=>o[h]=vals[i]??"");return o})}
-const I18N={"نظرة عامة":["Vue d’ensemble","Overview","Resumen","Genel Bakış"],"الإشارات المفتوحة":["Signaux ouverts","Open Signals","Señales abiertas","Açık Sinyaller"],"الإشارات المغلقة":["Signaux clôturés","Closed Signals","Señales cerradas","Kapanan Sinyaller"],"أحدث الإشارات":["Signaux récents","Recent Signals","Señales recientes","Son Sinyaller"],"كل الإشارات":["Tous les signaux","All Signals","Todas las señales","Tüm Sinyaller"],"الذكاء الاصطناعي":["Intelligence artificielle","AI","Inteligencia artificial","Yapay Zekâ"],"ترتيب العملات":["Classement des actifs","Asset Ranking","Clasificación de activos","Varlık Sıralaması"],"جميع الملفات":["Tous les fichiers","All Files","Todos los archivos","Tüm Dosyalar"],"بيانات تقنية":["Données techniques","Technical Data","Datos técnicos","Teknik Veriler"],"حالة التشغيل":["État du système","System Status","Estado del sistema","Sistem Durumu"],"نتائج تقييم الإشارات":["Résultats d’évaluation","Signal Evaluation Results","Resultados de evaluación","Sinyal Değerlendirme Sonuçları"],"ملخص الذاكرة المحفوظة":["Résumé de la mémoire","Saved Memory Summary","Resumen de memoria guardada","Kayıtlı Bellek Özeti"],"الإشارات المتتبعة المفتوحة":["Signaux suivis ouverts","Tracked Open Signals","Señales abiertas en seguimiento","Takipteki Açık Sinyaller"],"الإشارات المتتبعة المغلقة وتقييمها":["Signaux suivis clôturés et évaluation","Tracked Closed Signals & Evaluation","Señales cerradas y evaluación","Takip Edilen Kapanmış Sinyaller"],"أحدث ترتيب محفوظ للعملات":["Dernier classement enregistré","Latest Saved Ranking","Última clasificación guardada","Kaydedilmiş Son Sıralama"],"توزيع نتائج الإشارات":["Répartition des résultats","Signal Outcome Distribution","Distribución de resultados","Sinyal Sonuç Dağılımı"],"العائد التراكمي للإشارات المغلقة":["Rendement cumulé des signaux clôturés","Cumulative Return of Closed Signals","Rentabilidad acumulada de señales cerradas","Kapanan Sinyallerin Birikimli Getirisi"],"بانتظار البيانات":["En attente de données","Waiting for data","Esperando datos","Veri bekleniyor"],"الإجمالي:":["Total :","Total:","Total:","Toplam:"],"نسبة الفوز:":["Taux de réussite :","Win rate:","Tasa de aciertos:","Kazanma oranı:"],"رابحة":["Gagnant","Winning","Ganadora","Kazanan"],"خاسرة":["Perdant","Losing","Perdedora","Kaybeden"],"تعادل":["Égalité","Breakeven","Empate","Başa baş"],"أقدم إشارة":["Signal la plus ancienne","Oldest signal","Señal más antigua","En eski sinyal"],"أحدث إشارة":["Signal la plus récente","Newest signal","Señal más reciente","En yeni sinyal"],"تحديث البيانات":["Actualiser les données","Refresh data","Actualizar datos","Verileri yenile"],"لم يتم الاتصال":["Non connecté","Not connected","No conectado","Bağlı değil"],"مالك المستودع":["Propriétaire du dépôt","Repository owner","Propietario del repositorio","Depo sahibi"],"فرع البيانات":["Branche des données","Data branch","Rama de datos","Veri dalı"],"المستودع":["Dépôt","Repository","Repositorio","Depo"],"أخطاء التحميل":["Erreurs de chargement","Loading Errors","Errores de carga","Yükleme Hataları"],"مخطط قاعدة البيانات":["Schéma de la base de données","Database Schema","Esquema de la base de datos","Veritabanı Şeması"],"عينة البيانات الخام":["Extrait des données brutes","Raw Data Sample","Muestra de datos sin procesar","Ham Veri Örneği"],"كل مفاتيح meta المحفوظة":["Toutes les clés meta enregistrées","All Saved Meta Keys","Todas las claves meta guardadas","Kayıtlı Tüm Meta Anahtarları"],"ملخص ملفات النموذج والتدريب":["Résumé des fichiers du modèle et de l’entraînement","Model & Training Files Summary","Resumen de archivos del modelo y entrenamiento","Model ve Eğitim Dosyalarının Özeti"],"لا توجد بيانات محفوظة لهذا القسم.":["Aucune donnée enregistrée pour cette section.","No saved data for this section.","No hay datos guardados para esta sección.","Bu bölüm için kayıtlı veri yok."],"جار قراءة ملف العرض الصغير…":["Lecture du fichier récapitulatif…","Reading compact dashboard file…","Leyendo archivo compacto…","Kompakt pano dosyası okunuyor…"],"تعذر قراءة ملف العرض":["Impossible de lire le fichier d’affichage","Could not read dashboard file","No se pudo leer el archivo del panel","Pano dosyası okunamadı"]};
-I18N["لوحة بيانات البرنامج"]=["Tableau de bord du programme","لوحة بيانات البرنامج","لوحة بيانات البرنامج","لوحة بيانات البرنامج"];
-I18N["بيانات البرنامج"]=["Données du programme","بيانات البرنامج","بيانات البرنامج","بيانات البرنامج"];
-I18N["لوحة قراءة فقط · تقرأ ملفًا مختصرًا يُحدّث مع كل دورة"]=["Tableau en lecture seule · lit un fichier récapitulatif actualisé à chaque cycle","لوحة قراءة فقط · تقرأ ملفًا مختصرًا يُحدّث مع كل دورة","لوحة قراءة فقط · تقرأ ملفًا مختصرًا يُحدّث مع كل دورة","لوحة قراءة فقط · تقرأ ملفًا مختصرًا يُحدّث مع كل دورة"];
-I18N["لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب."]=["Tableau en lecture seule. GitHub Actions crée un fichier récapitulatif après chaque cycle. Le navigateur lit uniquement ce fichier et ne télécharge ni la base de données, ni ses fragments, ni les fichiers d’entraînement.","لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب.","لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب.","لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب."];
-I18N["العربية"]=["Arabe","العربية","العربية","العربية"];
-I18N["رمز وصول للقراءة فقط (للمستودع الخاص)"]=["Jeton d’accès en lecture seule (dépôt privé)","رمز وصول للقراءة فقط (للمستودع الخاص)","رمز وصول للقراءة فقط (للمستودع الخاص)","رمز وصول للقراءة فقط (للمستودع الخاص)"];
-I18N["من الإشارات المتتبعة المغلقة"]=["Parmi les signaux suivis clôturés","من الإشارات المتتبعة المغلقة","من الإشارات المتتبعة المغلقة","من الإشارات المتتبعة المغلقة"];
-I18N["الإشارات التي لم تُغلق بعد."]=["Signaux qui ne sont pas encore clôturés.","الإشارات التي لم تُغلق بعد.","الإشارات التي لم تُغلق بعد.","الإشارات التي لم تُغلق بعد."];
-I18N["يشمل سبب الإغلاق TP / SL / TIME، سعر الخروج، العائد المحقق ومدة الاحتفاظ."]=["Inclut le motif de clôture TP / SL / TIME, le prix de sortie, le rendement réalisé et la durée de détention.","يشمل سبب الإغلاق TP / SL / TIME، سعر الخروج، العائد المحقق ومدة الاحتفاظ.","يشمل سبب الإغلاق TP / SL / TIME، سعر الخروج، العائد المحقق ومدة الاحتفاظ.","يشمل سبب الإغلاق TP / SL / TIME، سعر الخروج، العائد المحقق ومدة الاحتفاظ."];
-I18N["سجل الإشارات من قاعدة البيانات"]=["Historique des signaux de la base de données","سجل الإشارات من قاعدة البيانات","سجل الإشارات من قاعدة البيانات","سجل الإشارات من قاعدة البيانات"];
-I18N["تعرض آخر 500 إشارة محفوظة في SQLite. النتائج لا تعني تنفيذ صفقات فعلية."]=["Affiche les 500 derniers signaux enregistrés dans SQLite. Ces résultats ne représentent pas des transactions réelles.","تعرض آخر 500 إشارة محفوظة في SQLite. النتائج لا تعني تنفيذ صفقات فعلية.","تعرض آخر 500 إشارة محفوظة في SQLite. النتائج لا تعني تنفيذ صفقات فعلية.","تعرض آخر 500 إشارة محفوظة في SQLite. النتائج لا تعني تنفيذ صفقات فعلية."];
-I18N["يُقرأ من ranking.csv إن كان موجودًا في مخزن البيانات."]=["Lu depuis ranking.csv s’il existe dans le stockage des données.","يُقرأ من ranking.csv إن كان موجودًا في مخزن البيانات.","يُقرأ من ranking.csv إن كان موجودًا في مخزن البيانات.","يُقرأ من ranking.csv إن كان موجودًا في مخزن البيانات."];
-I18N["تطور الاستراتيجيات / الاكتشاف"]=["Évolution des stratégies / découverte","تطور الاستراتيجيات / الاكتشاف","تطور الاستراتيجيات / الاكتشاف","تطور الاستراتيجيات / الاكتشاف"];
-I18N["لم يتم تحميل ملف استراتيجية."]=["Aucun fichier de stratégie n’a été chargé.","لم يتم تحميل ملف استراتيجية.","لم يتم تحميل ملف استراتيجية.","لم يتم تحميل ملف استراتيجية."];
-I18N["كل الملفات المذكورة في manifest"]=["Tous les fichiers répertoriés dans le manifeste","كل الملفات المذكورة في manifest","كل الملفات المذكورة في manifest","كل الملفات المذكورة في manifest"];
-I18N["لا توجد أخطاء."]=["Aucune erreur.","لا توجد أخطاء.","لا توجد أخطاء.","لا توجد أخطاء."];
-I18N["اختر ملفًا لعرض تفاصيله."]=["Sélectionnez un fichier pour afficher ses détails.","اختر ملفًا لعرض تفاصيله.","اختر ملفًا لعرض تفاصيله.","اختر ملفًا لعرض تفاصيله."];
-I18N["لا توجد بيانات محفوظة لهذا القسم."]=["Aucune donnée enregistrée pour cette section.","لا توجد بيانات محفوظة لهذا القسم.","لا توجد بيانات محفوظة لهذا القسم.","لا توجد بيانات محفوظة لهذا القسم."];
-I18N["لا توجد بيانات meta."]=["Aucune donnée meta.","لا توجد بيانات meta.","لا توجد بيانات meta.","لا توجد بيانات meta."];
-I18N["لا توجد إشارات مغلقة بعائد رقمي كافٍ لرسم المنحنى."]=["Aucun signal clôturé avec un rendement numérique suffisant pour tracer la courbe.","لا توجد إشارات مغلقة بعائد رقمي كافٍ لرسم المنحنى.","لا توجد إشارات مغلقة بعائد رقمي كافٍ لرسم المنحنى.","لا توجد إشارات مغلقة بعائد رقمي كافٍ لرسم المنحنى."];
-I18N["سيظهر توزيع النتائج بعد إغلاق الإشارات."]=["La répartition des résultats apparaîtra après la clôture des signaux.","سيظهر توزيع النتائج بعد إغلاق الإشارات.","سيظهر توزيع النتائج بعد إغلاق الإشارات.","سيظهر توزيع النتائج بعد إغلاق الإشارات."];
-I18N["منحنى العائد التراكمي للإشارات المغلقة"]=["Courbe du rendement cumulé des signaux clôturés","منحنى العائد التراكمي للإشارات المغلقة","منحنى العائد التراكمي للإشارات المغلقة","منحنى العائد التراكمي للإشارات المغلقة"];
-I18N["العائد التراكمي النظري:"]=["Rendement cumulé théorique :","العائد التراكمي النظري:","العائد التراكمي النظري:","العائد التراكمي النظري:"];
-I18N["عدد الإشارات:"]=["Nombre de signaux :","عدد الإشارات:","عدد الإشارات:","عدد الإشارات:"];
-I18N["توزيع الإشارات الرابحة والخاسرة والمتعادلة"]=["Répartition des signaux gagnants, perdants et à l’équilibre","توزيع الإشارات الرابحة والخاسرة والمتعادلة","توزيع الإشارات الرابحة والخاسرة والمتعادلة","توزيع الإشارات الرابحة والخاسرة والمتعادلة"];
-I18N["كل الإشارات المسجلة"]=["Tous les signaux enregistrés","كل الإشارات المسجلة","كل الإشارات المسجلة","كل الإشارات المسجلة"];
-I18N["جدول signals في SQLite"]=["Table signals dans SQLite","جدول signals في SQLite","جدول signals في SQLite","جدول signals في SQLite"];
-I18N["بما فيها غير المتتبعة"]=["Y compris les signaux non suivis","بما فيها غير المتتبعة","بما فيها غير المتتبعة","بما فيها غير المتتبعة"];
-I18N["حالة OPEN"]=["Statut OPEN","حالة OPEN","حالة OPEN","حالة OPEN"];
-I18N["حالة CLOSED"]=["Statut CLOSED","حالة CLOSED","حالة CLOSED","حالة CLOSED"];
-I18N["مغلقة + عائد موجب"]=["Clôturés + rendement positif","مغلقة + عائد موجب","مغلقة + عائد موجب","مغلقة + عائد موجب"];
-I18N["مغلقة + عائد سالب"]=["Clôturés + rendement négatif","مغلقة + عائد سالب","مغلقة + عائد سالب","مغلقة + عائد سالب"];
-I18N["جاهزة"]=["Prête","جاهزة","جاهزة","جاهزة"];
-I18N["بانتظار النتائج"]=["En attente des résultats","بانتظار النتائج","بانتظار النتائج","بانتظار النتائج"];
-I18N["دورة الفحص"]=["Cycle d’analyse","دورة الفحص","دورة الفحص","دورة الفحص"];
-I18N["تسجيل الإشارات"]=["Enregistrement des signaux","تسجيل الإشارات","تسجيل الإشارات","تسجيل الإشارات"];
-I18N["متوقف مؤقتًا"]=["Temporairement suspendu","متوقف مؤقتًا","متوقف مؤقتًا","متوقف مؤقتًا"];
-I18N["غير متوقف حسب meta"]=["Non suspendu selon meta","غير متوقف حسب meta","غير متوقف حسب meta","غير متوقف حسب meta"];
-I18N["لا تُحمّل إلى المتصفح — محفوظة في state-data"]=["Non téléchargée dans le navigateur — stockée dans state-data","لا تُحمّل إلى المتصفح — محفوظة في state-data","لا تُحمّل إلى المتصفح — محفوظة في state-data","لا تُحمّل إلى المتصفح — محفوظة في state-data"];
-I18N["قراءة فقط — لا صفقات"]=["Lecture seule — aucune transaction","قراءة فقط — لا صفقات","قراءة فقط — لا صفقات","قراءة فقط — لا صفقات"];
-I18N["إجمالي الإشارات في SQLite"]=["Nombre total de signaux dans SQLite","إجمالي الإشارات في SQLite","إجمالي الإشارات في SQLite","إجمالي الإشارات في SQLite"];
-I18N["غير المقيّمة"]=["Non évalués","غير المقيّمة","غير المقيّمة","غير المقيّمة"];
-I18N["الرابحة من جميع الإشارات المقيّمة"]=["Gagnants parmi tous les signaux évalués","الرابحة من جميع الإشارات المقيّمة","الرابحة من جميع الإشارات المقيّمة","الرابحة من جميع الإشارات المقيّمة"];
-I18N["الخاسرة/غير الموجبة من جميع الإشارات المقيّمة"]=["Perdants / non positifs parmi tous les signaux évalués","الخاسرة/غير الموجبة من جميع الإشارات المقيّمة","الخاسرة/غير الموجبة من جميع الإشارات المقيّمة","الخاسرة/غير الموجبة من جميع الإشارات المقيّمة"];
-I18N["نسبة نجاح جميع الإشارات"]=["Taux de réussite de tous les signaux","نسبة نجاح جميع الإشارات","نسبة نجاح جميع الإشارات","نسبة نجاح جميع الإشارات"];
-I18N["متوسط العائد النظري"]=["Rendement théorique moyen","متوسط العائد النظري","متوسط العائد النظري","متوسط العائد النظري"];
-I18N["المتتبعة المفتوحة"]=["Signaux suivis ouverts","المتتبعة المفتوحة","المتتبعة المفتوحة","المتتبعة المفتوحة"];
-I18N["المتتبعة المغلقة"]=["Signaux suivis clôturés","المتتبعة المغلقة","المتتبعة المغلقة","المتتبعة المغلقة"];
-I18N["الرابحة المغلقة المؤهلة للتدريب"]=["Signaux gagnants clôturés admissibles à l’entraînement","الرابحة المغلقة المؤهلة للتدريب","الرابحة المغلقة المؤهلة للتدريب","الرابحة المغلقة المؤهلة للتدريب"];
-I18N["الخاسرة المغلقة المؤهلة للتدريب"]=["Signaux perdants clôturés admissibles à l’entraînement","الخاسرة المغلقة المؤهلة للتدريب","الخاسرة المغلقة المؤهلة للتدريب","الخاسرة المغلقة المؤهلة للتدريب"];
-I18N["إجمالي النتائج المؤهلة للتدريب"]=["Total des résultats admissibles à l’entraînement","إجمالي النتائج المؤهلة للتدريب","إجمالي النتائج المؤهلة للتدريب","إجمالي النتائج المؤهلة للتدريب"];
-I18N["التقدم إلى شرط التدريب"]=["Progression vers le seuil d’entraînement","التقدم إلى شرط التدريب","التقدم إلى شرط التدريب","التقدم إلى شرط التدريب"];
-I18N["من شرط الرابحين و"]=["du seuil de gagnants et","من شرط الرابحين و","من شرط الرابحين و","من شرط الرابحين و"];
-I18N["من شرط الخاسرين"]=["du seuil de perdants","من شرط الخاسرين","من شرط الخاسرين","من شرط الخاسرين"];
-I18N["شرط التدريب"]=["Seuil d’entraînement","شرط التدريب","شرط التدريب","شرط التدريب"];
-I18N["500 رابحة مغلقة + 500 خاسرة مغلقة؛ يستخدم البرنامج النتائج المؤهلة المتراكمة"]=["500 signaux gagnants clôturés + 500 perdants clôturés ; le programme utilise les résultats admissibles cumulés","500 رابحة مغلقة + 500 خاسرة مغلقة؛ يستخدم البرنامج النتائج المؤهلة المتراكمة","500 رابحة مغلقة + 500 خاسرة مغلقة؛ يستخدم البرنامج النتائج المؤهلة المتراكمة","500 رابحة مغلقة + 500 خاسرة مغلقة؛ يستخدم البرنامج النتائج المؤهلة المتراكمة"];
-I18N["لا تُحسب الإشارات غير المتتبعة ضمن شرط تدريب النتائج المغلقة"]=["Les signaux non suivis ne comptent pas dans le seuil d’entraînement des résultats clôturés","لا تُحسب الإشارات غير المتتبعة ضمن شرط تدريب النتائج المغلقة","لا تُحسب الإشارات غير المتتبعة ضمن شرط تدريب النتائج المغلقة","لا تُحسب الإشارات غير المتتبعة ضمن شرط تدريب النتائج المغلقة"];
-I18N["وقت التسجيل"]=["Date d’enregistrement","وقت التسجيل","وقت التسجيل","وقت التسجيل"];
-I18N["العملة"]=["Actif","العملة","العملة","العملة"];
-I18N["السعر"]=["Prix","السعر","السعر","السعر"];
-I18N["احتمال AI"]=["Probabilité IA","احتمال AI","احتمال AI","احتمال AI"];
-I18N["الترتيب"]=["Classement","الترتيب","الترتيب","الترتيب"];
-I18N["اكتمل التقييم"]=["Évaluation terminée","اكتمل التقييم","اكتمل التقييم","اكتمل التقييم"];
-I18N["نعم"]=["Oui","نعم","نعم","نعم"];
-I18N["لا"]=["Non","لا","لا","لا"];
-I18N["النتيجة"]=["Résultat","النتيجة","النتيجة","النتيجة"];
-I18N["خاسرة/غير موجبة"]=["Perdant / non positif","خاسرة/غير موجبة","خاسرة/غير موجبة","خاسرة/غير موجبة"];
-I18N["العائد النظري"]=["Rendement théorique","العائد النظري","العائد النظري","العائد النظري"];
-I18N["مدة التقييم (ساعات)"]=["Durée d’évaluation (heures)","مدة التقييم (ساعات)","مدة التقييم (ساعات)","مدة التقييم (ساعات)"];
-I18N["الحالة"]=["Statut","الحالة","الحالة","الحالة"];
-I18N["سعر الدخول"]=["Prix d’entrée","سعر الدخول","سعر الدخول","سعر الدخول"];
-I18N["سعر الخروج"]=["Prix de sortie","سعر الخروج","سعر الخروج","سعر الخروج"];
-I18N["وقف الخسارة"]=["Stop-loss","وقف الخسارة","وقف الخسارة","وقف الخسارة"];
-I18N["الهدف"]=["Objectif","الهدف","الهدف","الهدف"];
-I18N["وقت الفتح"]=["Date d’ouverture","وقت الفتح","وقت الفتح","وقت الفتح"];
-I18N["وقت الإغلاق"]=["Date de clôture","وقت الإغلاق","وقت الإغلاق","وقت الإغلاق"];
-I18N["سبب الإغلاق"]=["Motif de clôture","سبب الإغلاق","سبب الإغلاق","سبب الإغلاق"];
-I18N["العائد المحقق"]=["Rendement réalisé","العائد المحقق","العائد المحقق","العائد المحقق"];
-I18N["مدة الاحتفاظ (ساعات)"]=["Durée de détention (heures)","مدة الاحتفاظ (ساعات)","مدة الاحتفاظ (ساعات)","مدة الاحتفاظ (ساعات)"];
-I18N["حالة النموذج"]=["État du modèle","حالة النموذج","حالة النموذج","حالة النموذج"];
-I18N["نموذج محفوظ:"]=["Modèle enregistré :","نموذج محفوظ:","نموذج محفوظ:","نموذج محفوظ:"];
-I18N["لا يوجد نموذج صالح محفوظ في state-data"]=["Aucun modèle valide n’est enregistré dans state-data","لا يوجد نموذج صالح محفوظ في state-data","لا يوجد نموذج صالح محفوظ في state-data","لا يوجد نموذج صالح محفوظ في state-data"];
-I18N["الرابحة المغلقة / 500"]=["Gagnants clôturés / 500","الرابحة المغلقة / 500","الرابحة المغلقة / 500","الرابحة المغلقة / 500"];
-I18N["الخاسرة المغلقة / 500"]=["Perdants clôturés / 500","الخاسرة المغلقة / 500","الخاسرة المغلقة / 500","الخاسرة المغلقة / 500"];
-I18N["من الشرط"]=["du seuil","من الشرط","من الشرط","من الشرط"];
-I18N["عينات التدريب المؤهلة"]=["Échantillons admissibles à l’entraînement","عينات التدريب المؤهلة","عينات التدريب المؤهلة","عينات التدريب المؤهلة"];
-I18N["المجموع الحالي من الإشارات المتتبعة المغلقة"]=["Total actuel des signaux suivis et clôturés","المجموع الحالي من الإشارات المتتبعة المغلقة","المجموع الحالي من الإشارات المتتبعة المغلقة","المجموع الحالي من الإشارات المتتبعة المغلقة"];
-I18N["عتبة النموذج"]=["Seuil du modèle","عتبة النموذج","عتبة النموذج","عتبة النموذج"];
-I18N["غير محفوظة"]=["Non enregistré","غير محفوظة","غير محفوظة","غير محفوظة"];
-I18N["آخر دورة"]=["Dernier cycle","آخر دورة","آخر دورة","آخر دورة"];
-I18N["المفتاح"]=["Clé","المفتاح","المفتاح","المفتاح"];
-I18N["القيمة"]=["Valeur","القيمة","القيمة","القيمة"];
-I18N["موجود في manifest"]=["Présent dans le manifeste","موجود في manifest","موجود في manifest","موجود في manifest"];
-I18N["تم تحميله"]=["Chargé","تم تحميله","تم تحميله","تم تحميله"];
-I18N["غير موجود في manifest"]=["Absent du manifeste","غير موجود في manifest","غير موجود في manifest","غير موجود في manifest"];
-I18N["بيانات تدريب ثنائية؛ لا تعرض كنص"]=["Données d’entraînement binaires ; non affichées en texte","بيانات تدريب ثنائية؛ لا تعرض كنص","بيانات تدريب ثنائية؛ لا تعرض كنص","بيانات تدريب ثنائية؛ لا تعرض كنص"];
-I18N["ملف نموذج ثنائي"]=["Fichier de modèle binaire","ملف نموذج ثنائي","ملف نموذج ثنائي","ملف نموذج ثنائي"];
-I18N["ملف بيانات"]=["Fichier de données","ملف بيانات","ملف بيانات","ملف بيانات"];
-I18N["الملف"]=["Fichier","الملف","الملف","الملف"];
-I18N["الوصف"]=["Description","الوصف","الوصف","الوصف"];
-I18N["الدرجة"]=["Score","الدرجة","الدرجة","الدرجة"];
-I18N["لا يوجد ملف strategy"]=["Aucun fichier de stratégie","لا يوجد ملف strategy","لا يوجد ملف strategy","لا يوجد ملف strategy"];
-I18N["ضمن الملفات التي تم تحميلها."]=["parmi les fichiers chargés.","ضمن الملفات التي تم تحميلها.","ضمن الملفات التي تم تحميلها.","ضمن الملفات التي تم تحميلها."];
-I18N["ملخص متاح في اللوحة"]=["Résumé disponible dans le tableau de bord","ملخص متاح في اللوحة","ملخص متاح في اللوحة","ملخص متاح في اللوحة"];
-I18N["ملف محفوظ ولا يُحمّل للمتصفح"]=["Fichier stocké, non téléchargé dans le navigateur","ملف محفوظ ولا يُحمّل للمتصفح","ملف محفوظ ولا يُحمّل للمتصفح","ملف محفوظ ولا يُحمّل للمتصفح"];
-I18N["المسار"]=["Chemin","المسار","المسار","المسار"];
-I18N["الحجم بالبايت"]=["Taille en octets","الحجم بالبايت","الحجم بالبايت","الحجم بالبايت"];
-I18N["الأجزاء"]=["Fragments","الأجزاء","الأجزاء","الأجزاء"];
-I18N["لا توجد أخطاء تحميل مسجلة."]=["Aucune erreur de chargement enregistrée.","لا توجد أخطاء تحميل مسجلة.","لا توجد أخطاء تحميل مسجلة.","لا توجد أخطاء تحميل مسجلة."];
-I18N["الجدول"]=["Table","الجدول","الجدول","الجدول"];
-I18N["العمود"]=["Colonne","العمود","العمود","العمود"];
-I18N["النوع"]=["Type","النوع","النوع","النوع"];
-I18N["لا توجد ملفات نصية قابلة للعرض."]=["Aucun fichier texte à afficher.","لا توجد ملفات نصية قابلة للعرض.","لا توجد ملفات نصية قابلة للعرض.","لا توجد ملفات نصية قابلة للعرض."];
-I18N["أدخل مالك المستودع واسم المستودع"]=["Saisissez le propriétaire et le nom du dépôt","أدخل مالك المستودع واسم المستودع","أدخل مالك المستودع واسم المستودع","أدخل مالك المستودع واسم المستودع"];
-I18N["تحقق من رمز القراءة للفرع الخاص)"]=["Vérifiez le jeton de lecture pour la branche privée)","تحقق من رمز القراءة للفرع الخاص)","تحقق من رمز القراءة للفرع الخاص)","تحقق من رمز القراءة للفرع الخاص)"];
-I18N["ملف العرض فارغ أو لا يمكن قراءته"]=["Le fichier du tableau de bord est vide ou illisible","ملف العرض فارغ أو لا يمكن قراءته","ملف العرض فارغ أو لا يمكن قراءته","ملف العرض فارغ أو لا يمكن قراءته"];
-I18N["جار قراءة ملف العرض الصغير…"]=["Lecture du fichier récapitulatif…","جار قراءة ملف العرض الصغير…","جار قراءة ملف العرض الصغير…","جار قراءة ملف العرض الصغير…"];
-I18N["تعذر قراءة ملف العرض"]=["Impossible de lire le fichier du tableau de bord","تعذر قراءة ملف العرض","تعذر قراءة ملف العرض","تعذر قراءة ملف العرض"];
-I18N["تم تحديث البيانات ·"]=["Données mises à jour ·","تم تحديث البيانات ·","تم تحديث البيانات ·","تم تحديث البيانات ·"];
-I18N["وقت غير متاح"]=["Heure indisponible","وقت غير متاح","وقت غير متاح","وقت غير متاح"];
-I18N["تعذر قراءة dashboard"]=["Impossible de lire dashboard","تعذر قراءة dashboard","تعذر قراءة dashboard","تعذر قراءة dashboard"];
-I18N["من فرع"]=["depuis la branche","من فرع","من فرع","من فرع"];
-I18N["تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data."]=["Vérifiez que le cycle GitHub Actions est terminé et que le fichier existe dans la branche state-data.","تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data.","تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data.","تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data."];
-I18N["رابحة ·"]=["Gagnants ·","رابحة ·","رابحة ·","رابحة ·"];
-I18N["إشارة مغلقة"]=["Signal clôturé","إشارة مغلقة","إشارة مغلقة","إشارة مغلقة"];
-
-// Additional French translations for labels generated dynamically by the dashboard.
-Object.assign(I18N,{
-"Zied Quant — لوحة بيانات البرنامج":["Zied Quant — Tableau de bord"],
-"Zied Quant — بيانات البرنامج":["Zied Quant — Données du programme"],
-"لوحة قراءة فقط · تقرأ ملفًا مختصرًا يُحدّث مع كل دورة":["Tableau en lecture seule · fichier récapitulatif actualisé à chaque cycle"],
-"لم يتم الاتصال":["Non connecté"],
-"لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب.":["Tableau en lecture seule. GitHub Actions génère un résumé à chaque cycle. Le navigateur lit uniquement ce fichier, sans télécharger la base de données ni les fichiers d’entraînement."],
-"مالك المستودع":["Propriétaire du dépôt"],"المستودع":["Dépôt"],"فرع البيانات":["Branche des données"],
-"رمز وصول للقراءة فقط (للمستودع الخاص)":["Jeton en lecture seule (dépôt privé)"],
-"نظرة عامة":["Vue d’ensemble"],"الإشارات المفتوحة":["Signaux ouverts"],"الإشارات المغلقة":["Signaux clôturés"],"أحدث الإشارات":["Signaux récents"],"كل الإشارات":["Tous les signaux"],"الذكاء الاصطناعي":["Intelligence artificielle"],"ترتيب العملات":["Classement des actifs"],"جميع الملفات":["Tous les fichiers"],"بيانات تقنية":["Données techniques"],
-"العائد التراكمي للإشارات المغلقة":["Rendement cumulé des signaux clôturés"],"بانتظار البيانات":["En attente de données"],"توزيع نتائج الإشارات":["Répartition des résultats"],"من الإشارات المتتبعة المغلقة":["Parmi les signaux suivis clôturés"],"حالة التشغيل":["État du système"],"نتائج تقييم الإشارات":["Résultats d’évaluation des signaux"],"ملخص الذاكرة المحفوظة":["Résumé de la mémoire enregistrée"],
-"الإشارات المتتبعة المفتوحة":["Signaux suivis ouverts"],"الإشارات التي لم تُغلق بعد.":["Signaux qui ne sont pas encore clôturés."],"الإشارات المتتبعة المغلقة وتقييمها":["Signaux suivis clôturés et leur évaluation"],"يشمل سبب الإغلاق TP / SL / TIME، سعر الخروج، العائد المحقق ومدة الاحتفاظ.":["Inclut le motif de clôture TP / SL / TIME, le prix de sortie, le rendement réalisé et la durée de détention."],
-"أحدث الإشارات":["Signaux récents"],"سجل الإشارات من قاعدة البيانات":["Historique des signaux de la base de données"],"تعرض آخر 500 إشارة محفوظة في SQLite. النتائج لا تعني تنفيذ صفقات فعلية.":["Affiche les 500 derniers signaux enregistrés dans SQLite. Ces résultats ne représentent pas des transactions réelles."],
-"كل مفاتيح meta المحفوظة":["Toutes les clés meta enregistrées"],"ملخص ملفات النموذج والتدريب":["Résumé des fichiers du modèle et de l’entraînement"],"أحدث ترتيب محفوظ للعملات":["Dernier classement enregistré des actifs"],"يُقرأ من ranking.csv إن كان موجودًا في مخزن البيانات.":["Lu depuis ranking.csv s’il existe dans le stockage."],"تطور الاستراتيجيات / الاكتشاف":["Évolution des stratégies / découverte"],"لم يتم تحميل ملف استراتيجية.":["Aucun fichier de stratégie n’a été chargé."],
-"كل الملفات المذكورة في manifest":["Tous les fichiers répertoriés dans le manifeste"],"أخطاء التحميل":["Erreurs de chargement"],"لا توجد أخطاء.":["Aucune erreur."],"مخطط قاعدة البيانات":["Schéma de la base de données"],"عينة البيانات الخام":["Extrait des données brutes"],"اختر ملفًا لعرض تفاصيله.":["Sélectionnez un fichier pour afficher ses détails."],
-"لا توجد بيانات محفوظة لهذا القسم.":["Aucune donnée enregistrée pour cette section."],"لا توجد بيانات meta.":["Aucune donnée meta."],"لا توجد إشارات مغلقة بعائد رقمي كافٍ لرسم المنحنى.":["Aucun signal clôturé avec un rendement numérique suffisant pour tracer la courbe."],"سيظهر توزيع النتائج بعد إغلاق الإشارات.":["La répartition apparaîtra après la clôture des signaux."],
-"منحنى العائد التراكمي للإشارات المغلقة":["Courbe du rendement cumulé des signaux clôturés"],"العائد التراكمي النظري:":["Rendement cumulé théorique :"],"عدد الإشارات:":["Nombre de signaux :"],"توزيع الإشارات الرابحة والخاسرة والمتعادلة":["Répartition des signaux gagnants, perdants et à l’équilibre"],
-"كل الإشارات المسجلة":["Tous les signaux enregistrés"],"جدول signals في SQLite":["Table signals dans SQLite"],"بما فيها غير المتتبعة":["Y compris les signaux non suivis"],"حالة OPEN":["Statut OPEN"],"حالة CLOSED":["Statut CLOSED"],"مغلقة + عائد موجب":["Clôturés + rendement positif"],"مغلقة + عائد سالب":["Clôturés + rendement négatif"],
-"جاهزة":["Prête"],"بانتظار النتائج":["En attente des résultats"],"دورة الفحص":["Cycle d’analyse"],"تسجيل الإشارات":["Enregistrement des signaux"],"متوقف مؤقتًا":["Temporairement suspendu"],"غير متوقف حسب meta":["Non suspendu selon meta"],"لا تُحمّل إلى المتصفح — محفوظة في state-data":["Non téléchargée dans le navigateur — enregistrée dans state-data"],"قراءة فقط — لا صفقات":["Lecture seule — aucune transaction"],
-"إجمالي الإشارات في SQLite":["Nombre total de signaux dans SQLite"],"غير المقيّمة":["Non évalués"],"الرابحة من جميع الإشارات المقيّمة":["Gagnants parmi tous les signaux évalués"],"الخاسرة/غير الموجبة من جميع الإشارات المقيّمة":["Perdants / non positifs parmi tous les signaux évalués"],"نسبة نجاح جميع الإشارات":["Taux de réussite de tous les signaux"],"متوسط العائد النظري":["Rendement théorique moyen"],"المتتبعة المفتوحة":["Signaux suivis ouverts"],"المتتبعة المغلقة":["Signaux suivis clôturés"],"الرابحة المغلقة المؤهلة للتدريب":["Signaux gagnants clôturés admissibles à l’entraînement"],"الخاسرة المغلقة المؤهلة للتدريب":["Signaux perdants clôturés admissibles à l’entraînement"],"إجمالي النتائج المؤهلة للتدريب":["Total des résultats admissibles à l’entraînement"],"التقدم إلى شرط التدريب":["Progression vers le seuil d’entraînement"],"من شرط الرابحين و":["du seuil de gagnants et"],"من شرط الخاسرين":["du seuil de perdants"],"شرط التدريب":["Seuil d’entraînement"],"500 رابحة مغلقة + 500 خاسرة مغلقة؛ يستخدم البرنامج النتائج المؤهلة المتراكمة":["500 signaux gagnants clôturés + 500 perdants clôturés ; le programme utilise les résultats admissibles cumulés"],"لا تُحسب الإشارات غير المتتبعة ضمن شرط تدريب النتائج المغلقة":["Les signaux non suivis ne comptent pas dans le seuil d’entraînement des résultats clôturés"],
-"وقت التسجيل":["Date d’enregistrement"],"العملة":["Actif"],"السعر":["Prix"],"احتمال AI":["Probabilité IA"],"الترتيب":["Classement"],"اكتمل التقييم":["Évaluation terminée"],"نعم":["Oui"],"لا":["Non"],"النتيجة":["Résultat"],"خاسرة/غير موجبة":["Perdant / non positif"],"العائد النظري":["Rendement théorique"],"مدة التقييم (ساعات)":["Durée d’évaluation (heures)"],"الحالة":["Statut"],"سعر الدخول":["Prix d’entrée"],"سعر الخروج":["Prix de sortie"],"وقف الخسارة":["Stop-loss"],"الهدف":["Objectif"],"وقت الفتح":["Date d’ouverture"],"وقت الإغلاق":["Date de clôture"],"سبب الإغلاق":["Motif de clôture"],"العائد المحقق":["Rendement réalisé"],"مدة الاحتفاظ (ساعات)":["Durée de détention (heures)"],"حالة النموذج":["État du modèle"],"نموذج محفوظ:":["Modèle enregistré :"],"لا يوجد نموذج صالح محفوظ في state-data":["Aucun modèle valide n’est enregistré dans state-data"],
-"أدخل مالك المستودع واسم المستودع":["Saisissez le propriétaire et le nom du dépôt"],"جار قراءة ملف العرض الصغير…":["Lecture du fichier récapitulatif…"],"تعذر قراءة ملف العرض":["Impossible de lire le fichier du tableau de bord"],"تم تحديث البيانات ·":["Données mises à jour ·"],"وقت غير متاح":["Heure indisponible"],"تعذر قراءة dashboard":["Impossible de lire le tableau de bord"],"من فرع":["depuis la branche"],"تأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data.":["Vérifiez que le cycle GitHub Actions est terminé et que le fichier existe dans la branche state-data."],
-"أقدم إشارة":["Signal le plus ancien"],"أحدث إشارة":["Signal le plus récent"],"رابحة":["Gagnant"],"خاسرة":["Perdant"],"تعادل":["À l’équilibre"],"الإجمالي:":["Total :"],"نسبة الفوز:":["Taux de réussite :"]
-});
-
-const LANGS=["ar","fr","en","es","tr"];let currentLang="fr";
-const originalText=new WeakMap(),originalAttrs=new WeakMap();
-const translatableAttrs=["placeholder","aria-label","title"];
-function translateValue(value,lang){
- if(lang==="ar")return value;
- let out=value;
- for(const key of Object.keys(I18N).sort((x,y)=>y.length-x.length)){
-  const translated=I18N[key][LANGS.indexOf(lang)-1];
-  if(translated)out=out.split(key).join(translated);
- }
- return out;
-}
-function collectAndTranslate(root,lang){
- if(!root)return;
- const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
- const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
- nodes.forEach(node=>{
-  const parent=node.parentElement;
-  if(!parent||parent.closest("script,style,code"))return;
-  if(!originalText.has(node))originalText.set(node,node.nodeValue);
-  node.nodeValue=translateValue(originalText.get(node),lang);
- });
- const elements=[];
- if(root.nodeType===Node.ELEMENT_NODE)elements.push(root);
- root.querySelectorAll?.("*").forEach(el=>elements.push(el));
- elements.forEach(el=>{
-  if(!originalAttrs.has(el))originalAttrs.set(el,{});
-  const saved=originalAttrs.get(el);
-  translatableAttrs.forEach(attr=>{
-   if(el.hasAttribute(attr)){
-    if(!(attr in saved))saved[attr]=el.getAttribute(attr);
-    el.setAttribute(attr,translateValue(saved[attr],lang));
-   }
-  });
- });
-}
-function setLanguage(lang){
- if(!LANGS.includes(lang))lang="fr";
- currentLang=lang;
- try{localStorage.setItem("ziedQuantDashboardLanguageV2",lang)}catch(e){}
- document.documentElement.lang=lang;
- document.documentElement.dir=lang==="ar"?"rtl":"ltr";
- const select=document.getElementById("language");if(select)select.value=lang;
- collectAndTranslate(document.body,lang);
-}
-const langObserver=new MutationObserver(records=>{
- if(currentLang==="ar")return;
- records.forEach(record=>record.addedNodes.forEach(node=>{
-  if(node.nodeType===Node.TEXT_NODE){
-   if(!originalText.has(node))originalText.set(node,node.nodeValue);
-   const p=node.parentElement;
-   if(p&&!p.closest("script,style,code"))node.nodeValue=translateValue(originalText.get(node),currentLang);
-  }else if(node.nodeType===Node.ELEMENT_NODE)collectAndTranslate(node,currentLang);
- }));
-});
-langObserver.observe(document.body,{childList:true,subtree:true});
+let currentLang="fr";
+function setLanguage(){document.documentElement.lang="fr";document.documentElement.dir="ltr";}
 function renderCharts(){
  const closed=state.tracked.filter(r=>r.status==="CLOSED"&&Number.isFinite(Number(r.ret))).sort((a,b)=>Number(a.closed_ts||a.opened_ts||0)-Number(b.closed_ts||b.opened_ts||0));
  const wins=closed.filter(r=>Number(r.ret)>0).length,losses=closed.filter(r=>Number(r.ret)<0).length,flat=closed.length-wins-losses;
  const W=720,H=220,L=48,R=16,T=16,B=34;
- if(!closed.length){$("returnChart").innerHTML='<div class="empty">لا توجد إشارات مغلقة بعائد رقمي كافٍ لرسم المنحنى.</div>';$("outcomeChart").innerHTML='<div class="empty">سيظهر توزيع النتائج بعد إغلاق الإشارات.</div>';$("chartReturnMeta").textContent="0 إشارة مغلقة";return;}
+ if(!closed.length){$("returnChart").innerHTML='<div class="empty">Aucun signal clôturé avec un rendement numérique suffisant pour tracer la courbe.</div>';$("outcomeChart").innerHTML='<div class="empty">La répartition des résultats apparaîtra après la clôture des signaux.</div>';$("chartReturnMeta").textContent="0 إشارة مغلقة";return;}
  let cumulative=0;const points=closed.map((r,i)=>{cumulative+=Number(r.ret)*100;return {x:i,y:cumulative}});
  const min=Math.min(0,...points.map(p=>p.y)),max=Math.max(0,...points.map(p=>p.y)),span=max-min||1;
  const px=i=>L+(points.length===1?0:i/(points.length-1))*(W-L-R),py=y=>T+(max-y)/span*(H-T-B);
  const poly=points.map((p,i)=>(i?"L":"M")+px(i).toFixed(1)+","+py(p.y).toFixed(1)).join(" "),zero=py(0),last=points[points.length-1].y;
  const grid=[max,(max+min)/2,min].map(v=>'<line x1="'+L+'" y1="'+py(v)+'" x2="'+(W-R)+'" y2="'+py(v)+'" stroke="#e8edf4" stroke-dasharray="4 5"/><text x="'+(L-8)+'" y="'+(py(v)+4)+'" text-anchor="end" fill="#718096" font-size="11">'+v.toFixed(1)+'%</text>').join("");
- $("returnChart").innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="منحنى العائد التراكمي للإشارات المغلقة">'+grid+'<line x1="'+L+'" y1="'+zero+'" x2="'+(W-R)+'" y2="'+zero+'" stroke="#aab6c7"/><path d="'+poly+'" fill="none" stroke="#315fbd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="'+px(points.length-1)+'" cy="'+py(last)+'" r="5" fill="#315fbd"/><text x="'+L+'" y="'+(H-8)+'" fill="#718096" font-size="11">أقدم إشارة</text><text x="'+(W-R)+'" y="'+(H-8)+'" text-anchor="end" fill="#718096" font-size="11">أحدث إشارة</text></svg><div class="chartlegend"><span><i class="legenddot" style="background:#315fbd"></i>العائد التراكمي النظري: <b>'+last.toFixed(2)+'%</b></span><span>عدد الإشارات: '+closed.length+'</span></div>';
+ $("returnChart").innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="منحنى Rendement cumulé des signaux clôturés">'+grid+'<line x1="'+L+'" y1="'+zero+'" x2="'+(W-R)+'" y2="'+zero+'" stroke="#aab6c7"/><path d="'+poly+'" fill="none" stroke="#315fbd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="'+px(points.length-1)+'" cy="'+py(last)+'" r="5" fill="#315fbd"/><text x="'+L+'" y="'+(H-8)+'" fill="#718096" font-size="11">Signal le plus ancien</text><text x="'+(W-R)+'" y="'+(H-8)+'" text-anchor="end" fill="#718096" font-size="11">Signal le plus récent</text></svg><div class="chartlegend"><span><i class="legenddot" style="background:#315fbd"></i>Rendement cumulé théorique : <b>'+last.toFixed(2)+'%</b></span><span>Nombre de signaux : '+closed.length+'</span></div>';
  $("chartReturnMeta").textContent=closed.length+" إشارة مغلقة";
- const counts=[{name:"رابحة",v:wins,color:"#12805c"},{name:"خاسرة",v:losses,color:"#d6455d"},{name:"تعادل",v:flat,color:"#9aa6b7"}],maxCount=Math.max(1,...counts.map(x=>x.v));
- $("outcomeChart").innerHTML='<svg viewBox="0 0 480 220" role="img" aria-label="توزيع الإشارات الرابحة والخاسرة والمتعادلة">'+counts.map((x,i)=>{const y=22+i*62,w=x.v/maxCount*300;return '<text x="465" y="'+(y+16)+'" text-anchor="end" fill="#42536d" font-size="13">'+x.name+'</text><rect x="12" y="'+y+'" width="300" height="20" rx="7" fill="#edf1f6"/><rect x="12" y="'+y+'" width="'+w+'" height="20" rx="7" fill="'+x.color+'"/><text x="325" y="'+(y+16)+'" fill="#17243a" font-size="13" font-weight="700">'+x.v+'</text>'}).join("")+'</svg><div class="chartlegend"><span>الإجمالي: <b>'+closed.length+'</b></span><span>نسبة الفوز: <b>'+(wins/closed.length*100).toFixed(1)+'%</b></span></div>';
+ const counts=[{name:"Gagnant",v:wins,color:"#12805c"},{name:"Perdant",v:losses,color:"#d6455d"},{name:"À l’équilibre",v:flat,color:"#9aa6b7"}],maxCount=Math.max(1,...counts.map(x=>x.v));
+ $("outcomeChart").innerHTML='<svg viewBox="0 0 480 220" role="img" aria-label="Répartition des signaux gagnants, perdants et à l’équilibre">'+counts.map((x,i)=>{const y=22+i*62,w=x.v/maxCount*300;return '<text x="465" y="'+(y+16)+'" text-anchor="end" fill="#42536d" font-size="13">'+x.name+'</text><rect x="12" y="'+y+'" width="300" height="20" rx="7" fill="#edf1f6"/><rect x="12" y="'+y+'" width="'+w+'" height="20" rx="7" fill="'+x.color+'"/><text x="325" y="'+(y+16)+'" fill="#17243a" font-size="13" font-weight="700">'+x.v+'</text>'}).join("")+'</svg><div class="chartlegend"><span>Total : <b>'+closed.length+'</b></span><span>Taux de réussite : <b>'+(wins/closed.length*100).toFixed(1)+'%</b></span></div>';
 }
 function render(){
  renderCharts();
@@ -320,32 +114,32 @@ function render(){
  const gateWins=Number(state.summary.gateWins)||0,gateLosses=Number(state.summary.gateLosses)||0,gateTotal=Number(state.summary.gateTotal)||0;
  const gateReady=gateWins>=500&&gateLosses>=500;
  const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
- $("metrics").innerHTML=metric("كل الإشارات المسجلة",total,"جدول signals في SQLite")+metric("الإشارات المقيّمة",labeledCount,"بما فيها غير المتتبعة")+metric("إشارات متتبعة مفتوحة",state.summary.openTracked,"حالة OPEN")+metric("إشارات متتبعة مغلقة",state.summary.closedTracked,"حالة CLOSED")+metric("الرابحة المؤهلة للتدريب",gateWins,"مغلقة + عائد موجب")+metric("الخاسرة المؤهلة للتدريب",gateLosses,"مغلقة + عائد سالب")+metric("بوابة التدريب",gateReady?"جاهزة":"بانتظار النتائج",gateWins+"/500 رابحة · "+gateLosses+"/500 خاسرة");
- $("system").innerHTML=showRows({"المستودع":$("owner").value+"/"+$("repo").value,"فرع البيانات":$("branch").value,"دورة الفحص":cycle,"تسجيل الإشارات":paused?"متوقف مؤقتًا":"غير متوقف حسب meta","قاعدة البيانات":"لا تُحمّل إلى المتصفح — محفوظة في state-data","ملفات manifest":state.files.length,"البيانات": "قراءة فقط — لا صفقات"});
- $("labelSummary").innerHTML=showRows({"إجمالي الإشارات في SQLite":total,"الإشارات المقيّمة":labeledCount,"غير المقيّمة":pending,"الرابحة من جميع الإشارات المقيّمة":wins,"الخاسرة/غير الموجبة من جميع الإشارات المقيّمة":losses,"نسبة نجاح جميع الإشارات":labeledCount?(wins/labeledCount*100).toFixed(2)+"%":"—","متوسط العائد النظري":avg===null||avg===undefined?"—":(Number(avg)*100).toFixed(3)+"%","المتتبعة المفتوحة":state.summary.openTracked,"المتتبعة المغلقة":state.summary.closedTracked,"الرابحة المغلقة المؤهلة للتدريب":gateWins,"الخاسرة المغلقة المؤهلة للتدريب":gateLosses,"إجمالي النتائج المؤهلة للتدريب":gateTotal,"التقدم إلى شرط التدريب":Math.min(100,gateWins/5).toFixed(1)+"% من شرط الرابحين و"+Math.min(100,gateLosses/5).toFixed(1)+"% من شرط الخاسرين","شرط التدريب":"500 رابحة مغلقة + 500 خاسرة مغلقة؛ يستخدم البرنامج النتائج المؤهلة المتراكمة","ملاحظة":"لا تُحسب الإشارات غير المتتبعة ضمن شرط تدريب النتائج المغلقة"});
- const sigCols=[["وقت التسجيل",r=>timeFmt(r.ts)],["العملة","inst"],["السعر","price"],["احتمال AI",r=>r.prob===null||r.prob===undefined?"—":(Number(r.prob)*100).toFixed(2)+"%"],["الترتيب","rank"],["اكتمل التقييم",r=>Number(r.labeled)===1?"نعم":"لا"],["النتيجة",r=>r.label===null||r.label===undefined?"—":Number(r.label)===1&&Number(r.ret)>0?"رابحة":"خاسرة/غير موجبة"],["العائد النظري",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["مدة التقييم (ساعات)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
+ $("metrics").innerHTML=metric("Tous les signaux enregistrés",total,"جدول signals في SQLite")+metric("الإشارات المقيّمة",labeledCount,"Y compris les signaux non suivis")+metric("إشارات متتبعة مفتوحة",state.summary.openTracked,"حالة OPEN")+metric("إشارات متتبعة مغلقة",state.summary.closedTracked,"حالة CLOSED")+metric("الGagnant المؤهلة للتدريب",gateWins,"مغلقة + عائد موجب")+metric("الPerdant المؤهلة للتدريب",gateLosses,"مغلقة + عائد سالب")+metric("بوابة التدريب",gateReady?"Prête":"En attente des résultats",gateWins+"/500 Gagnant · "+gateLosses+"/500 Perdant");
+ $("system").innerHTML=showRows({"Dépôt":$("owner").value+"/"+$("repo").value,"Branche des données":$("branch").value,"Cycle d’analyse":cycle,"Enregistrement des signaux":paused?"Temporairement suspendu":"Actif selon meta","قاعدة البيانات":"Non téléchargée dans le navigateur — conservée dans state-data","ملفات manifest":state.files.length,"البيانات": "Lecture seule — aucune transaction"});
+ $("labelSummary").innerHTML=showRows({"Nombre total de signaux dans SQLite":total,"الإشارات المقيّمة":labeledCount,"Non évalués":pending,"Signaux gagnants parmi tous les signaux évalués":wins,"Signaux perdants ou non positifs parmi tous les signaux évalués":losses,"Taux de réussite de tous les signaux":labeledCount?(wins/labeledCount*100).toFixed(2)+"%":"—","Rendement théorique moyen":avg===null||avg===undefined?"—":(Number(avg)*100).toFixed(3)+"%","Signaux suivis ouverts":state.summary.openTracked,"Signaux suivis clôturés":state.summary.closedTracked,"Signaux gagnants clôturés admissibles à l’entraînement":gateWins,"Signaux perdants clôturés admissibles à l’entraînement":gateLosses,"Nombre total de résultats admissibles à l’entraînement":gateTotal,"Progression vers le seuil d’entraînement":Math.min(100,gateWins/5).toFixed(1)+"% du seuil des gagnants et"+Math.min(100,gateLosses/5).toFixed(1)+"% du seuil des perdants","Seuil d’entraînement":"500 signaux gagnants clôturés + 500 signaux perdants clôturés ; le programme utilise les résultats admissibles cumulés","مNonحظة":"Les signaux non suivis ne sont pas comptabilisés dans le seuil d’entraînement des résultats clôturés"});
+ const sigCols=[["Date d’enregistrement",r=>timeFmt(r.ts)],["Actif","inst"],["Prix","price"],["Probabilité IA",r=>r.prob===null||r.prob===undefined?"—":(Number(r.prob)*100).toFixed(2)+"%"],["Rang","rank"],["Évaluation terminée",r=>Number(r.labeled)===1?"Oui":"Non"],["Résultat",r=>r.label===null||r.label===undefined?"—":Number(r.label)===1&&Number(r.ret)>0?"Gagnant":"Perdant / non positif"],["Rendement théorique",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["Durée d’évaluation (heures)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
  const ordered=state.signals.slice().sort((a,b)=>Number(b.ts||0)-Number(a.ts||0));
  $("recent").innerHTML=table(ordered.slice(0,10),sigCols);$("signals").innerHTML=table(ordered.slice(0,500),sigCols);
- const trackedCols=[["العملة","inst"],["الحالة","status"],["سعر الدخول",r=>money(r.entry)],["سعر الخروج",r=>money(r.exit_price)],["وقف الخسارة",r=>money(r.sl)],["الهدف",r=>money(r.tp)],["احتمال AI",r=>r.prob===null||r.prob===undefined?"—":(Number(r.prob)*100).toFixed(2)+"%"],["وقت الفتح",r=>timeFmt(r.opened_ts)],["وقت الإغلاق",r=>timeFmt(r.closed_ts)],["سبب الإغلاق",r=>r.close_reason||"—"],["النتيجة",r=>r.outcome||"—"],["العائد المحقق",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["مدة الاحتفاظ (ساعات)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
+ const trackedCols=[["Actif","inst"],["Statut","status"],["Prix d’entrée",r=>money(r.entry)],["Prix de sortie",r=>money(r.exit_price)],["Stop-loss",r=>money(r.sl)],["Objectif",r=>money(r.tp)],["Probabilité IA",r=>r.prob===null||r.prob===undefined?"—":(Number(r.prob)*100).toFixed(2)+"%"],["Date d’ouverture",r=>timeFmt(r.opened_ts)],["Date de clôture",r=>timeFmt(r.closed_ts)],["Motif de clôture",r=>r.close_reason||"—"],["Résultat",r=>r.outcome||"—"],["Rendement réalisé",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["Durée de détention (heures)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
  $("trackedOpen").innerHTML=table(state.tracked.filter(r=>r.status==="OPEN"),trackedCols);$("trackedClosed").innerHTML=table(state.tracked.filter(r=>r.status==="CLOSED").sort((a,b)=>Number(b.closed_ts||0)-Number(a.closed_ts||0)),trackedCols);
  $("metaPreview").innerHTML=showRows(Object.fromEntries(Object.entries(state.meta).slice(0,12)));
- const modelMeta=state.contents["meta.json"]; const modelReady=!!(modelMeta&&typeof modelMeta==="object"&&modelMeta.mode&&Number(modelMeta.n_in)>0); $("aiMetrics").innerHTML=metric("حالة النموذج",modelReady?("نموذج محفوظ: "+modelMeta.mode):"لا يوجد نموذج صالح محفوظ في state-data")+metric("الرابحة المغلقة / 500",gateWins,Math.min(100,gateWins/5).toFixed(1)+"% من الشرط")+metric("الخاسرة المغلقة / 500",gateLosses,Math.min(100,gateLosses/5).toFixed(1)+"% من الشرط")+metric("عينات التدريب المؤهلة",gateTotal,"المجموع الحالي من الإشارات المتتبعة المغلقة")+metric("عتبة النموذج",modelReady?(modelMeta.thrs?.[modelMeta.mode]??"غير محفوظة"):"—")+metric("AUC للنموذج",modelReady?(modelMeta.auc??modelMeta.info?.auc??"غير محفوظة"):"—")+metric("آخر دورة",cycle);
- $("metaTable").innerHTML=table(Object.entries(state.meta).map(([key,value])=>({key,value:typeof value==="string"?value:JSON.stringify(value)})),[["المفتاح","key"],["القيمة","value"]]);
+ const modelMeta=state.contents["meta.json"]; const modelReady=!!(modelMeta&&typeof modelMeta==="object"&&modelMeta.mode&&Number(modelMeta.n_in)>0); $("aiMetrics").innerHTML=metric("État du modèle",modelReady?("Modèle enregistré : "+modelMeta.mode):"Aucun modèle valide n’est enregistré dans state-data")+metric("Signaux gagnants clôturés / 500",gateWins,Math.min(100,gateWins/5).toFixed(1)+"% من الشرط")+metric("Signaux perdants clôturés / 500",gateLosses,Math.min(100,gateLosses/5).toFixed(1)+"% من الشرط")+metric("Échantillons admissibles à l’entraînement",gateTotal,"Total actuel des signaux suivis et clôturés")+metric("Seuil du modèle",modelReady?(modelMeta.thrs?.[modelMeta.mode]??"Non enregistré"):"—")+metric("AUC للنموذج",modelReady?(modelMeta.auc??modelMeta.info?.auc??"Non enregistré"):"—")+metric("Dernier cycle",cycle);
+ $("metaTable").innerHTML=table(Object.entries(state.meta).map(([key,value])=>({key,value:typeof value==="string"?value:JSON.stringify(value)})),[["Clé","key"],["Valeur","value"]]);
  const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
- $("aiFiles").innerHTML=table(modelNames.map(name=>({file:name,status:state.files.some(f=>f.path===name)?"موجود في manifest":(state.contents[name]!==undefined?"تم تحميله":"غير موجود في manifest"),detail:name==="paper.db"?"SQLite: meta + signals":name==="train.npz"?"بيانات تدريب ثنائية؛ لا تعرض كنص":name==="model.pt"||name==="gbm.pkl"?"ملف نموذج ثنائي":"ملف بيانات"})),[["الملف","file"],["الحالة","status"],["الوصف","detail"]]);
- $("ranking").innerHTML=table(state.ranking,[["العملة",r=>r.inst||r.symbol||r["Unnamed: 0"]||r.coin||"—"],["الترتيب",r=>r.rank??r.Rank??"—"],["الدرجة",r=>{const v=Number(r.score??r.Score);return Number.isFinite(v)?v.toFixed(4):(r.score??r.Score??"—")}],["احتمال AI",r=>{const raw=r.prob??r.probability;if(raw===null||raw===undefined||raw==="")return "—";const n=Number(raw);return Number.isFinite(n)?(n<=1?n*100:n).toFixed(2)+"%":raw}]]);const rankTable=$("ranking").querySelector("table");if(rankTable){rankTable.style.tableLayout="fixed";rankTable.style.whiteSpace="normal";rankTable.querySelectorAll("th,td").forEach(cell=>{cell.style.whiteSpace="normal";cell.style.overflowWrap="anywhere";cell.style.maxWidth="none"});const widths=["42%","16%","21%","21%"];rankTable.querySelectorAll("th").forEach((th,i)=>th.style.width=widths[i]||"auto")}
- const evolution=state.contents["strategy_evolution.json"];$("evolution").textContent=evolution===undefined?"لا يوجد ملف strategy_evolution.json ضمن الملفات التي تم تحميلها.":(typeof evolution==="string"?evolution:JSON.stringify(evolution,null,2)).slice(0,30000);
- $("files").innerHTML=table(state.files.map(f=>({path:f.path||f.name||"—",size:f.size??"—",chunks:(f.chunks||[]).length,status:state.contents[f.path]!==undefined?"ملخص متاح في اللوحة":"ملف محفوظ ولا يُحمّل للمتصفح"})),[["المسار","path"],["الحجم بالبايت","size"],["الأجزاء","chunks"],["الحالة","status"]]);
- $("errors").textContent=state.errors.length?state.errors.join("\n"):"لا توجد أخطاء تحميل مسجلة.";
- $("schema").innerHTML=table(state.schema,[["الجدول","table"],["العمود","name"],["النوع","type"],["المفتاح","pk"]]);
+ $("aiFiles").innerHTML=table(modelNames.map(name=>({file:name,status:state.files.some(f=>f.path===name)?"Présent dans le manifeste":(state.contents[name]!==undefined?"Chargé":"Absent du manifeste"),detail:name==="paper.db"?"SQLite: meta + signals":name==="train.npz"?"Données d’entraînement binaires ; non affichables en texte":name==="model.pt"||name==="gbm.pkl"?"Fichier de modèle binaire":"Fichier de données"})),[["Fichier","file"],["Statut","status"],["Description","detail"]]);
+ $("ranking").innerHTML=table(state.ranking,[["Actif",r=>r.inst||r.symbol||r["Unnamed: 0"]||r.coin||"—"],["Rang",r=>r.rank??r.Rank??"—"],["Score",r=>{const v=Number(r.score??r.Score);return Number.isFinite(v)?v.toFixed(4):(r.score??r.Score??"—")}],["Probabilité IA",r=>{const raw=r.prob??r.probability;if(raw===null||raw===undefined||raw==="")return "—";const n=Number(raw);return Number.isFinite(n)?(n<=1?n*100:n).toFixed(2)+"%":raw}]]);const rankTable=$("ranking").querySelector("table");if(rankTable){rankTable.style.tableLayout="fixed";rankTable.style.whiteSpace="normal";rankTable.querySelectorAll("th,td").forEach(cell=>{cell.style.whiteSpace="normal";cell.style.overflowWrap="anywhere";cell.style.maxWidth="none"});const widths=["42%","16%","21%","21%"];rankTable.querySelectorAll("th").forEach((th,i)=>th.style.width=widths[i]||"auto")}
+ const evolution=state.contents["strategy_evolution.json"];$("evolution").textContent=evolution===undefined?"Le fichier strategy_evolution.json ne figure pas parmi les fichiers chargés.":(typeof evolution==="string"?evolution:JSON.stringify(evolution,null,2)).slice(0,30000);
+ $("files").innerHTML=table(state.files.map(f=>({path:f.path||f.name||"—",size:f.size??"—",chunks:(f.chunks||[]).length,status:state.contents[f.path]!==undefined?"Résumé disponible dans le tableau de bord":"Fichier enregistré, non téléchargé dans le navigateur"})),[["Chemin","path"],["Taille en octets","size"],["Fragments","chunks"],["Statut","status"]]);
+ $("errors").textContent=state.errors.length?state.errors.join("\n"):"Aucune erreur de chargement enregistrée.";
+ $("schema").innerHTML=table(state.schema,[["Table","table"],["Colonne","name"],["Type","type"],["Clé","pk"]]);
  const select=$("rawSelect"),old=select.value;select.innerHTML=Object.keys(state.contents).map(k=>'<option value="'+esc(k)+'">'+esc(k)+'</option>').join("");if(Object.keys(state.contents).includes(old))select.value=old;renderRaw();
 }
-function renderRaw(){const key=$("rawSelect").value;if(!key){$("rawData").textContent="لا توجد ملفات نصية قابلة للعرض.";return}let val=state.contents[key];$("rawData").textContent=(typeof val==="string"?val:JSON.stringify(val,null,2)).slice(0,50000)}
+function renderRaw(){const key=$("rawSelect").value;if(!key){$("rawData").textContent="Aucun fichier texte à afficher.";return}let val=state.contents[key];$("rawData").textContent=(typeof val==="string"?val:JSON.stringify(val,null,2)).slice(0,50000)}
 async function connect(){
  const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data";
- if(!owner||!repo){alert("أدخل مالك المستودع واسم المستودع");return}
+ if(!owner||!repo){alert("Saisissez le propriétaire et le nom du dépôt");return}
  $("error").style.display="none";$("error").textContent="";
- $("status").textContent="جار قراءة ملف العرض الصغير…";$("dot").style.background="var(--gold)";
+ $("status").textContent="Lecture du fichier récapitulatif…";$("dot").style.background="var(--gold)";
  state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
  try{
   const headers={Accept:"application/vnd.github+json"};
@@ -353,7 +147,7 @@ async function connect(){
   const url="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/dashboard_data.json?ref="+encodeURIComponent(branch);
   const response=await fetch(url,{headers,cache:"no-store"});
   if(!response.ok)throw new Error("dashboard_data.json — HTTP "+response.status+" (تحقق من رمز القراءة للفرع الخاص)");
-  const file=await response.json();if(!file.content)throw new Error("ملف العرض فارغ أو لا يمكن قراءته");
+  const file=await response.json();if(!file.content)throw new Error("Le fichier récapitulatif est vide ou illisible");
   const binary=atob(file.content.replace(/\s/g,""));
   const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
   const data=JSON.parse(new TextDecoder().decode(bytes));
@@ -364,20 +158,20 @@ async function connect(){
   state.files=Array.isArray(data.files)?data.files:[];
   state.contents=data.contents||{};state.schema=Array.isArray(data.schema)?data.schema:[];
   state.manifest={generated_at:data.generated_at};
-  $("status").textContent="تم تحديث البيانات · "+(data.generated_at||"وقت غير متاح");
+  $("status").textContent="Données actualisées · "+(data.generated_at||"Heure indisponible");
   $("dot").style.background="var(--green)";
  }catch(e){
-  state.errors.push(e.message||String(e));$("status").textContent="تعذر قراءة ملف العرض";
+  state.errors.push(e.message||String(e));$("status").textContent="Impossible de lire le fichier récapitulatif";
   $("dot").style.background="var(--red)";$("error").style.display="block";
-  $("error").textContent="تعذر قراءة dashboard_data.json من فرع "+branch+": "+state.errors.join("\\n")+"\\nتأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data.";
+  $("error").textContent="Impossible de lire le tableau de bord_data.json depuis la branche "+branch+": "+state.errors.join("\\n")+"\\nVérifiez que le cycle GitHub Actions est terminé et que le fichier existe dans la branche state-data.";
  }
  render();
 }
 $("connect").addEventListener("click",connect);$("rawSelect").addEventListener("change",renderRaw);
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+b.dataset.tab))});
-try{currentLang=localStorage.getItem("ziedQuantDashboardLanguageV2")||"fr"}catch(e){currentLang="fr"}
+currentLang="fr"
 render();
-setLanguage(currentLang);
-$("language").addEventListener("change",e=>setLanguage(e.target.value));
+setLanguage();
+
 window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000)});
 </script></body></html>
