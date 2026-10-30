@@ -359,6 +359,16 @@ def aligned_matrix(frames, btc):
 # =====================================================================
 # TRIPLE-BARRIER LABELS (same SL/TP logic as paper trading)
 # =====================================================================
+def sl_atr_multiplier(atr_pct):
+    """Widen the stop progressively for more volatile coins; TP is unchanged."""
+    a = float(atr_pct)
+    if a < 0.012:
+        return 1.8
+    if a < 0.025:
+        return 2.0
+    return 2.2
+
+
 def barrier_batch(c, h, l, atr):
     """Row i enters at c[i]; path = candles i+1 .. i+H. Returns (net_return, hold_bars).
     SL is assumed first when SL and TP hit inside the same candle (conservative)."""
@@ -374,13 +384,14 @@ def barrier_batch(c, h, l, atr):
     Cw = sliding_window_view(c[1:], H)
     a = np.clip(atr[:m], 0.004, 0.06)
     entry = c[:m]
-    sl = entry * (1 - CFG["SL_ATR"] * a); tp = entry * (1 + CFG["TP_ATR"] * a)
+    sl_mult = np.where(a < 0.012, 1.8, np.where(a < 0.025, 2.0, 2.2))
+    sl = entry * (1 - sl_mult * a); tp = entry * (1 + CFG["TP_ATR"] * a)
     hit_sl, hit_tp = Lw <= sl[:, None], Hw >= tp[:, None]
     i_sl = np.where(hit_sl.any(1), hit_sl.argmax(1), H)
     i_tp = np.where(hit_tp.any(1), hit_tp.argmax(1), H)
     sl_first = (i_sl < H) & (i_sl <= i_tp)
     tp_first = (i_tp < H) & (i_tp < i_sl)
-    gross = np.where(sl_first, -CFG["SL_ATR"] * a,
+    gross = np.where(sl_first, -sl_mult * a,
                      np.where(tp_first, CFG["TP_ATR"] * a, Cw[:, -1] / entry - 1))
     ret[:m] = gross - CFG["BT_COST"]
     hold[:m] = np.where(sl_first, i_sl + 1, np.where(tp_first, i_tp + 1, H))
@@ -999,7 +1010,8 @@ class Paper:
             return None
         entry = float(row["price"])
         atr_pct = min(max(float(row["atr"]), 0.004), 0.06)
-        sl = entry * (1.0 - CFG["SL_ATR"] * atr_pct)
+        sl_mult = sl_atr_multiplier(atr_pct)
+        sl = entry * (1.0 - sl_mult * atr_pct)
         tp = entry * (1.0 + CFG["TP_ATR"] * atr_pct)
         feats = json.dumps([float(x) for x in row["feats"]])
         cur = self.db.execute(
@@ -1196,8 +1208,9 @@ def simulate(idx, ds):
         if len(open_) >= CFG["MAX_OPEN"] or any(p[1] == coin[i] for p in open_):
             continue
         a = float(np.clip(atr[i], 0.004, 0.06))
-        size_frac = min(CFG["POS_FRAC"], CFG["RISK_PER_TRADE"] / (CFG["SL_ATR"] * a))
-        risk_frac = size_frac * CFG["SL_ATR"] * a
+        sl_mult = sl_atr_multiplier(a)
+        size_frac = min(CFG["POS_FRAC"], CFG["RISK_PER_TRADE"] / (sl_mult * a))
+        risk_frac = size_frac * sl_mult * a
         if sum(p[2] for p in open_) + risk_frac > CFG["MAX_PORTFOLIO_RISK"] + 1e-12:
             continue
         end = t + (hold[i] if not np.isnan(hold[i]) else CFG["BARRIER_H"]) * 3600
