@@ -10,10 +10,9 @@ on:
         default: false
 
 concurrency:
-  group: zied-quant            # queue chained runs; never overlap state writers
+  group: zied-quant
   cancel-in-progress: false
 
-# State is written to state-data and the next workflow is dispatched explicitly.
 permissions:
   contents: write
   actions: write
@@ -41,7 +40,6 @@ jobs:
       - name: Run offline tests
         run: python -m unittest discover -s tests -v
 
-      # Fast recovery path. Cache is useful, but it can be evicted by GitHub.
       - name: Restore state cache
         if: ${{ inputs.reset_state != true }}
         uses: actions/cache/restore@v4
@@ -50,7 +48,6 @@ jobs:
           key: zied-state-${{ github.run_id }}
           restore-keys: zied-state-
 
-      # Durable source of truth. New state is chunked; old state-data branches remain readable.
       - name: Restore durable state
         if: ${{ inputs.reset_state != true }}
         shell: bash
@@ -99,17 +96,13 @@ jobs:
             fi
           done
 
-      # Each cycle is a fresh Python process and starts from the state saved by the previous cycle.
-      # The script pushes a verified snapshot to state-data after every successful cycle.
-      - name: Run 100 sequential cycles and save after each
+      - name: Run one complete quant cycle and save state
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          CYCLES_PER_WORKFLOW: "100"
-          # OKX_BASE: https://aws.okx.com   # uncomment if www.okx.com is blocked from the runner
+          CYCLES_PER_WORKFLOW: "1"
         run: bash .github/scripts/run_100_cycles.sh
 
-      # Keep cache for fast recovery, even if the cycle batch fails.
       - name: Save state cache
         if: always()
         uses: actions/cache/save@v4
@@ -117,7 +110,6 @@ jobs:
           path: zied_data
           key: zied-state-${{ github.run_id }}
 
-      # Convenient downloadable backup of the SQLite paper-trading DB.
       - name: Backup DB
         if: always()
         uses: actions/upload-artifact@v4
@@ -127,8 +119,7 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      # Start a new workflow only after all 100 cycles succeeded and the final state was saved.
-      - name: Start next workflow after cycle 100
+      - name: Start next workflow after successful cycle
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
