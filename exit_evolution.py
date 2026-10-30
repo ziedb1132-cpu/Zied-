@@ -168,9 +168,10 @@ def _evaluate(paper, zq):
     with paper.lock:
         pending = [dict(r) for r in paper.db.execute(
             "SELECT t.id,t.inst,t.opened_ts,t.entry,t.atr_pct FROM tracked_signals t "
-            "WHERE t.status='CLOSED' AND t.opened_ts<=? AND NOT EXISTS "
+            "WHERE t.status='CLOSED' AND t.opened_ts>=? AND t.opened_ts<=? AND NOT EXISTS "
             "(SELECT 1 FROM exit_policy_shadow_v2 e WHERE e.tracked_id=t.id) "
-            "ORDER BY t.opened_ts LIMIT 300", (now - (horizon + 3) * 300,)).fetchall()]
+            "ORDER BY t.opened_ts LIMIT 300",
+            (now - (horizon + 20) * 300, now - (horizon + 3) * 300)).fetchall()]
     if not pending:
         return 0
     grouped = {}
