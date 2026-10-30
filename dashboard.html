@@ -223,6 +223,27 @@ main{margin-left:258px}
 }
 @media(min-width:761px){.page-nav{transform:none!important}}
 </style>
+<style id="navigation-structure-v2">
+/* Navigation hierarchy: compact groups, consistent rhythm and clear active state */
+.page-nav{
+ width:246px;padding:18px 13px 15px;gap:13px;background:#111e34;
+}
+.nav-brand{padding:2px 7px 15px;min-height:57px}
+.nav-group{gap:3px;padding:9px 7px 8px;border:1px solid rgba(255,255,255,.055);border-radius:12px;background:rgba(255,255,255,.025)}
+.nav-caption{display:flex;align-items:center;gap:8px;padding:0 8px 7px;color:#8295b1;font-size:8px;letter-spacing:1.25px}
+.nav-caption:after{content:"";height:1px;flex:1;background:rgba(255,255,255,.08)}
+.page-nav button{min-height:36px;padding:7px 9px;gap:10px;border-radius:8px;font-size:11px;color:#bdc9d9}
+.page-nav button i{width:17px;flex-basis:17px;font-size:14px;color:#91a6c5}
+.page-nav button.active{background:#29466f;border-color:rgba(132,174,241,.22);box-shadow:inset 3px 0 #8db5f5}
+.nav-footer{padding:11px 9px 1px}
+main{margin-left:246px}
+header{padding-left:278px}
+@media(max-width:760px){
+ .page-nav{width:min(285px,86vw);padding:18px 13px 15px;gap:12px}
+ header{padding-left:58px}
+ main{margin:0}
+}
+</style>
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
