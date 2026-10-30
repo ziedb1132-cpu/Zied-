@@ -207,7 +207,10 @@ def _select(paper, atr_pct):
         row = paper.db.execute(
             "SELECT sl_mult,tp_mult FROM exit_champions WHERE regime=?", (regime,)).fetchone()
     if row is None:
-        return BASELINE
+        # Match the main scanner's volatility-adaptive stop; keep the target unchanged.
+        a = float(atr_pct)
+        sl_mult = 1.8 if a < 0.012 else (2.0 if a < 0.025 else 2.2)
+        return sl_mult, BASELINE[1]
     return float(row["sl_mult"]), float(row["tp_mult"])
 
 
