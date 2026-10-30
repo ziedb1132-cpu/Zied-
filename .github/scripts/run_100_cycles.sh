@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Run 100 sequential paper-trading cycles, persisting the full learning state
-# to state-data after every successful cycle.
+# Run one complete paper-trading cycle and persist the full learning state.
 set -euo pipefail
 
-CYCLES="${CYCLES_PER_WORKFLOW:-30}"
+CYCLES="${CYCLES_PER_WORKFLOW:-1}"
 if ! [[ "$CYCLES" =~ ^[0-9]+$ ]] || [ "$CYCLES" -lt 1 ]; then
   echo "CYCLES_PER_WORKFLOW must be a positive integer" >&2
   exit 2
@@ -41,7 +40,6 @@ persist_state() {
   git commit -m "Persist quant state after cycle $cycle [skip ci]"
   git push --force origin HEAD:state-data
 
-  # Return to the original code commit so the next cycle runs the same code.
   git checkout --detach -f "$GITHUB_SHA"
   rm -rf zied_data zied_data_store
   cp -a "$STATE_BACKUP/zied_data" ./zied_data
@@ -50,9 +48,9 @@ persist_state() {
 }
 
 for cycle in $(seq 1 "$CYCLES"); do
-  echo "========== QUANT CYCLE $cycle/$CYCLES =========="
+  echo "========== COMPLETE QUANT CYCLE $cycle/$CYCLES =========="
   python evolved_runner.py once
   persist_state "$cycle"
 done
 
-echo "Completed $CYCLES successful cycles; durable state was saved after each cycle."
+echo "Completed $CYCLES complete cycle(s); durable state was saved after each cycle."
