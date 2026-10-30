@@ -1075,11 +1075,12 @@ class Paper:
         tp = entry * (1.0 + CFG["TP_ATR"] * atr_pct)
         regime = str(row.get("regime") or "UNKNOWN")
         entry_score = float(row.get("entry_score", 0.0))
-        if int(N_FEATURES) != 300:
-            raise RuntimeError(f"Tracked signals require the 300-feature runtime; got {N_FEATURES}")
+        required_count = int(CFG.get("REQUIRED_SIGNAL_FEATURES", N_FEATURES))
+        if int(N_FEATURES) != required_count:
+            raise RuntimeError(f"Tracked signals require {required_count} runtime features; got {N_FEATURES}")
         vector = np.asarray(row["feats"], dtype=np.float64).reshape(-1)
-        if vector.size != 300 or not np.isfinite(vector).all():
-            raise ValueError(f"Invalid 300-feature snapshot for {inst}: got {vector.size} finite values")
+        if vector.size != required_count or not np.isfinite(vector).all():
+            raise ValueError(f"Invalid feature snapshot for {inst}: expected {required_count} finite values, got {vector.size}")
         feats = json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":"))
         feature_names = json.dumps(list(FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
         schema_version = int(DATA_VER)
@@ -1099,11 +1100,11 @@ class Paper:
              None if row.get("prob") is None else float(row["prob"]), int(row["rank"]), feats,
              regime, entry_score, entry, sl, 0,
              str(row.get("prob_source") or "ranking_exploration"),
-             300, feature_names, schema_version))
+             required_count, feature_names, schema_version))
         self.db.commit()
         return dict(id=sid, inst=inst, entry=entry, sl=sl, tp=tp, prob=row.get("prob"),
                     rank=int(row["rank"]), regime=regime, entry_score=entry_score,
-                    feature_count=300, feature_schema_version=schema_version)
+                    feature_count=required_count, feature_schema_version=schema_version)
 
     @locked
     def open_tracked_signals(self):
