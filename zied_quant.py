@@ -887,7 +887,8 @@ CREATE TABLE IF NOT EXISTS tracked_signals(
   opened_ts REAL NOT NULL, entry REAL NOT NULL, sl REAL NOT NULL, tp REAL NOT NULL,
   atr_pct REAL NOT NULL, prob REAL, rank INTEGER, feats TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'OPEN', closed_ts REAL, exit_price REAL,
-  outcome TEXT, ret REAL, hold REAL, close_reason TEXT);
+  outcome TEXT, ret REAL, hold REAL, close_reason TEXT,
+  regime TEXT, entry_score REAL, peak_price REAL, trailing_sl REAL, trail_active INTEGER DEFAULT 0);
 CREATE INDEX IF NOT EXISTS idx_tracked_status ON tracked_signals(status, inst);
 """
 
@@ -930,7 +931,15 @@ class Paper:
         signal_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(signals)")}
         if "feature_ts" not in signal_columns:
             self.db.execute("ALTER TABLE signals ADD COLUMN feature_ts REAL")
+        tracked_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(tracked_signals)")}
+        for column, declaration in (
+            ("regime", "TEXT"), ("entry_score", "REAL"), ("peak_price", "REAL"),
+            ("trailing_sl", "REAL"), ("trail_active", "INTEGER DEFAULT 0")
+        ):
+            if column not in tracked_columns:
+                self.db.execute(f"ALTER TABLE tracked_signals ADD COLUMN {column} {declaration}")
         self.db.execute("UPDATE signals SET feature_ts=ts WHERE feature_ts IS NULL")
+        self.db.execute("UPDATE tracked_signals SET peak_price=entry WHERE peak_price IS NULL")
         self.db.commit()
 
     @locked
@@ -1000,6 +1009,26 @@ class Paper:
                     total=int(row["total"] or 0))
 
     @locked
+    def regime_stats(self, regime):
+        row = self.db.execute(
+            "SELECT COUNT(*) AS n, AVG(ret) AS avg_ret, "
+            "SUM(CASE WHEN ret>0 THEN ret ELSE 0 END) AS gross_profit, "
+            "SUM(CASE WHEN ret<0 THEN -ret ELSE 0 END) AS gross_loss "
+            "FROM tracked_signals WHERE status='CLOSED' AND regime=? AND ret IS NOT NULL",
+            (str(regime),)).fetchone()
+        return dict(n=int(row["n"] or 0), avg_ret=float(row["avg_ret"] or 0.0),
+                    pf=(float(row["gross_profit"] or 0.0) / float(row["gross_loss"])
+                        if float(row["gross_loss"] or 0.0) > 0 else None))
+
+    @locked
+    def update_trailing(self, sid, peak_price, trailing_sl, active):
+        self.db.execute(
+            "UPDATE tracked_signals SET peak_price=?, trailing_sl=?, trail_active=? "
+            "WHERE id=? AND status='OPEN'",
+            (float(peak_price), float(trailing_sl), int(bool(active)), int(sid)))
+        self.db.commit()
+
+    @locked
     def create_tracked_signal(self, row):
         now = float(row.get("ts", time.time()))
         inst = str(row["inst"])
@@ -1013,6 +1042,8 @@ class Paper:
         sl_mult = sl_atr_multiplier(atr_pct)
         sl = entry * (1.0 - sl_mult * atr_pct)
         tp = entry * (1.0 + CFG["TP_ATR"] * atr_pct)
+        regime = str(row.get("regime") or "UNKNOWN")
+        entry_score = float(row.get("entry_score", 0.0))
         feats = json.dumps([float(x) for x in row["feats"]])
         cur = self.db.execute(
             "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,feature_ts) VALUES(?,?,?,?,?,?,?,?,?)",
@@ -1020,11 +1051,14 @@ class Paper:
              int(row["rank"]), 0, float(row.get("feature_ts", now))))
         sid = int(cur.lastrowid)
         self.db.execute(
-            "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,regime,entry_score,peak_price,trailing_sl,trail_active) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (sid, inst, now, entry, sl, tp, atr_pct,
-             None if row.get("prob") is None else float(row["prob"]), int(row["rank"]), feats))
+             None if row.get("prob") is None else float(row["prob"]), int(row["rank"]), feats,
+             regime, entry_score, entry, sl, 0))
         self.db.commit()
-        return dict(id=sid, inst=inst, entry=entry, sl=sl, tp=tp, prob=row.get("prob"), rank=int(row["rank"]))
+        return dict(id=sid, inst=inst, entry=entry, sl=sl, tp=tp, prob=row.get("prob"),
+                    rank=int(row["rank"]), regime=regime, entry_score=entry_score)
 
     @locked
     def open_tracked_signals(self):
@@ -1151,26 +1185,40 @@ def monitor_tracked_signals(paper):
                 low, high, close = float(candle["l"]), float(candle["h"]), float(candle["c"])
                 reason = outcome = None
                 exit_price = close
-                if low <= s["sl"]:
-                    reason, outcome, exit_price = "SL", "SL", float(s["sl"])
+                # Evaluate the stop already active before this candle; do not use this
+                # candle's high to move a stop and then retroactively trigger it on its low.
+                active_sl = max(float(s["sl"]), float(s.get("trailing_sl") or s["sl"]))
+                if low <= active_sl:
+                    reason, outcome, exit_price = "TRAIL" if active_sl > float(s["sl"]) + 1e-12 else "SL", "SL", active_sl
                 elif high >= s["tp"]:
                     reason, outcome, exit_price = "TP", "TP", float(s["tp"])
                 elif elapsed >= max_hold_bars:
                     reason = "TIME"
+                if reason is None:
+                    old_peak = float(s.get("peak_price") or s["entry"])
+                    peak = max(old_peak, high)
+                    activation = float(s["entry"]) * (1.0 + 1.5 * float(s["atr_pct"]))
+                    active = bool(s.get("trail_active")) or peak >= activation
+                    trail = max(float(s["sl"]), float(s["entry"]),
+                                peak * (1.0 - 1.8 * float(s["atr_pct"]))) if active else float(s["sl"])
+                    paper.update_trailing(s["id"], peak, trail, active)
+                    s["peak_price"], s["trailing_sl"], s["trail_active"] = peak, trail, int(active)
                 if reason:
                     ret, net_outcome = classify_exit_return(s["entry"], exit_price)
                     if reason == "TIME":
                         outcome = net_outcome
+                    elif reason == "TRAIL":
+                        outcome = "LOSS" if ret < 0 else ("FLAT" if ret == 0 else "WIN")
                     elif reason == "TP":
                         outcome = "WIN" if ret > 0 else ("FLAT" if ret == 0 else "LOSS")
                     else:
                         outcome = "LOSS" if ret < 0 else ("FLAT" if ret == 0 else "WIN")
                     if paper.close_tracked_signal(s["id"], now, exit_price, outcome, ret, elapsed, reason):
                         closed += 1
-                        emoji = "✅" if reason == "TP" else ("⏳" if reason == "TIME" else "🛑")
+                        emoji = "✅" if reason == "TP" else ("⏳" if reason == "TIME" else ("🔒" if reason == "TRAIL" else "🛑"))
                         tg(f"{emoji} إغلاق إشارة ورقية: {s['inst']}\n"
                            f"السبب: {reason} | الدخول: {s['entry']:.8g} | الخروج: {exit_price:.8g}\n"
-                           f"العائد النظري بعد التكاليف: {ret*100:+.2f}% | المدة: {elapsed * 5} دقيقة")
+                           f"العائد الصافي التقديري بعد التكاليف: {ret*100:+.2f}% | المدة: {elapsed * 5} دقيقة")
                     break
         except Exception as exc:
             log.warning("paper signal monitor failed for %s: %s", s["inst"], exc)
@@ -1191,6 +1239,55 @@ def rank_universe(X, vol24):
              + 0.05 * z(np.log(vol24.reindex(X.index)))
              - 0.10 * z(X["1H_atr_pct"]) - 0.10 * z(overbought))
     return score.sort_values(ascending=False)
+
+
+def classify_market_regime(features):
+    """Classify the broad market using only information available at signal time."""
+    btc = float(features.get("ctx_btc_regime", 0.0))
+    adx = float(features.get("1H_adx14", 0.0))
+    atr = float(features.get("1H_atr_pct", 0.0))
+    if atr >= 0.035:
+        return "HIGH_VOL"
+    if btc >= 0.015 and adx >= 18:
+        return "BULL"
+    if btc <= -0.015 and adx >= 18:
+        return "BEAR"
+    if adx < 18:
+        return "RANGE"
+    return "TREND"
+
+
+def evaluate_entry_quality(features):
+    """Prefer pullbacks/rebounds and reject late, overextended entries; score 0..100."""
+    f = features
+    rsi = float(f["1H_rsi14"])
+    atr = max(float(f["1H_atr_pct"]), 1e-6)
+    dist = float(f["1H_ema_dist21"])
+    ret15 = float(f["15m_ret20"])
+    wick = float(f["1H_lower_wick"])
+    body = float(f["1H_body_ratio"])
+    adx = float(f["1H_adx14"])
+    score = 50.0
+    score += 15 if 42 <= rsi <= 62 else (7 if 35 <= rsi <= 70 else -18)
+    score += 14 if -0.8 * atr <= dist <= 0.8 * atr else (4 if dist <= 1.4 * atr else -18)
+    score += 10 if ret15 > 0 else (-8 if ret15 < -0.01 else 0)
+    score += 8 if wick >= 0.25 else 0
+    score += 5 if body > 0 else 0
+    score += 8 if 18 <= adx <= 40 else (2 if adx > 40 else -5)
+    stretched = rsi >= 75 and dist > 1.5 * atr
+    return float(np.clip(score, 0.0, 100.0)), bool(stretched)
+
+
+def regime_entry_threshold(paper, regime):
+    """Learn a modest regime-specific entry threshold only after 30 closed outcomes."""
+    stats = paper.regime_stats(regime)
+    if stats["n"] < 30:
+        return 55.0, stats
+    if stats["avg_ret"] < 0:
+        return 65.0, stats
+    if stats["avg_ret"] > 0 and (stats["pf"] is None or stats["pf"] >= 1.0):
+        return 52.0, stats
+    return 60.0, stats
 
 # =====================================================================
 # WALK-FORWARD BACKTEST
@@ -1282,8 +1379,26 @@ def stats_msg(paper, prices=None):
     avg = float(np.mean(ds["ret"]) * 100) if n else 0.0
     opened = paper.tracked_count("status='OPEN'")
     tracked = paper.tracked_count("status='CLOSED'")
-    tracked_wins = paper.tracked_count("status='CLOSED' AND outcome IN ('TP','WIN')")
+    tracked_wins = paper.tracked_count("status='CLOSED' AND ret>0")
     closed_counts = paper.closed_outcome_counts()
+    closed_rows = [dict(r) for r in paper.db.execute(
+        "SELECT ret,close_reason,regime FROM tracked_signals WHERE status='CLOSED' AND ret IS NOT NULL ORDER BY closed_ts,id")]
+    realized = np.asarray([float(x["ret"]) for x in closed_rows], dtype=float)
+    gross_profit = float(realized[realized > 0].sum()) if len(realized) else 0.0
+    gross_loss = float(-realized[realized < 0].sum()) if len(realized) else 0.0
+    pf_realized = gross_profit / gross_loss if gross_loss > 0 else (float("inf") if gross_profit > 0 else 0.0)
+    equity = peak = 1.0
+    max_dd = 0.0
+    for value in realized:
+        equity *= 1.0 + value
+        peak = max(peak, equity)
+        max_dd = max(max_dd, 1.0 - equity / peak)
+    realized_avg = float(realized.mean() * 100) if len(realized) else 0.0
+    regime_lines = []
+    for regime in ("BULL", "BEAR", "RANGE", "TREND", "HIGH_VOL", "UNKNOWN"):
+        group = [float(x["ret"]) for x in closed_rows if x["regime"] == regime]
+        if group:
+            regime_lines.append(f"{regime}: {len(group)} | WR {sum(v>0 for v in group)/len(group)*100:.1f}% | Avg {np.mean(group)*100:+.2f}%")
     gate_text = ("جاهز للتعلم" if closed_counts["wins"] >= 500 and closed_counts["losses"] >= 500
                  else "ينتظر اكتمال 500 رابحة و500 خاسرة")
     return (f"📊 تقييم سجل الإشارات الورقية\n"
@@ -1291,7 +1406,12 @@ def stats_msg(paper, prices=None):
             f"مفتوحة: {opened} | مغلقة: {tracked} | رابحة: {tracked_wins}\n"
             f"بوابة AI: {gate_text} | رابحة مغلقة {closed_counts['wins']}/500 | خاسرة مغلقة {closed_counts['losses']}/500\n"
             f"رابحة حسب بيانات التدريب: {wins} | خاسرة: {n-wins} | نسبة النجاح: {(wins/n*100 if n else 0):.1f}%\n"
-            f"متوسط العائد النظري بعد التكاليف: {avg:+.2f}%")
+            f"متوسط العائد النظري لسجل التعلم: {avg:+.2f}%\n"
+            f"\n📈 الأداء المحقق للإشارات المغلقة (صافي تقديري بعد التكلفة):\n"
+            f"عدد الصفقات: {len(realized)} | نسبة النجاح: {(np.mean(realized>0)*100 if len(realized) else 0):.1f}%\n"
+            f"متوسط الصفقة: {realized_avg:+.2f}% | Profit Factor: {pf_realized:.2f}\n"
+            f"العائد المركب النظري: {(equity-1)*100:+.2f}% | أقصى تراجع: {max_dd*100:.2f}%\n"
+            f"الأداء حسب حالة السوق: " + (" | ".join(regime_lines) if regime_lines else "لا توجد نتائج كافية بعد"))
 
 def top_msg():
     p = os.path.join(CFG["DIR"], "ranking.csv")
@@ -1487,6 +1607,10 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         log.warning("no data"); return None
     score = rank_universe(X, uni["vol"])
     R = pd.DataFrame({"score": score}); R["rank"] = np.arange(1, len(R) + 1); R["prob"] = np.nan
+    entry_quality = {i: evaluate_entry_quality(X.loc[i]) for i in R.index}
+    R["entry_score"] = [entry_quality[i][0] for i in R.index]
+    R["stretched"] = [entry_quality[i][1] for i in R.index]
+    R["regime"] = [classify_market_regime(X.loc[i]) for i in R.index]
     ai_prediction_error = None
     learning_mode = not brain.ready
     if learning_mode:
@@ -1526,14 +1650,22 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     # Entry universe is strictly the top 10 by cross-sectional rank.
     # Do not backfill from rank 11+ when a top-10 coin is already open or fails
     # the AI threshold; duplicates are skipped, never replaced by coin #11.
-    eligible = R[(R["rank"] <= 10) & R["prob"].notna() & (R["prob"] >= float(prob_min))]
-    eligible = eligible.sort_values(["prob", "score"], ascending=False)
+    eligible_rows = []
+    for inst, rr in R.iterrows():
+        if int(rr["rank"]) > 10 or pd.isna(rr["prob"]) or float(rr["prob"]) < float(prob_min):
+            continue
+        threshold, regime_stats = regime_entry_threshold(paper, rr["regime"])
+        if bool(rr["stretched"]) or float(rr["entry_score"]) < threshold:
+            continue
+        eligible_rows.append(inst)
+    eligible = R.loc[eligible_rows].sort_values(["prob", "score"], ascending=False)
     created = []
     for inst, rr in eligible.iterrows():
         sig = paper.create_tracked_signal(dict(
             inst=inst, price=float(uni.loc[inst, "last"]), atr=float(X.loc[inst, "1H_atr_pct"]),
             feats=X.loc[inst, FEATURE_COLS].values, prob=float(rr["prob"]), rank=int(rr["rank"]),
-            feature_ts=feature_ts[inst]))
+            feature_ts=feature_ts[inst], regime=str(rr["regime"]),
+            entry_score=float(rr["entry_score"])))
         if sig:
             created.append(sig)
             tg(f"🟢 إشارة تداول ورقي #{sig['id']}\n"
@@ -1541,7 +1673,8 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                f"احتمال النموذج: {float(sig['prob'])*100:.1f}%\n"
                f"الدخول الافتراضي: {sig['entry']:.8g}\n"
                f"وقف الخسارة: {sig['sl']:.8g} | الهدف: {sig['tp']:.8g}\n"
-               f"متابعة تلقائية حتى TP/SL أو انتهاء {CFG['BARRIER_H']} ساعة. لا توجد أوامر حقيقية.")
+               f"جودة الدخول: {sig['entry_score']:.0f}/100 | حالة السوق: {sig['regime']}\n"
+               f"وقف متحرك يتفعّل بعد +1.5 ATR؛ متابعة حتى TP/SL/Trailing أو انتهاء {CFG['BARRIER_H']} ساعة. لا توجد أوامر حقيقية.")
     log.info("paper signal creation: ranked_top10=%d eligible_top10=%d created=%d "
              "already-open coins skipped; rank 11+ never considered; threshold=%.3f",
              min(10, len(R)), len(eligible), len(created), float(prob_min))
