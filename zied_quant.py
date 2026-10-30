@@ -1197,10 +1197,15 @@ def monitor_tracked_signals(paper):
                 if reason is None:
                     old_peak = float(s.get("peak_price") or s["entry"])
                     peak = max(old_peak, high)
-                    activation = float(s["entry"]) * (1.0 + 1.5 * float(s["atr_pct"]))
+                    entry_price = float(s["entry"])
+                    atr_pct = float(s["atr_pct"])
+                    # Keep the existing +1.5 ATR trigger, but never activate
+                    # until the +1% profit-protection stop is below market.
+                    activation_gain = max(1.5 * atr_pct, 0.01)
+                    activation = entry_price * (1.0 + activation_gain)
                     active = bool(s.get("trail_active")) or peak >= activation
-                    trail = max(float(s["sl"]), float(s["entry"]),
-                                peak * (1.0 - 1.8 * float(s["atr_pct"]))) if active else float(s["sl"])
+                    trail = max(float(s["sl"]), entry_price * 1.01,
+                                peak * (1.0 - 1.8 * atr_pct)) if active else float(s["sl"])
                     paper.update_trailing(s["id"], peak, trail, active)
                     s["peak_price"], s["trailing_sl"], s["trail_active"] = peak, trail, int(active)
                 if reason:
