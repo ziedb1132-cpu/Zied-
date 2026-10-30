@@ -1392,7 +1392,8 @@ def stats_msg(paper, prices=None):
     tracked_wins = paper.tracked_count("status='CLOSED' AND ret>0")
     closed_counts = paper.closed_outcome_counts()
     closed_rows = [dict(r) for r in paper.db.execute(
-        "SELECT ret,close_reason,regime FROM tracked_signals WHERE status='CLOSED' AND ret IS NOT NULL ORDER BY closed_ts,id")]
+        "SELECT inst,ret,close_reason,regime,rank,entry_score,atr_pct,hold "
+        "FROM tracked_signals WHERE status='CLOSED' AND ret IS NOT NULL ORDER BY closed_ts,id")]
     realized = np.asarray([float(x["ret"]) for x in closed_rows], dtype=float)
     gross_profit = float(realized[realized > 0].sum()) if len(realized) else 0.0
     gross_loss = float(-realized[realized < 0].sum()) if len(realized) else 0.0
@@ -1409,6 +1410,32 @@ def stats_msg(paper, prices=None):
         group = [float(x["ret"]) for x in closed_rows if x["regime"] == regime]
         if group:
             regime_lines.append(f"{regime}: {len(group)} | WR {sum(v>0 for v in group)/len(group)*100:.1f}% | Avg {np.mean(group)*100:+.2f}%")
+    # Compact loss diagnostics by exit reason, rank band and entry quality.
+    reason_lines = []
+    for reason in ("SL", "TRAIL", "TP", "TIME"):
+        vals = [float(x["ret"]) for x in closed_rows if x["close_reason"] == reason]
+        if vals:
+            reason_lines.append(f"{reason}: {len(vals)} | خسائر {sum(v < 0 for v in vals)} | متوسط {np.mean(vals)*100:+.2f}%")
+    segment_lines = []
+    segments = (
+        ("رتبة 1-3", lambda x: x["rank"] is not None and 1 <= int(x["rank"]) <= 3),
+        ("رتبة 4-7", lambda x: x["rank"] is not None and 4 <= int(x["rank"]) <= 7),
+        ("رتبة 8-10", lambda x: x["rank"] is not None and 8 <= int(x["rank"]) <= 10),
+        ("جودة دخول <60", lambda x: x["entry_score"] is not None and float(x["entry_score"]) < 60),
+        ("جودة دخول 60-74", lambda x: x["entry_score"] is not None and 60 <= float(x["entry_score"]) < 75),
+        ("جودة دخول 75+", lambda x: x["entry_score"] is not None and float(x["entry_score"]) >= 75),
+    )
+    for label, predicate in segments:
+        vals = [float(x["ret"]) for x in closed_rows if predicate(x)]
+        if vals:
+            segment_lines.append(f"{label}: n={len(vals)}, خسائر={sum(v < 0 for v in vals)}, متوسط={np.mean(vals)*100:+.2f}%")
+    losing_coins = {}
+    for row in closed_rows:
+        if float(row["ret"]) < 0:
+            losing_coins.setdefault(row["inst"], []).append(float(row["ret"]))
+    worst_coins = " | ".join(
+        f"{coin} ({len(vals)} خسائر، متوسط {np.mean(vals)*100:+.2f}%)"
+        for coin, vals in sorted(losing_coins.items(), key=lambda kv: (len(kv[1]), np.mean(kv[1])), reverse=True)[:5])
     gate_text = ("جاهز للتعلم" if closed_counts["wins"] >= 500 and closed_counts["losses"] >= 500
                  else "ينتظر اكتمال 500 رابحة و500 خاسرة")
     return (f"📊 تقييم سجل الإشارات الورقية\n"
@@ -1421,7 +1448,10 @@ def stats_msg(paper, prices=None):
             f"عدد الصفقات: {len(realized)} | نسبة النجاح: {(np.mean(realized>0)*100 if len(realized) else 0):.1f}%\n"
             f"متوسط الصفقة: {realized_avg:+.2f}% | Profit Factor: {pf_realized:.2f}\n"
             f"العائد المركب النظري: {(equity-1)*100:+.2f}% | أقصى تراجع: {max_dd*100:.2f}%\n"
-            f"الأداء حسب حالة السوق: " + (" | ".join(regime_lines) if regime_lines else "لا توجد نتائج كافية بعد"))
+            f"الأداء حسب حالة السوق: " + (" | ".join(regime_lines) if regime_lines else "لا توجد نتائج كافية بعد") +
+            f"\n\n🔎 تشخيص الخسائر حسب سبب الإغلاق: " + (" | ".join(reason_lines) if reason_lines else "لا توجد بيانات") +
+            f"\nحسب ترتيب العملة وجودة الدخول: " + (" | ".join(segment_lines) if segment_lines else "لا توجد بيانات") +
+            f"\nالعملات الأكثر تكراراً في الخسائر: " + (worst_coins or "لا توجد خسائر مسجلة"))
 
 def top_msg():
     p = os.path.join(CFG["DIR"], "ranking.csv")
