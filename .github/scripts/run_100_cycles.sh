@@ -29,7 +29,9 @@ persist_state() {
   git rm -rf . >/dev/null 2>&1 || true
   rm -rf zied_data zied_data_store
   python "$RUNNER_TEMP/state_chunks.py" pack "$STATE_BACKUP/zied_data" zied_data_store
-  git add -f zied_data_store
+  python dashboard_export.py "$STATE_BACKUP/zied_data" "$RUNNER_TEMP/dashboard_data.json"
+  cp "$RUNNER_TEMP/dashboard_data.json" dashboard_data.json
+  git add -f zied_data_store dashboard_data.json
   if git diff --cached --quiet; then
     echo "ERROR: no state chunks produced after cycle $cycle." >&2
     git checkout --detach -f "$GITHUB_SHA"
