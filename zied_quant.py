@@ -975,22 +975,24 @@ class Paper:
     @locked
     def log_signals(self, rows):
         now = time.time()
-        if int(N_FEATURES) != 300:
-            raise RuntimeError(f"Signal logging requires the 300-feature runtime; got {N_FEATURES}")
+        # Ranking snapshots use the active runtime schema (300 in evolved_runner).
+        # Unit-level/base imports may still use the core 200-column schema; actual
+        # tracked trading signals are strictly guarded at 300 in create_tracked_signal.
+        expected_count = int(N_FEATURES)
         feature_names = json.dumps(list(FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
         schema_version = int(DATA_VER)
         prepared = []
         for r in rows:
             vector = np.asarray(r["feats"], dtype=np.float64).reshape(-1)
-            if vector.size != 300 or not np.isfinite(vector).all():
-                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected 300 finite values, got {vector.size}")
+            if vector.size != expected_count or not np.isfinite(vector).all():
+                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected {expected_count} finite values, got {vector.size}")
             prepared.append((
                 float(r.get("ts", now)), r["inst"], float(r["price"]), float(r["atr"]),
                 json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":")),
                 None if r.get("prob") is None or np.isnan(r["prob"]) else float(r["prob"]),
                 int(r["rank"]), float(r.get("feature_ts", r.get("ts", now))),
                 str(r.get("prob_source") or "ranking_exploration"),
-                300, feature_names, schema_version
+                expected_count, feature_names, schema_version
             ))
         self.db.executemany(
             "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts,prob_source,"
