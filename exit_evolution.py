@@ -69,7 +69,7 @@ def _ensure(paper):
             paper.db.execute("ALTER TABLE tracked_signals ADD COLUMN exit_policy TEXT")
         if tracked_columns:
             paper.db.execute(
-                "UPDATE tracked_signals SET exit_policy='current' WHERE exit_policy IS NULL")
+                "UPDATE tracked_signals SET exit_policy='legacy_unknown' WHERE exit_policy IS NULL")
         paper.db.commit()
 
 
@@ -175,13 +175,15 @@ def _promote(paper, zq):
                 continue
             by_policy = {}
             actual_by_id = {}
-            reason_counts = {}
+            reason_by_id = {}
             for row in rows:
                 sid = int(row["tracked_id"])
                 by_policy.setdefault(row["policy"], {})[sid] = float(row["net_ret"])
                 if row["actual_net_ret"] is not None:
                     actual_by_id[sid] = float(row["actual_net_ret"])
-                reason = _canonical_reason(row["actual_reason"])
+                reason_by_id[sid] = _canonical_reason(row["actual_reason"])
+            reason_counts = {}
+            for reason in reason_by_id.values():
                 reason_counts[reason] = reason_counts.get(reason, 0) + 1
             baseline = by_policy.get(BASELINE_NAME, {})
             base_train_ids = {i for i in train_ids if i in baseline}
@@ -228,11 +230,11 @@ def _promote(paper, zq):
             "AI EXIT POLICY promoted regime=%s policy=%s holdout=%d avg=%.4f PF=%.2f "
             "baseline=%.4f actual=%.4f paired_win=%.1f%% reasons=%s",
             regime, name, n, avg, pf, base, actual_avg, paired_wr * 100, reason_text)
-        zq.tg("🧠 اعتماد سياسة مخارج جديدة بعد اختبار مستقل\\n"
-              f"تقلب السوق: {regime} | السياسة: {name}\\n"
-              f"اختبار مستقل: {n} إشارة | صافي المتوسط: {avg*100:+.2f}% | PF: {pf:.2f}\\n"
-              f"الخط الأساسي: {base*100:+.2f}% | الخروج الفعلي: {actual_avg*100:+.2f}%\\n"
-              f"تفوق على الخروج الفعلي في {paired_wr*100:.1f}% من الإشارات\\n"
+        zq.tg("🧠 اعتماد سياسة مخارج جديدة بعد اختبار مستقل\n"
+              f"تقلب السوق: {regime} | السياسة: {name}\n"
+              f"اختبار مستقل: {n} إشارة | صافي المتوسط: {avg*100:+.2f}% | PF: {pf:.2f}\n"
+              f"الخط الأساسي: {base*100:+.2f}% | الخروج الفعلي: {actual_avg*100:+.2f}%\n"
+              f"تفوق على الخروج الفعلي في {paired_wr*100:.1f}% من الإشارات\n"
               f"أسباب الإغلاق الفعلية: {reason_text}")
     return promoted
 
@@ -360,11 +362,17 @@ def install(zq):
     original_monitor = zq.monitor_tracked_signals
 
     def monitor_and_learn(paper):
+        # Monitor first so newly closed TP/SL/TRAIL outcomes are visible to the learner
+        # in the same cycle. Shadow evaluation remains research-only until promotion.
+        closed = original_monitor(paper)
         try:
-            _evaluate(paper, zq)
+            evaluated = _evaluate(paper, zq)
+            if closed or evaluated:
+                zq.log.info("exit learning cycle: closed=%d counterfactual=%d",
+                            closed, evaluated)
         except Exception as exc:
             zq.log.warning("AI exit-policy learning skipped safely: %s", exc)
-        return original_monitor(paper)
+        return closed
 
     zq.Paper.create_tracked_signal = create_with_policy
     zq.monitor_tracked_signals = monitor_and_learn
