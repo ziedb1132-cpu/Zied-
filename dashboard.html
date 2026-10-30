@@ -300,6 +300,40 @@ header{padding-left:278px}
 }
 </style>
 
+
+<style id="mobile-content-layout-v3">
+/* Readable two-column detail tables on narrow screens */
+@media (max-width:650px){
+  main{min-width:0!important;width:100%!important;box-sizing:border-box!important}
+  main .section, main .card, main .tablewrap{min-width:0!important;max-width:100%!important;box-sizing:border-box!important}
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;align-items:stretch!important}
+  .grid>.card{min-width:0!important;overflow:hidden!important}
+  .grid .value{font-size:clamp(18px,5.4vw,23px)!important;line-height:1.22!important;overflow-wrap:anywhere!important;word-break:normal!important}
+  .tablewrap:has(table.kv-table){overflow:hidden!important}
+  .tablewrap table.kv-table{
+    width:100%!important;min-width:0!important;table-layout:fixed!important;
+    border-collapse:collapse!important;white-space:normal!important;font-size:12px!important
+  }
+  .tablewrap table.kv-table th,
+  .tablewrap table.kv-table td{
+    white-space:normal!important;overflow:visible!important;text-overflow:clip!important;
+    overflow-wrap:anywhere!important;word-break:normal!important;
+    padding:12px 10px!important;vertical-align:top!important;line-height:1.5!important
+  }
+  .tablewrap table.kv-table th:first-child,
+  .tablewrap table.kv-table td:first-child{
+    width:39%!important;text-align:left!important;color:#718096!important
+  }
+  .tablewrap table.kv-table th:last-child,
+  .tablewrap table.kv-table td:last-child{
+    width:61%!important;text-align:right!important;font-weight:650!important;color:#26364d!important
+  }
+  .tablewrap table.kv-table td:last-child{font-variant-numeric:tabular-nums}
+  .tablewrap table.data-table{min-width:560px!important}
+  .eval-note{overflow-wrap:break-word!important;word-break:normal!important}
+}
+</style>
+
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
