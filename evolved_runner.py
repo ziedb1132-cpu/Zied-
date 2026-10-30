@@ -9,6 +9,7 @@ import candle_news_intelligence
 import ai_trade_controller
 import exit_evolution
 import strategy_discovery_lab
+import advanced_intelligence
 
 # Expand the schema/model before installing guarded train/tune/holdout promotion.
 deep_learning_evolution.install(zied_quant)
@@ -30,6 +31,28 @@ evolution_engine.install(zied_quant)
 # Learn TP/SL ATR multipliers from completed counterfactual 1H paths.
 # Existing signals are untouched; only newly created paper signals use promoted settings.
 exit_evolution.install(zied_quant)
+
+# Seven-part intelligence integration:
+# (1) feature importance, (2) existing purged chronological walk-forward,
+# (3) existing regime classifier/stats, (4) existing guarded exit evolution,
+# (5) probability calibration diagnostics, (6) live feature-drift monitoring,
+# (7) correlation-aware paper portfolio selection.
+advanced_intelligence.install(zied_quant)
+zied_quant.PORTFOLIO_CORRELATION_HOOK = (
+    lambda paper, inst, cache: advanced_intelligence.portfolio_correlation_filter(
+        zied_quant, paper, inst, zied_quant.CFG["MAX_OPEN_CORR"], cache
+    )
+)
+_original_retrain_with_diagnostics = zied_quant.retrain
+def _retrain_with_intelligence_diagnostics(brain, paper, universe=None, reason="manual", refresh=False):
+    result = _original_retrain_with_diagnostics(brain, paper, universe, reason, refresh)
+    try:
+        if isinstance(result, dict) and not result.get("skipped"):
+            advanced_intelligence.post_fit_diagnostics(zied_quant, brain, result)
+    except Exception as exc:
+        zied_quant.log.warning("advanced model diagnostics skipped: %s", exc)
+    return result
+zied_quant.retrain = _retrain_with_intelligence_diagnostics
 
 # Unified research pipeline: run strategy evolution and discovery lab in every scan cycle.
 _original_scan = zied_quant.scan
