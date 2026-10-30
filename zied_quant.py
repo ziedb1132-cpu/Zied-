@@ -1435,7 +1435,7 @@ def stats_msg(paper, prices=None):
             losing_coins.setdefault(row["inst"], []).append(float(row["ret"]))
     worst_coins = " | ".join(
         f"{coin} ({len(vals)} خسائر، متوسط {np.mean(vals)*100:+.2f}%)"
-        for coin, vals in sorted(losing_coins.items(), key=lambda kv: (len(kv[1]), np.mean(kv[1])), reverse=True)[:5])
+        for coin, vals in sorted(losing_coins.items(), key=lambda kv: (-len(kv[1]), np.mean(kv[1])))[:5])
     gate_text = ("جاهز للتعلم" if closed_counts["wins"] >= 500 and closed_counts["losses"] >= 500
                  else "ينتظر اكتمال 500 رابحة و500 خاسرة")
     return (f"📊 تقييم سجل الإشارات الورقية\n"
@@ -1458,8 +1458,9 @@ def top_msg():
     if not os.path.exists(p):
         return "لا يوجد تصنيف بعد."
     R = pd.read_csv(p, index_col=0).head(10)
+    score_col = "ranking_score" if "ranking_score" in R.columns else "score"
     return "📊 أفضل 10 عملات — ترتيب القوة النسبية\n" + "\n".join(
-        f"{int(r['rank'])}. {i.replace('-USDT', '')} | Ranking Score {r['ranking_score']:+.2f}"
+        f"{int(r['rank'])}. {i.replace('-USDT', '')} | Ranking Score {float(r[score_col]):+.2f}"
         + (f" | AI Probability {r['ai_probability'] * 100:.1f}%"
            if "ai_probability" in R.columns and not pd.isna(r["ai_probability"])
            else " | AI: غير متاح") for i, r in R.iterrows())
