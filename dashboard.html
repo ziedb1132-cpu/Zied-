@@ -183,18 +183,30 @@ async function connect(){
  const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data";
  if(!owner||!repo){alert("Saisissez le propriétaire et le nom du dépôt");return}
  $("error").style.display="none";$("error").textContent="";
- $("status").textContent="Lecture du fichier récapitulatif…";$("dot").style.background="var(--gold)";
+ $("status").textContent="Connexion à GitHub…";$("dot").style.background="var(--gold)";
  state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
  try{
-  const headers={Accept:"application/vnd.github+json"};
-  const token=$("token").value.trim();if(token)headers.Authorization="Bearer "+token;
-  const url="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/dashboard_data.json?ref="+encodeURIComponent(branch);
-  const response=await fetch(url,{headers,cache:"no-store"});
-  if(!response.ok)throw new Error("dashboard_data.json — HTTP "+response.status+" (vérifiez le jeton de lecture pour la branche privée)");
-  const file=await response.json();if(!file.content)throw new Error("Le fichier récapitulatif est vide ou illisible");
-  const binary=atob(file.content.replace(/\s/g,""));
-  const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
-  const data=JSON.parse(new TextDecoder().decode(bytes));
+  const token=$("token").value.trim();
+  const rawUrl="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/dashboard_data.json?ts="+Date.now();
+  let data=null,source="raw.githubusercontent.com",rawError="";
+  const rawResponse=await fetch(rawUrl,{cache:"no-store",headers:{Accept:"application/json"}});
+  if(rawResponse.ok){
+   data=await rawResponse.json();
+  }else{
+   rawError="Raw GitHub HTTP "+rawResponse.status;
+   const headers={Accept:"application/vnd.github+json"};
+   if(token)headers.Authorization="Bearer "+token;
+   const apiUrl="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/dashboard_data.json?ref="+encodeURIComponent(branch);
+   const response=await fetch(apiUrl,{headers,cache:"no-store"});
+   if(!response.ok)throw new Error(rawError+" ; GitHub API HTTP "+response.status+" — vérifiez le dépôt, la branche et les autorisations.");
+   const file=await response.json();
+   if(!file.content)throw new Error("GitHub API : le fichier dashboard_data.json est vide ou illisible.");
+   const binary=atob(file.content.replace(/\\s/g,""));
+   const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+   data=JSON.parse(new TextDecoder().decode(bytes));
+   source="api.github.com";
+  }
+  if(!data||typeof data!=="object"||!data.summary||!Array.isArray(data.signals))throw new Error("Le fichier dashboard_data.json ne contient pas le format attendu.");
   state.meta=data.meta||{};state.summary={...state.summary,...(data.summary||{})};
   state.signals=Array.isArray(data.signals)?data.signals:[];
   state.tracked=Array.isArray(data.tracked)?data.tracked:[];
@@ -202,12 +214,13 @@ async function connect(){
   state.files=Array.isArray(data.files)?data.files:[];
   state.contents=data.contents||{};state.schema=Array.isArray(data.schema)?data.schema:[];
   state.manifest={generated_at:data.generated_at};
-  $("status").textContent="Données actualisées · "+(data.generated_at||"Heure indisponible");
+  $("status").textContent="Connecté · "+(data.generated_at||"Heure indisponible")+" · "+source;
   $("dot").style.background="var(--green)";
  }catch(e){
-  state.errors.push(e.message||String(e));$("status").textContent="Impossible de lire le fichier récapitulatif";
+  const message=e&&e.message?e.message:String(e);
+  state.errors.push(message);$("status").textContent="Échec de la connexion";
   $("dot").style.background="var(--red)";$("error").style.display="block";
-  $("error").textContent="Impossible de lire le tableau de bord_data.json depuis la branche "+branch+": "+state.errors.join("\\n")+"\\nVérifiez que le cycle GitHub Actions est terminé et que le fichier existe dans la branche state-data.";
+  $("error").textContent="Impossible de charger dashboard_data.json depuis "+owner+"/"+repo+" (branche "+branch+").\\nDétail : "+message+"\\nVérifiez que le fichier existe dans state-data et rechargez la page.";
  }
  render();
 }
