@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Create a compact, read-only dashboard snapshot from the completed paper state."""
-import csv, json, sqlite3, sys
+import json, sqlite3, sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
@@ -24,7 +24,7 @@ def rows(conn, sql, params=()):
 data = {
     "generated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
     "meta": {}, "summary": {}, "signals": [], "tracked": [],
-    "ranking": [], "contents": {}, "files": [], "schema": []
+    "contents": {}
 }
 if db_path.exists():
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -50,27 +50,12 @@ if db_path.exists():
     open_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='OPEN' ORDER BY opened_ts DESC")
     closed_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='CLOSED' ORDER BY closed_ts DESC, id DESC LIMIT 100")
     data["tracked"] = closed_tracked + open_tracked
-    tables = rows(conn, "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-    for t in tables:
-        for col in rows(conn, 'PRAGMA table_info("' + t["name"].replace('"','""') + '")'):
-            data["schema"].append({"table":t["name"],"name":col["name"],"type":col["type"],"pk":col["pk"]})
     conn.close()
 
-manifest = safe_json(Path("zied_data_store") / "manifest.json")
-if manifest and isinstance(manifest.get("files"), list):
-    data["files"] = [{"path":f.get("path"),"size":f.get("size"),"chunks":f.get("chunks",[])} for f in manifest["files"]]
 for name in ("meta.json","strategy_evolution.json","strategy_discovery_lab.json","top_gainer_learning.json","entry_method_memory.json","candle_patterns.json","news_sentiment.json"):
     value = safe_json(root / name)
     if value is not None:
         data["contents"][name] = value
-ranking = root / "ranking.csv"
-if ranking.exists():
-    try:
-        with ranking.open(encoding="utf-8-sig", newline="") as f:
-            data["ranking"] = list(csv.DictReader(f))[:100]
-        data["contents"]["ranking.csv"] = ranking.read_text(encoding="utf-8-sig")[:250000]
-    except Exception:
-        pass
 for name in ("meta.json","strategy_evolution.json","strategy_discovery_lab.json","top_gainer_learning.json","entry_method_memory.json","candle_patterns.json","news_sentiment.json"):
     if name in data["contents"]:
         data["contents"][name] = data["contents"][name]
