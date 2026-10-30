@@ -83,9 +83,65 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;border:1px so
 .foot{text-align:center;color:#8a96a8;font-size:11px;margin:28px 0 8px}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}}
 @media(max-width:560px){main{padding:12px 10px 28px}.grid{gap:8px}.card{padding:12px;border-radius:13px}.value{font-size:21px}header{padding:11px 12px}.brand h1{font-size:16px}.logo{padding:9px 11px}.controls{padding:10px}.controls input{min-width:100%;flex-basis:100%}.controls button{flex:1}.tabs{margin:12px 0 15px}.tabs button{padding:8px 12px;font-size:12px}.notice{font-size:12px;padding:11px 12px}}
-</style></head>
+</style><style id="professional-theme">
+:root{
+ --bg:#f3f6fb;--panel:#fff;--line:#e4eaf3;--txt:#17243a;--mut:#748198;
+ --green:#07845f;--red:#d84b61;--blue:#315fbd;--gold:#b77a1c;
+ --shadow:0 8px 26px rgba(23,42,75,.055);--radius:17px
+}
+body{background:radial-gradient(ellipse at 12% 0%,rgba(72,112,190,.08),transparent 34%),var(--bg);color:var(--txt);font-size:13px}
+header{padding:17px clamp(15px,3vw,38px);background:linear-gradient(112deg,#101d35 0%,#172d50 58%,#23477c 100%);border:0;box-shadow:0 8px 28px rgba(12,28,54,.18)}
+.brand{gap:13px}.brand h1{color:#fff;font-size:21px;letter-spacing:-.55px}.brand .muted{color:#b7c6dc;margin-top:2px}
+.logo{width:44px;height:44px;display:grid;place-items:center;padding:0;border-radius:13px;background:linear-gradient(145deg,#6f9be9,#315fbd);border:1px solid rgba(255,255,255,.2);box-shadow:0 6px 16px rgba(0,0,0,.2);font-size:15px;letter-spacing:.2px}
+.status{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;color:#e1eaf8;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.14);font-size:11px}
+.dot{margin:0;box-shadow:0 0 0 4px rgba(255,255,255,.08)}
+main{max-width:1580px;padding-top:25px}
+.tabs{gap:6px;margin:18px 0 22px;padding:5px;background:#e9eef6;border:1px solid #e0e7f1;border-radius:14px;width:max-content;max-width:100%}
+.tabs button{border:0;background:transparent;border-radius:10px;padding:9px 15px;color:#5c6b82;box-shadow:none;font-size:12px}
+.tabs button:hover{background:rgba(255,255,255,.7);color:#243b60}
+.tabs button.active{background:#fff;color:#234f9e;box-shadow:0 2px 8px rgba(24,48,84,.09);border:1px solid #e3eaf5}
+.grid{gap:14px}
+.card{border-color:#e5ebf3;border-radius:17px;box-shadow:0 5px 20px rgba(28,49,82,.045);transition:transform .18s ease,box-shadow .18s ease}
+.card:hover{box-shadow:0 9px 25px rgba(28,49,82,.075)}
+#metrics .card{position:relative;overflow:hidden;padding:17px 18px 15px}
+#metrics .card:before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,#315fbd,#75a0e8);opacity:.8}
+.label{font-size:11px;letter-spacing:.15px;text-transform:uppercase;color:#77859a}
+.value{font-size:27px;line-height:1.25;margin:9px 0 5px;color:#182b49;font-variant-numeric:tabular-nums}
+.sub{font-size:11px;line-height:1.45}
+.section{margin-top:18px}
+.section h2,.card h2{font-size:14px;letter-spacing:-.1px;color:#203654}
+.chartgrid,.cols{gap:15px;margin-top:15px}
+.chartgrid>.card,.cols>.card{padding:19px}
+.charthead h2{font-size:14px}
+.chartbox{min-height:225px}
+.tablewrap{border-color:#e5ebf3;border-radius:13px;box-shadow:0 3px 12px rgba(28,49,82,.025)}
+table{font-size:11.5px}
+th{background:#f3f6fb;color:#53647e;font-size:10px;text-transform:uppercase;letter-spacing:.35px;padding:12px 13px}
+td{padding:11px 13px;font-variant-numeric:tabular-nums}
+tbody tr:nth-child(even){background:#fbfcfe}
+tbody tr:hover{background:#f0f5fd}
+.good{color:#07845f}.bad{color:#d34259}
+.eval-block{border-color:#e5ebf3;border-radius:14px}
+.eval-kpi{border-color:#e5ebf3;border-radius:13px}
+.eval-kpi .v{font-variant-numeric:tabular-nums}
+.eval-tag{letter-spacing:.2px}
+.notice{border-radius:13px;box-shadow:0 3px 12px rgba(28,49,82,.035)}
+#error{background:#fff0f1;border-color:#f5cbd1;color:#9d3445}
+.foot{padding-top:18px;border-top:1px solid #e2e8f1;color:#8b97a9}
+.hide{display:none!important}
+@media(max-width:900px){.tabs{width:100%;overflow-x:auto;flex-wrap:nowrap}.tabs button{flex:0 0 auto}}
+@media(max-width:560px){
+ header{padding:12px 13px}.brand{gap:10px}.brand h1{font-size:16px}.brand .muted{font-size:10px}.logo{width:38px;height:38px;border-radius:11px}
+ .status{font-size:10px;padding:6px 9px}.top{gap:9px}.grid{gap:9px}
+ #metrics .card{padding:13px 12px}.value{font-size:21px}
+ .tabs{margin:13px 0 16px;padding:4px}.tabs button{font-size:11px;padding:8px 11px}
+ .chartgrid>.card,.cols>.card{padding:13px}.chartbox{min-height:190px}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+</style>
+</head>
 <body>
-<header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Données du programme</h1><div class="muted">Tableau en lecture seule · fichier récapitulatif actualisé à chaque cycle</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
+<header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
 <main>
 <div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
 
