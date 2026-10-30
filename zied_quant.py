@@ -881,14 +881,15 @@ CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, inst TEXT, price REAL, atr REAL, feats TEXT,
   prob REAL, rank INTEGER, labeled INTEGER DEFAULT 0, label INTEGER, ret REAL, hold REAL,
-  feature_ts REAL);
+  feature_ts REAL, feature_count INTEGER, feature_names TEXT, feature_schema_version INTEGER);
 CREATE TABLE IF NOT EXISTS tracked_signals(
   id INTEGER PRIMARY KEY AUTOINCREMENT, signal_id INTEGER UNIQUE, inst TEXT NOT NULL,
   opened_ts REAL NOT NULL, entry REAL NOT NULL, sl REAL NOT NULL, tp REAL NOT NULL,
   atr_pct REAL NOT NULL, prob REAL, rank INTEGER, feats TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'OPEN', closed_ts REAL, exit_price REAL,
   outcome TEXT, ret REAL, hold REAL, close_reason TEXT,
-  regime TEXT, entry_score REAL, peak_price REAL, trailing_sl REAL, trail_active INTEGER DEFAULT 0);
+  regime TEXT, entry_score REAL, peak_price REAL, trailing_sl REAL, trail_active INTEGER DEFAULT 0,
+  feature_count INTEGER, feature_names TEXT, feature_schema_version INTEGER);
 CREATE INDEX IF NOT EXISTS idx_tracked_status ON tracked_signals(status, inst);
 """
 
@@ -933,13 +934,21 @@ class Paper:
             self.db.execute("ALTER TABLE signals ADD COLUMN feature_ts REAL")
         if "prob_source" not in signal_columns:
             self.db.execute("ALTER TABLE signals ADD COLUMN prob_source TEXT NOT NULL DEFAULT 'legacy_unknown'")
+        for column, declaration in (
+            ("feature_count", "INTEGER"), ("feature_names", "TEXT"),
+            ("feature_schema_version", "INTEGER")
+        ):
+            if column not in signal_columns:
+                self.db.execute(f"ALTER TABLE signals ADD COLUMN {column} {declaration}")
         tracked_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(tracked_signals)")}
         for column, declaration in (
             ("regime", "TEXT"), ("entry_score", "REAL"), ("peak_price", "REAL"),
             ("trailing_sl", "REAL"), ("trail_active", "INTEGER DEFAULT 0"),
             ("exit_sl_mult", "REAL"), ("exit_tp_mult", "REAL"),
             ("trail_activation_atr", "REAL"), ("trail_distance_atr", "REAL"),
-            ("max_hold_bars", "INTEGER"), ("prob_source", "TEXT NOT NULL DEFAULT 'legacy_unknown'")
+            ("max_hold_bars", "INTEGER"), ("prob_source", "TEXT NOT NULL DEFAULT 'legacy_unknown'"),
+            ("feature_count", "INTEGER"), ("feature_names", "TEXT"),
+            ("feature_schema_version", "INTEGER")
         ):
             if column not in tracked_columns:
                 self.db.execute(f"ALTER TABLE tracked_signals ADD COLUMN {column} {declaration}")
@@ -966,13 +975,27 @@ class Paper:
     @locked
     def log_signals(self, rows):
         now = time.time()
+        if int(N_FEATURES) != 300:
+            raise RuntimeError(f"Signal logging requires the 300-feature runtime; got {N_FEATURES}")
+        feature_names = json.dumps(list(FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
+        schema_version = int(DATA_VER)
+        prepared = []
+        for r in rows:
+            vector = np.asarray(r["feats"], dtype=np.float64).reshape(-1)
+            if vector.size != 300 or not np.isfinite(vector).all():
+                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected 300 finite values, got {vector.size}")
+            prepared.append((
+                float(r.get("ts", now)), r["inst"], float(r["price"]), float(r["atr"]),
+                json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":")),
+                None if r.get("prob") is None or np.isnan(r["prob"]) else float(r["prob"]),
+                int(r["rank"]), float(r.get("feature_ts", r.get("ts", now))),
+                str(r.get("prob_source") or "ranking_exploration"),
+                300, feature_names, schema_version
+            ))
         self.db.executemany(
-            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts,prob_source) VALUES(?,?,?,?,?,?,?,?,?)",
-            [(float(r.get("ts", now)), r["inst"], r["price"], r["atr"],
-              json.dumps([float(x) for x in r["feats"]]),
-              None if r["prob"] is None or np.isnan(r["prob"]) else float(r["prob"]),
-              r["rank"], float(r.get("feature_ts", r.get("ts", now))),
-              str(r.get("prob_source") or "ranking_exploration")) for r in rows])
+            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,feature_ts,prob_source,"
+            "feature_count,feature_names,feature_schema_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            prepared)
         self.db.commit()
 
     @locked
@@ -1050,23 +1073,35 @@ class Paper:
         tp = entry * (1.0 + CFG["TP_ATR"] * atr_pct)
         regime = str(row.get("regime") or "UNKNOWN")
         entry_score = float(row.get("entry_score", 0.0))
-        feats = json.dumps([float(x) for x in row["feats"]])
+        if int(N_FEATURES) != 300:
+            raise RuntimeError(f"Tracked signals require the 300-feature runtime; got {N_FEATURES}")
+        vector = np.asarray(row["feats"], dtype=np.float64).reshape(-1)
+        if vector.size != 300 or not np.isfinite(vector).all():
+            raise ValueError(f"Invalid 300-feature snapshot for {inst}: got {vector.size} finite values")
+        feats = json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":"))
+        feature_names = json.dumps(list(FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
+        schema_version = int(DATA_VER)
         cur = self.db.execute(
-            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,feature_ts,prob_source) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,feature_ts,prob_source,"
+            "feature_count,feature_names,feature_schema_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (now, inst, entry, atr_pct, feats, None if row.get("prob") is None else float(row["prob"]),
              int(row["rank"]), 0, float(row.get("feature_ts", now)),
-             str(row.get("prob_source") or "ranking_exploration")))
+             str(row.get("prob_source") or "ranking_exploration"),
+             300, feature_names, schema_version))
         sid = int(cur.lastrowid)
         self.db.execute(
-            "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,regime,entry_score,peak_price,trailing_sl,trail_active,prob_source) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,regime,entry_score,peak_price,trailing_sl,trail_active,prob_source,"
+            "feature_count,feature_names,feature_schema_version) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (sid, inst, now, entry, sl, tp, atr_pct,
              None if row.get("prob") is None else float(row["prob"]), int(row["rank"]), feats,
              regime, entry_score, entry, sl, 0,
-             str(row.get("prob_source") or "ranking_exploration")))
+             str(row.get("prob_source") or "ranking_exploration"),
+             300, feature_names, schema_version))
         self.db.commit()
         return dict(id=sid, inst=inst, entry=entry, sl=sl, tp=tp, prob=row.get("prob"),
-                    rank=int(row["rank"]), regime=regime, entry_score=entry_score)
+                    rank=int(row["rank"]), regime=regime, entry_score=entry_score,
+                    feature_count=300, feature_schema_version=schema_version)
 
     @locked
     def open_tracked_signals(self):
