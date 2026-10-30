@@ -371,7 +371,7 @@ def _exit_learning_report(paper):
             f"{r['regime']}={r['policy']}" for r in champions))
     else:
         lines.append("السياسة الحالية لم تتغير؛ انتظار 500 رابحة و500 خاسرة واختبار مستقل.")
-    return "\\n".join(lines)
+    return "\n".join(lines)
 
 
 def install(zq):
@@ -427,7 +427,7 @@ def install(zq):
     def stats_with_exit_learning(paper, *args, **kwargs):
         base = original_stats_msg(paper, *args, **kwargs)
         try:
-            return base + "\\n\\n" + _exit_learning_report(paper)
+            return base + "\n\n" + _exit_learning_report(paper)
         except Exception as exc:
             zq.log.warning("exit learning report unavailable: %s", exc)
             return base
