@@ -243,6 +243,7 @@ function renderCharts(){
  $("outcomeChart").innerHTML='<svg viewBox="0 0 480 220" role="img" aria-label="Répartition des signaux gagnants, perdants et à l’équilibre">'+counts.map((x,i)=>{const y=22+i*62,w=x.v/maxCount*300;return '<text x="465" y="'+(y+16)+'" text-anchor="end" fill="#42536d" font-size="13">'+x.name+'</text><rect x="12" y="'+y+'" width="300" height="20" rx="7" fill="#edf1f6"/><rect x="12" y="'+y+'" width="'+w+'" height="20" rx="7" fill="'+x.color+'"/><text x="325" y="'+(y+16)+'" fill="#17243a" font-size="13" font-weight="700">'+x.v+'</text>'}).join("")+'</svg><div class="chartlegend"><span>Total : <b>'+closed.length+'</b></span><span>Taux de réussite : <b>'+(wins/closed.length*100).toFixed(1)+'%</b></span></div>';
 }
 
+function portfolioModelReady(){const m=state.contents["meta.json"];const savedModel=!!(m&&typeof m==="object"&&m.mode&&Number(m.n_in)>0);const validatedSignal=state.signals.some(s=>s&&s.prob_source==="validated_ai"&&s.prob!==null&&s.prob!==undefined&&Number.isFinite(Number(s.prob)));return savedModel||validatedSignal;}
 const VP_STORAGE_KEY="zied_quant_virtual_portfolio_v1";
 function loadVirtualPortfolio(){
  try{const raw=localStorage.getItem(VP_STORAGE_KEY);if(!raw)return {capital:null,activatedAt:null,processed:[],positions:[],history:[]};const x=JSON.parse(raw);return {capital:Number.isFinite(Number(x.capital))&&Number(x.capital)>0?Number(x.capital):null,activatedAt:Number(x.activatedAt)||null,processed:Array.isArray(x.processed)?x.processed:[],positions:Array.isArray(x.positions)?x.positions:[],history:Array.isArray(x.history)?x.history:[]};}
@@ -305,7 +306,7 @@ function render(){
  const wins=Number(state.summary.wins)||0,losses=Number(state.summary.losses)||0,avg=state.summary.avgRet;
  const gateWins=Number(state.summary.gateWins)||0,gateLosses=Number(state.summary.gateLosses)||0,gateTotal=Number(state.summary.gateTotal)||0;
  const gateReady=gateWins>=500&&gateLosses>=500;
- const modelMetaForPortfolio=state.contents["meta.json"]; const modelReadyForPortfolio=!!(modelMetaForPortfolio&&typeof modelMetaForPortfolio==="object"&&modelMetaForPortfolio.mode&&Number(modelMetaForPortfolio.n_in)>0); renderVirtualPortfolio(gateWins,gateLosses,modelReadyForPortfolio);
+ renderVirtualPortfolio(gateWins,gateLosses,portfolioModelReady());
  const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
  const heroCycle=$("heroCycle"),heroTracked=$("heroTracked"),heroEvaluated=$("heroEvaluated"),heroUpdated=$("heroUpdated");
  if(heroCycle)heroCycle.textContent=String(cycle);
@@ -406,7 +407,7 @@ async function connect(){
  render();
 }
 
-const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;const meta=state.contents["meta.json"];const ready=!!(meta&&typeof meta==="object"&&meta.mode&&Number(meta.n_in)>0);renderVirtualPortfolio(gateWinsNow,gateLossesNow,ready);});
+const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+b.dataset.tab))});
 currentLang="fr"
 render();
