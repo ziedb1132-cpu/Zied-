@@ -8,6 +8,7 @@ import strategy_evolver
 import candle_news_intelligence
 import ai_trade_controller
 import exit_evolution
+import strategy_discovery_lab
 
 # Expand the schema/model before installing guarded train/tune/holdout promotion.
 deep_learning_evolution.install(zied_quant)
@@ -40,6 +41,8 @@ def _scan_with_strategy_discovery(brain, paper, universe=None, cycle=0, trade=Tr
             outcome = strategy_evolver.run_evolution(
                 uni, zied_quant.get_candles, zied_quant.CFG["DIR"], zied_quant.tg)
             zied_quant.log.info("strategy evolution: %s", outcome.get("status"))
+        lab_outcome = strategy_discovery_lab.run_lab(zied_quant, paper)
+        zied_quant.log.info("strategy discovery lab: %s", lab_outcome.get("status"))
     except Exception as exc:
         zied_quant.log.warning("strategy evolution skipped after error: %s", exc)
     return result
