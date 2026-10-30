@@ -41,6 +41,9 @@ def _ensure(paper):
           tracked_id INTEGER NOT NULL, regime TEXT NOT NULL, policy TEXT NOT NULL,
           net_ret REAL NOT NULL, reason TEXT NOT NULL, hold_bars INTEGER NOT NULL,
           opened_ts REAL NOT NULL,
+          actual_reason TEXT,
+          actual_net_ret REAL,
+          actual_hold_bars INTEGER,
           PRIMARY KEY(tracked_id,policy));
         CREATE INDEX IF NOT EXISTS idx_exit_policy_v2
           ON exit_policy_shadow_v2(regime,opened_ts);
@@ -49,7 +52,29 @@ def _ensure(paper):
           test_n INTEGER NOT NULL, test_avg REAL NOT NULL, test_pf REAL NOT NULL,
           baseline_avg REAL NOT NULL, updated_ts REAL NOT NULL);
         """)
+        # Upgrade existing databases without dropping previously collected shadow samples.
+        columns = {r["name"] for r in paper.db.execute(
+            "PRAGMA table_info(exit_policy_shadow_v2)").fetchall()}
+        for name, declaration in (
+            ("actual_reason", "TEXT"),
+            ("actual_net_ret", "REAL"),
+            ("actual_hold_bars", "INTEGER"),
+        ):
+            if name not in columns:
+                paper.db.execute(
+                    f"ALTER TABLE exit_policy_shadow_v2 ADD COLUMN {name} {declaration}")
         paper.db.commit()
+
+
+def _canonical_reason(reason):
+    value = str(reason or "").strip().upper().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "STOP": "SL", "STOPLOSS": "SL", "STOP_LOSS": "SL",
+        "TRAILING": "TRAIL", "TRAILING_STOP": "TRAIL",
+        "TAKE_PROFIT": "TP", "TARGET": "TP",
+        "TIME_EXIT": "TIME", "TIMEOUT": "TIME", "MAX_HOLD": "TIME",
+    }
+    return aliases.get(value, value or "UNKNOWN")
 
 
 def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
@@ -121,18 +146,27 @@ def _promote(paper, zq):
             for row in rows:
                 by_policy.setdefault(row["policy"], {})[int(row["tracked_id"])] = float(row["net_ret"])
             baseline = by_policy.get(BASELINE_NAME, {})
-            base_test = [baseline[i] for i in test_ids if i in baseline]
-            if len(base_test) < MIN_TEST:
+            base_train_ids = {i for i in train_ids if i in baseline}
+            base_test_ids = {i for i in test_ids if i in baseline}
+            if len(base_test_ids) < MIN_TEST:
                 continue
             trials = []
             for name, values in by_policy.items():
-                train = [values[i] for i in train_ids if i in values]
-                test = [values[i] for i in test_ids if i in values]
+                common_train = base_train_ids.intersection(values)
+                common_test = base_test_ids.intersection(values)
+                train = [values[i] for i in common_train]
+                test = [values[i] for i in common_test]
                 if len(train) >= MIN_TRAIN and len(test) >= MIN_TEST:
-                    trials.append((float(np.mean(train)), name, test))
+                    trials.append((float(np.mean(train)), name, test,
+                                   sorted(common_test)))
             if not trials:
                 continue
-            _, winner, test = max(trials, key=lambda x: x[0])
+            _, winner, _, comparable_test_ids = max(trials, key=lambda x: x[0])
+            winner_values = by_policy[winner]
+            test = [winner_values[i] for i in comparable_test_ids]
+            base_test = [baseline[i] for i in comparable_test_ids]
+            if len(test) < MIN_TEST:
+                continue
             test_avg, test_pf = float(np.mean(test)), _pf(test)
             baseline_avg = float(np.mean(base_test))
             # Do not promote merely for beating the baseline by noise.
@@ -160,9 +194,8 @@ def _promote(paper, zq):
 
 def _evaluate(paper, zq):
     _ensure(paper)
-    gate = zq.learning_gate_status(paper)
-    if not gate["ready"]:
-        return 0
+    # IMPORTANT: collect counterfactual TP/SL/TRAIL/TIME outcomes from day one.
+    # The 500-win + 500-loss gate controls promotion only, never data collection.
     horizon = max(p[5] for p in POLICIES)
     # Keep a 25-hour grace window so hourly / two-hour Actions schedules can
     # still replay the complete 24-hour path from the retained 5m candles.
@@ -170,8 +203,10 @@ def _evaluate(paper, zq):
     now = time.time()
     with paper.lock:
         pending = [dict(r) for r in paper.db.execute(
-            "SELECT t.id,t.inst,t.opened_ts,t.entry,t.atr_pct FROM tracked_signals t "
-            "WHERE t.status='CLOSED' AND t.opened_ts>=? AND t.opened_ts<=? AND NOT EXISTS "
+            "SELECT t.id,t.inst,t.opened_ts,t.closed_ts,t.entry,t.atr_pct,"
+            "t.close_reason,t.ret,t.hold FROM tracked_signals t "
+            "WHERE t.status='CLOSED' AND t.closed_ts IS NOT NULL "
+            "AND t.opened_ts>=? AND t.opened_ts<=? AND NOT EXISTS "
             "(SELECT 1 FROM exit_policy_shadow_v2 e WHERE e.tracked_id=t.id) "
             "ORDER BY t.opened_ts LIMIT 300",
             (now - replay_depth * 300, now - (horizon + 3) * 300)).fetchall()]
@@ -208,14 +243,20 @@ def _evaluate(paper, zq):
                         sl_mult, tp, activation, distance, max_bars)
                     if result is not None:
                         net, reason, hold = result
-                        records.append((int(signal["id"]), regime, name, net,
-                                        reason, hold, float(signal["opened_ts"])))
+                        records.append((
+                            int(signal["id"]), regime, name, net, reason, hold,
+                            float(signal["opened_ts"]),
+                            _canonical_reason(signal.get("close_reason")),
+                            (float(signal["ret"]) if signal.get("ret") is not None else None),
+                            (int(float(signal["hold"])) if signal.get("hold") is not None else None),
+                        ))
                 if records:
                     with paper.lock:
                         paper.db.executemany(
                             "INSERT OR IGNORE INTO exit_policy_shadow_v2 "
-                            "(tracked_id,regime,policy,net_ret,reason,hold_bars,opened_ts) "
-                            "VALUES(?,?,?,?,?,?,?)", records)
+                            "(tracked_id,regime,policy,net_ret,reason,hold_bars,opened_ts,"
+                            "actual_reason,actual_net_ret,actual_hold_bars) "
+                            "VALUES(?,?,?,?,?,?,?,?,?,?)", records)
                         paper.db.commit()
                     evaluated += 1
             except Exception as exc:
@@ -223,7 +264,9 @@ def _evaluate(paper, zq):
     if evaluated:
         zq.log.info("AI exit-policy shadow evaluation: signals=%d policies=%d",
                     evaluated, len(POLICIES))
-        _promote(paper, zq)
+    # Retry promotion on every cycle: the 500/500 gate may have become ready
+    # after the last shadow sample was collected.
+    _promote(paper, zq)
     return evaluated
 
 
