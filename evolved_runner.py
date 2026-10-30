@@ -31,7 +31,7 @@ evolution_engine.install(zied_quant)
 # Existing signals are untouched; only newly created paper signals use promoted settings.
 exit_evolution.install(zied_quant)
 
-# Research-only strategy discovery is throttled to once per 23 hours by persistent state.
+# Unified research pipeline: run strategy evolution and discovery lab in every scan cycle.
 _original_scan = zied_quant.scan
 def _scan_with_strategy_discovery(brain, paper, universe=None, cycle=0, trade=True):
     result = _original_scan(brain, paper, universe, cycle, trade)
