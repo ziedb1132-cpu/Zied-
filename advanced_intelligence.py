@@ -88,12 +88,16 @@ def post_fit_diagnostics(zq, brain, info):
     importance.update({"updated_at": time.time(), "candidate_accepted": bool(info.get("accepted"))})
     _write_json(directory, "feature_importance.json", importance)
 
+    regimes = regime_outcome_report_from_db(zq.CFG["DB"])
+    _write_json(directory, "regime_performance.json",
+                {"updated_at": time.time(), "closed_signal_regimes": regimes})
     zq.log.info("model calibration diagnostics: %s", {
         k: calibration.get(k) for k in ("status", "n", "brier", "log_loss", "expected_calibration_error")
     })
     zq.log.info("feature importance diagnostics: status=%s features=%d",
                 importance.get("status"), len(importance.get("top_features", [])))
-    return {"calibration": calibration, "feature_importance": importance}
+    zq.log.info("closed-signal regime diagnostics: %s", regimes)
+    return {"calibration": calibration, "feature_importance": importance, "regimes": regimes}
 
 
 def feature_drift_report(zq, brain, feature_frame):
@@ -123,6 +127,28 @@ def feature_drift_report(zq, brain, feature_frame):
               "warning": "Monitoring only; drift does not disable trading or change thresholds."}
     _write_json(zq.CFG["DIR"], "feature_drift.json", result)
     return result
+
+
+def regime_outcome_report_from_db(db_path):
+    try:
+        import sqlite3
+        with sqlite3.connect(db_path, timeout=10) as db:
+            rows = db.execute(
+                "SELECT regime, COUNT(*) AS n, AVG(ret) AS avg_ret, "
+                "SUM(CASE WHEN ret>0 THEN ret ELSE 0 END) AS gp, "
+                "SUM(CASE WHEN ret<0 THEN -ret ELSE 0 END) AS gl "
+                "FROM tracked_signals WHERE status='CLOSED' AND ret IS NOT NULL "
+                "GROUP BY regime ORDER BY n DESC"
+            ).fetchall()
+    except Exception:
+        return []
+    out = []
+    for regime, n, avg_ret, gp, gl in rows:
+        gp, gl = float(gp or 0.0), float(gl or 0.0)
+        out.append({"regime": regime, "n": int(n),
+                    "avg_net_return": float(avg_ret or 0.0),
+                    "profit_factor": gp / gl if gl > 0 else None})
+    return out
 
 
 def regime_outcome_report(paper):
