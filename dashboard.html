@@ -137,6 +137,7 @@ tbody tr:hover{background:#f0f5fd}
  .tabs{margin:13px 0 16px;padding:4px}.tabs button{font-size:11px;padding:8px 11px}
  .chartgrid>.card,.cols>.card{padding:13px}.chartbox{min-height:190px}
 }
+.vp-positive{color:var(--green);font-weight:750}.vp-negative{color:var(--red);font-weight:750}#page-virtualPortfolio .controls{align-items:center}#page-virtualPortfolio .controls label{font-size:11px;font-weight:750;color:var(--mut)}#page-virtualPortfolio .controls input{max-width:220px;flex:0 1 220px}@media(max-width:560px){#page-virtualPortfolio .controls input{max-width:none;flex-basis:100%}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
 </style>
 <style id="executive-theme">
@@ -194,7 +195,7 @@ table{font-size:11px}th{background:#f3f6fb;color:#60718a;text-transform:uppercas
 <main>
 <div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
 
-<div class="tabs"><button class="active" data-tab="overview">Vue d’ensemble</button><button data-tab="trackedOpen">Signaux ouverts</button><button data-tab="trackedClosed">Signaux clôturés</button><button data-tab="recentSignals">Signaux récents</button><button data-tab="signals">Tous les signaux</button><button data-tab="ai">Intelligence artificielle</button></div>
+<div class="tabs"><button class="active" data-tab="overview">Vue d’ensemble</button><button data-tab="trackedOpen">Signaux ouverts</button><button data-tab="trackedClosed">Signaux clôturés</button><button data-tab="recentSignals">Signaux récents</button><button data-tab="signals">Tous les signaux</button><button data-tab="ai">Intelligence artificielle</button><button data-tab="virtualPortfolio">Portefeuille virtuel</button></div>
 <section id="page-overview"><div class="executive-hero">
  <div class="hero-copy"><div class="eyebrow"><span class="pulse"></span> QUANTITATIVE MONITORING</div><h2>Vue stratégique du portefeuille</h2><p>Surveillance des signaux, suivi des clôtures et progression de l’apprentissage IA.</p>
  <div class="hero-actions"><span class="hero-chip">SPOT · USDT</span><span class="hero-chip">PAPER TRADING</span><button type="button" class="refresh-btn" onclick="connect()">↻ Actualiser les données</button></div></div>
@@ -205,6 +206,7 @@ table{font-size:11px}th{background:#f3f6fb;color:#60718a;text-transform:uppercas
 <section id="page-recentSignals" class="hide section"><h2>Signaux récents</h2><div id="recent" class="tablewrap"></div></section>
 <section id="page-signals" class="hide section"><h2>Historique des signaux de la base de données</h2><p class="muted">Affiche les 500 derniers signaux enregistrés dans SQLite. Ces résultats ne correspondent pas à des transactions réelles.</p><div id="signals" class="tablewrap"></div></section>
 <section id="page-ai" class="hide section"><div id="aiMetrics" class="grid"></div><div class="card section"><h2>Toutes les clés meta enregistrées</h2><div id="metaTable" class="tablewrap"></div></div></section>
+<section id="page-virtualPortfolio" class="hide section"><div class="executive-hero"><div class="hero-copy"><div class="eyebrow"><span class="pulse"></span> SIMULATION LOCALE · HTML</div><h2>Portefeuille virtuel</h2><p>Simulation indépendante, enregistrée dans le navigateur. Aucun ordre n’est envoyé à OKX et aucune donnée du moteur de trading n’est modifiée.</p><div class="hero-actions"><span class="hero-chip">PAPER ONLY</span><span class="hero-chip">ACTIVATION APRÈS VALIDATION IA</span></div></div><div class="hero-side"><div class="hero-cycle"><span>État du portefeuille</span><strong id="vpStatus">Verrouillé</strong></div><div class="hero-mini"><div><span>Capital initial</span><b id="vpCapital">—</b></div><div><span>Positions ouvertes</span><b id="vpOpenCount">0</b></div></div></div></div><div id="vpGateNotice" class="notice">Le portefeuille reste verrouillé jusqu’à l’atteinte de 500 signaux gagnants, 500 perdants et la disponibilité d’un modèle enregistré.</div><div class="card section"><h2>Configuration de la simulation</h2><div class="controls"><label for="vpCapitalInput">Capital initial (USDT)</label><input id="vpCapitalInput" type="number" min="1" step="0.01" placeholder="Saisir le capital de simulation"><button type="button" class="primary" id="vpSaveConfig">Enregistrer le capital</button><span class="muted">Allocation par signal : 5 % du capital initial. Paramètre local à ce navigateur.</span></div><div id="vpMetrics" class="grid"></div></div><div class="card section"><h2>Positions simulées</h2><p class="muted">Seules les nouvelles signaux portant une probabilité issue d’un modèle validé peuvent être prises en compte après déverrouillage. Les anciennes signaux ne sont pas rejouées.</p><div id="vpPositions" class="tablewrap"></div></div><div class="card section"><h2>Historique du portefeuille</h2><div id="vpHistory" class="tablewrap"></div></div><p class="muted">Les données du portefeuille sont conservées uniquement dans le stockage local du navigateur (localStorage). Elles ne sont pas synchronisées avec GitHub et peuvent disparaître si les données du navigateur sont effacées.</p></section>
 <div class="foot">Tableau de bord Zied Quant · API GitHub · Lecture seule</div>
 </main>
 
@@ -240,12 +242,70 @@ function renderCharts(){
  const counts=[{name:"Gagnant",v:wins,color:"#12805c"},{name:"Perdant",v:losses,color:"#d6455d"},{name:"À l’équilibre",v:flat,color:"#9aa6b7"}],maxCount=Math.max(1,...counts.map(x=>x.v));
  $("outcomeChart").innerHTML='<svg viewBox="0 0 480 220" role="img" aria-label="Répartition des signaux gagnants, perdants et à l’équilibre">'+counts.map((x,i)=>{const y=22+i*62,w=x.v/maxCount*300;return '<text x="465" y="'+(y+16)+'" text-anchor="end" fill="#42536d" font-size="13">'+x.name+'</text><rect x="12" y="'+y+'" width="300" height="20" rx="7" fill="#edf1f6"/><rect x="12" y="'+y+'" width="'+w+'" height="20" rx="7" fill="'+x.color+'"/><text x="325" y="'+(y+16)+'" fill="#17243a" font-size="13" font-weight="700">'+x.v+'</text>'}).join("")+'</svg><div class="chartlegend"><span>Total : <b>'+closed.length+'</b></span><span>Taux de réussite : <b>'+(wins/closed.length*100).toFixed(1)+'%</b></span></div>';
 }
+
+const VP_STORAGE_KEY="zied_quant_virtual_portfolio_v1";
+function loadVirtualPortfolio(){
+ try{const raw=localStorage.getItem(VP_STORAGE_KEY);if(!raw)return {capital:null,activatedAt:null,processed:[],positions:[],history:[]};const x=JSON.parse(raw);return {capital:Number.isFinite(Number(x.capital))&&Number(x.capital)>0?Number(x.capital):null,activatedAt:Number(x.activatedAt)||null,processed:Array.isArray(x.processed)?x.processed:[],positions:Array.isArray(x.positions)?x.positions:[],history:Array.isArray(x.history)?x.history:[]};}
+ catch(e){return {capital:null,activatedAt:null,processed:[],positions:[],history:[]};}
+}
+let virtualPortfolio=loadVirtualPortfolio();
+function saveVirtualPortfolio(){try{localStorage.setItem(VP_STORAGE_KEY,JSON.stringify(virtualPortfolio));return true;}catch(e){return false;}}
+function renderVirtualPortfolio(gateWins,gateLosses,modelReady){
+ const gateReady=gateWins>=500&&gateLosses>=500&&modelReady;
+ const status=$("vpStatus"),capital=$("vpCapital"),openCount=$("vpOpenCount"),notice=$("vpGateNotice");
+ if(!status)return;
+ if($("vpCapitalInput")&&document.activeElement!==$("vpCapitalInput"))$("vpCapitalInput").value=virtualPortfolio.capital??"";
+ capital.textContent=virtualPortfolio.capital===null?"Non configuré":virtualPortfolio.capital.toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})+" USDT";
+ if(gateReady&&virtualPortfolio.capital!==null&&!virtualPortfolio.activatedAt){virtualPortfolio.activatedAt=Date.now()/1000;saveVirtualPortfolio();}
+ const unlocked=gateReady&&virtualPortfolio.capital!==null&&!!virtualPortfolio.activatedAt;
+ status.textContent=unlocked?"Actif":"Verrouillé";
+ openCount.textContent=String(virtualPortfolio.positions.filter(p=>p.status==="OPEN").length);
+ notice.textContent=!gateReady
+  ?"Verrouillé : il faut 500 signaux gagnants, 500 signaux perdants et un modèle enregistré dans les données du tableau de bord."
+  :virtualPortfolio.capital===null
+   ?"Conditions d’apprentissage remplies. Saisissez le capital initial pour activer la simulation."
+   :"Conditions remplies. La simulation est active ; seules les nouvelles signaux validées par le modèle sont éligibles.";
+ notice.style.background=unlocked?"#eaf7f0":"#fff5e6";notice.style.borderColor=unlocked?"#c9ead8":"#f1dfbd";notice.style.color=unlocked?"#176b4c":"#8b5b14";
+ if(unlocked){
+  const latestByInst={};
+  state.signals.forEach(s=>{if(s&&s.inst&&Number.isFinite(Number(s.price))){if(!latestByInst[s.inst]||Number(s.ts)>Number(latestByInst[s.inst].ts))latestByInst[s.inst]=s;}});
+  const eligible=state.signals.filter(s=>s&&s.prob_source==="validated_ai"&&s.prob!==null&&s.prob!==undefined&&Number.isFinite(Number(s.prob))&&Number(s.ts)>=virtualPortfolio.activatedAt&&s.id!==undefined);
+  eligible.sort((a,b)=>Number(a.ts)-Number(b.ts));
+  eligible.forEach(s=>{
+   const id=String(s.id);if(virtualPortfolio.processed.includes(id))return;
+   virtualPortfolio.processed.push(id);
+   if(virtualPortfolio.positions.some(p=>p.inst===s.inst&&p.status==="OPEN"))return;
+   const allocation=virtualPortfolio.capital*0.05;
+   const entry=Number(s.price);
+   if(!(entry>0&&allocation>0))return;
+   virtualPortfolio.positions.push({signalId:id,inst:s.inst,entry,allocation,quantity:allocation/entry,prob:Number(s.prob),openedAt:Number(s.ts),status:"OPEN",lastPrice:entry});
+  });
+  virtualPortfolio.positions.filter(p=>p.status==="OPEN").forEach(p=>{
+   const latest=latestByInst[p.inst];if(latest&&Number(latest.ts)>=p.openedAt&&Number(latest.price)>0)p.lastPrice=Number(latest.price);
+   const matching=state.tracked.filter(t=>String(t.inst)===String(p.inst)&&String(t.status).toUpperCase()==="CLOSED"&&Number(t.opened_ts)>=p.openedAt-900&&Number(t.opened_ts)<=p.openedAt+900&&Number.isFinite(Number(t.ret)));
+   if(matching.length){matching.sort((a,b)=>Math.abs(Number(a.opened_ts)-p.openedAt)-Math.abs(Number(b.opened_ts)-p.openedAt));const close=matching[0];p.status="CLOSED";p.closedAt=Number(close.closed_ts)||null;p.exitPrice=Number(close.exit_price)||null;p.ret=Number(close.ret);p.closeReason=close.close_reason||close.outcome||"—";p.realizedPnl=p.allocation*p.ret;virtualPortfolio.history.push({...p});}
+  });
+  saveVirtualPortfolio();
+ }
+ const positions=virtualPortfolio.positions.filter(p=>p.status==="OPEN");
+ const realized=virtualPortfolio.history.reduce((sum,p)=>sum+Number(p.realizedPnl||0),0);
+ const unrealized=positions.reduce((sum,p)=>sum+(Number(p.lastPrice)-Number(p.entry))*Number(p.quantity),0);
+ const allocated=positions.reduce((sum,p)=>sum+Number(p.allocation||0),0);
+ const available=virtualPortfolio.capital===null?null:virtualPortfolio.capital-allocated+realized;
+ $("vpMetrics").innerHTML=metric("Capital initial",virtualPortfolio.capital===null?"—":virtualPortfolio.capital.toFixed(2)+" USDT","Capital configuré localement")+metric("Capital engagé",allocated.toFixed(2)+" USDT","Positions actuellement ouvertes")+metric("Résultat réalisé",realized.toFixed(2)+" USDT","Basé sur le rendement des signaux clôturés")+metric("Résultat latent estimé",unrealized.toFixed(2)+" USDT","Estimé avec le dernier prix disponible dans les signaux")+metric("Capital disponible estimé",available===null?"—":available.toFixed(2)+" USDT","Estimation locale, hors frais additionnels non fournis")+metric("Transactions simulées",String(virtualPortfolio.positions.length),"Depuis le déverrouillage");
+ const posCols=[["Actif","inst"],["Statut","status"],["Entrée",p=>priceFmt(p.entry)],["Dernier prix",p=>priceFmt(p.lastPrice)],["Allocation",p=>Number(p.allocation).toFixed(2)+" USDT"],["Quantité",p=>Number(p.quantity).toFixed(6)],["P&L latent",p=>((Number(p.lastPrice)-Number(p.entry))*Number(p.quantity)).toFixed(4)+" USDT"],["Probabilité IA",p=>(Number(p.prob)*100).toFixed(2)+"%"],["Ouverture",p=>timeFmt(p.openedAt)]];
+ const histCols=[["Actif","inst"],["Entrée",p=>priceFmt(p.entry)],["Sortie",p=>priceFmt(p.exitPrice)],["Motif","closeReason"],["Rendement",p=>(Number(p.ret)*100).toFixed(3)+"%"],["P&L réalisé",p=>Number(p.realizedPnl).toFixed(4)+" USDT"],["Clôture",p=>timeFmt(p.closedAt)]];
+ $("vpPositions").innerHTML=table(positions,posCols);
+ $("vpHistory").innerHTML=table(virtualPortfolio.history.slice().reverse(),histCols);
+}
+
 function render(){
  renderCharts();
  const total=Number(state.summary.total)||0, labeledCount=Number(state.summary.labeled)||0, pending=Math.max(0,total-labeledCount);
  const wins=Number(state.summary.wins)||0,losses=Number(state.summary.losses)||0,avg=state.summary.avgRet;
  const gateWins=Number(state.summary.gateWins)||0,gateLosses=Number(state.summary.gateLosses)||0,gateTotal=Number(state.summary.gateTotal)||0;
  const gateReady=gateWins>=500&&gateLosses>=500;
+ const modelMetaForPortfolio=state.contents["meta.json"]; const modelReadyForPortfolio=!!(modelMetaForPortfolio&&typeof modelMetaForPortfolio==="object"&&modelMetaForPortfolio.mode&&Number(modelMetaForPortfolio.n_in)>0); renderVirtualPortfolio(gateWins,gateLosses,modelReadyForPortfolio);
  const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
  const heroCycle=$("heroCycle"),heroTracked=$("heroTracked"),heroEvaluated=$("heroEvaluated"),heroUpdated=$("heroUpdated");
  if(heroCycle)heroCycle.textContent=String(cycle);
@@ -346,6 +406,7 @@ async function connect(){
  render();
 }
 
+const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;const meta=state.contents["meta.json"];const ready=!!(meta&&typeof meta==="object"&&meta.mode&&Number(meta.n_in)>0);renderVirtualPortfolio(gateWinsNow,gateLossesNow,ready);});
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+b.dataset.tab))});
 currentLang="fr"
 render();
