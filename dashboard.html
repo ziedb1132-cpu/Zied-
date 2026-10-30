@@ -14,11 +14,11 @@ main{max-width:1450px;margin:auto;padding:16px}.notice{background:#302817;border
 @media(max-width:850px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}}@media(max-width:480px){main{padding:10px}.grid{gap:7px}.card{padding:10px}.value{font-size:19px}header{padding:10px}.brand h1{font-size:16px}}
 </style></head>
 <body>
-<header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — بيانات البرنامج</h1><div class="muted">لوحة قراءة فقط · مبنية على ملفات البرنامج الفعلية</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">لم يتم الاتصال</span></span></div></header>
+<header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — بيانات البرنامج</h1><div class="muted">لوحة قراءة فقط · تقرأ ملفًا مختصرًا يُحدّث مع كل دورة</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">لم يتم الاتصال</span></span></div></header>
 <main>
-<div class="notice">لوحة قراءة فقط. تعرض الإشارات المسجلة وتقييمها من الشموع المستقبلية، وكذلك سجل الإشارات المتتبعة OPEN/CLOSED إن وُجد. هذه ليست محفظة برصيد نقدي أو صفقات حقيقية. الإحصاءات العامة تُحسب من قاعدة البيانات كاملة، بينما جدول الإشارات يعرض أحدث 500 صف فقط.</div>
+<div class="notice">لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب.</div>
 <div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
-<div class="controls"><input id="owner" value="ziedb1132-cpu" aria-label="مالك المستودع" placeholder="مالك المستودع"><input id="repo" value="Zied-" aria-label="المستودع" placeholder="المستودع"><input id="branch" value="state-data" aria-label="فرع البيانات" placeholder="فرع البيانات"><input id="token" type="password" autocomplete="off" aria-label="GitHub token" placeholder="رمز GitHub للقراءة فقط"><button id="connect" class="primary">اتصال / تحديث</button><button id="clear">مسح الرمز</button></div>
+<div class="controls"><input id="owner" value="ziedb1132-cpu" aria-label="مالك المستودع" placeholder="مالك المستودع"><input id="repo" value="Zied-" aria-label="المستودع" placeholder="المستودع"><input id="branch" value="state-data" aria-label="فرع البيانات" placeholder="فرع البيانات"><button id="connect" class="primary">تحديث البيانات</button></div>
 <div class="tabs"><button class="active" data-tab="overview">نظرة عامة</button><button data-tab="trackedOpen">الإشارات المفتوحة</button><button data-tab="trackedClosed">الإشارات المغلقة</button><button data-tab="recentSignals">أحدث الإشارات</button><button data-tab="signals">كل الإشارات</button><button data-tab="ai">الذكاء الاصطناعي</button><button data-tab="ranking">ترتيب العملات</button><button data-tab="files">جميع الملفات</button><button data-tab="raw">بيانات تقنية</button></div>
 <section id="page-overview"><div id="metrics" class="grid"></div><div class="cols"><div class="card"><h2>حالة التشغيل</h2><div id="system"></div></div><div class="card"><h2>نتائج تقييم الإشارات</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>ملخص الذاكرة المحفوظة</h2><div id="metaPreview"></div></div></section>
 <section id="page-trackedOpen" class="hide section"><h2>الإشارات المتتبعة المفتوحة</h2><p class="muted">الإشارات التي لم تُغلق بعد.</p><div id="trackedOpen" class="tablewrap"></div></section>
@@ -31,7 +31,7 @@ main{max-width:1450px;margin:auto;padding:16px}.notice{background:#302817;border
 <section id="page-raw" class="hide section"><h2>مخطط قاعدة البيانات</h2><div id="schema" class="tablewrap"></div><div class="card section"><h2>عينة البيانات الخام</h2><select id="rawSelect"></select><pre id="rawData">اختر ملفًا لعرض تفاصيله.</pre></div></section>
 <div class="foot">Zied Quant Dashboard · GitHub API · قراءة فقط</div>
 </main>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
@@ -95,49 +95,30 @@ async function loadFileBytes(path,parts,owner,repo,branch,headers){
  const total=arrays.reduce((a,b)=>a+b.length,0),out=new Uint8Array(total);let at=0;for(const a of arrays){out.set(a,at);at+=a.length}return out;
 }
 async function connect(){
- const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data",token=$("token").value.trim();
+ const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data";
  if(!owner||!repo){alert("أدخل مالك المستودع واسم المستودع");return}
- $("error").style.display="none";$("error").textContent="";$("status").textContent="جار تحميل manifest والبيانات…";$("dot").style.background="var(--gold)";
+ $("error").style.display="none";$("error").textContent="";
+ $("status").textContent="جار قراءة ملف العرض الصغير…";$("dot").style.background="var(--gold)";
  state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
- const headers={Accept:"application/vnd.github+json"};if(token)headers.Authorization="Bearer "+token;
  try{
-  let manifestText;
-  try{const manifestResponse=await fetchApi("zied_data_store/manifest.json",owner,repo,branch,headers);if(!manifestResponse||!manifestResponse.content)throw new Error("استجابة GitHub لا تحتوي محتوى manifest.json.");manifestText=decodeContent(manifestResponse);}
-  catch(apiError){const raw="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/zied_data_store/manifest.json";const rawResponse=await fetch(raw);if(!rawResponse.ok)throw new Error("تعذر تحميل manifest.json من GitHub API أو raw.githubusercontent.com — HTTP "+rawResponse.status+"؛ تحقق من اسم الفرع ومسار الملف.");manifestText=await rawResponse.text();}
-  try{state.manifest=JSON.parse(manifestText);}catch(parseError){throw new Error("تعذر تحليل manifest.json: "+parseError.message);}
-  const manifest=state.manifest;
-  state.files=Array.isArray(manifest.files)?manifest.files:[];
-  for(const f of state.files){
-   const path=f.path||f.name;if(!path||!Array.isArray(f.chunks))continue;
-   try{
-    const bytes=await loadFileBytes(path,f.chunks,owner,repo,branch,headers);
-    if(path==="paper.db"){
-     let SQL;try{SQL=await initSqlJs({locateFile:name=>"https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/"+name})}catch(e){SQL=await initSqlJs({locateFile:name=>"https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/"+name})}
-     state.db=new SQL.Database(bytes);
-     state.schema=dbQuery("SELECT name AS table_name, name AS table FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-     const tableNames=dbQuery("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").map(x=>x.name);
-     state.schema=[];
-     for(const t of tableNames){for(const col of dbQuery("PRAGMA table_info('"+String(t).replace(/'/g,"''")+"')"))state.schema.push({table:t,name:col.name,type:col.type,pk:col.pk})}
-     state.meta=Object.fromEntries(dbQuery("SELECT k,v FROM meta").map(x=>[x.k,x.v]));
-     state.summary=dbQuery("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN labeled=1 THEN 1 ELSE 0 END),0) AS labeled, COALESCE(SUM(CASE WHEN labeled=1 AND label=1 AND ret>0 THEN 1 ELSE 0 END),0) AS wins, COALESCE(SUM(CASE WHEN labeled=1 AND (label=0 OR ret<=0) THEN 1 ELSE 0 END),0) AS losses, AVG(CASE WHEN labeled=1 THEN ret END) AS avgRet FROM signals")[0]||state.summary;
-     state.summary.openTracked=Number(dbQuery("SELECT COUNT(*) AS n FROM tracked_signals WHERE status='OPEN'")[0]?.n||0);
-     state.summary.closedTracked=Number(dbQuery("SELECT COUNT(*) AS n FROM tracked_signals WHERE status='CLOSED'")[0]?.n||0);
-     const gate=dbQuery("SELECT SUM(CASE WHEN s.ret>0 THEN 1 ELSE 0 END) AS wins, SUM(CASE WHEN s.ret<0 THEN 1 ELSE 0 END) AS losses, COUNT(*) AS total FROM tracked_signals t JOIN signals s ON s.id=t.signal_id WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL")[0]||{};
-     state.summary.gateWins=Number(gate.wins||0);state.summary.gateLosses=Number(gate.losses||0);state.summary.gateTotal=Number(gate.total||0);state.summary.trackedTotal=state.summary.openTracked+state.summary.closedTracked;
-     state.signals=dbQuery("SELECT id,ts,inst,price,atr,prob,rank,labeled,label,ret,hold,feature_ts FROM signals ORDER BY ts DESC LIMIT 500");
-     state.tracked=dbQuery("SELECT inst,status,entry,exit_price,sl,tp,prob,opened_ts,ret,closed_ts,outcome,close_reason,hold FROM tracked_signals ORDER BY opened_ts DESC LIMIT 1000");
-     state.contents[path]="تم تحميل SQLite؛ الجداول: "+tableNames.join(", ");
-    }else if(path.endsWith(".json")){
-     const text=new TextDecoder().decode(bytes);try{state.contents[path]=JSON.parse(text)}catch(e){state.contents[path]=text;state.errors.push(path+": JSON غير صالح")}
-    }else if(path.endsWith(".csv")){
-     const text=new TextDecoder().decode(bytes);state.contents[path]=text;if(path==="ranking.csv")state.ranking=parseCSV(text).map(r=>{const first=Object.keys(r)[0];if(first&&(!r.inst)&&r[first]&&r[first].includes("-USDT"))r.inst=r[first];return r});
-    }else if(path.endsWith(".npz")||path.endsWith(".pt")||path.endsWith(".pkl"))state.contents[path]="ملف ثنائي، الحجم "+bytes.length+" بايت — محفوظ ولم يُعرض كنص";
-    else state.contents[path]=new TextDecoder().decode(bytes);
-   }catch(e){state.errors.push(path+": "+(e.message||String(e)))}
-  }
-  if(!state.files.length)throw new Error("manifest موجود لكنه لا يحتوي قائمة files.");
-  $("status").textContent="تم الاتصال — "+state.files.length+" ملفات مسجلة";$("dot").style.background="var(--green)";
- }catch(e){state.errors.push(e.message||String(e));$("status").textContent="فشل تحميل البيانات";$("dot").style.background="var(--red)";$("error").style.display="block";$("error").textContent="تعذر قراءة بيانات البرنامج: "+state.errors.join("\n")+"\nتعذر تحميل البيانات. المستودع العام لا يحتاج رمزًا. جرت محاولة القراءة عبر GitHub API ثم raw.githubusercontent.com. تحقق من اتصال الإنترنت واسم الفرع ومسار zied_data_store/manifest.json."}
+  const url="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/dashboard_data.json?ts="+Date.now();
+  const response=await fetch(url,{cache:"no-store"});
+  if(!response.ok)throw new Error("dashboard_data.json — HTTP "+response.status);
+  const data=await response.json();
+  state.meta=data.meta||{};state.summary={...state.summary,...(data.summary||{})};
+  state.signals=Array.isArray(data.signals)?data.signals:[];
+  state.tracked=Array.isArray(data.tracked)?data.tracked:[];
+  state.ranking=Array.isArray(data.ranking)?data.ranking:[];
+  state.files=Array.isArray(data.files)?data.files:[];
+  state.contents=data.contents||{};state.schema=Array.isArray(data.schema)?data.schema:[];
+  state.manifest={generated_at:data.generated_at};
+  $("status").textContent="تم تحديث البيانات · "+(data.generated_at||"وقت غير متاح");
+  $("dot").style.background="var(--green)";
+ }catch(e){
+  state.errors.push(e.message||String(e));$("status").textContent="تعذر قراءة ملف العرض";
+  $("dot").style.background="var(--red)";$("error").style.display="block";
+  $("error").textContent="تعذر قراءة dashboard_data.json من فرع "+branch+": "+state.errors.join("\\n")+"\\nتأكد أن دورة GitHub Actions اكتملت وأن الملف موجود في فرع state-data.";
+ }
  render();
 }
 $("connect").addEventListener("click",connect);$("rawSelect").addEventListener("change",renderRaw);
