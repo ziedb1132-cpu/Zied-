@@ -211,6 +211,8 @@ def _evaluate(paper, zq):
             "ORDER BY t.opened_ts LIMIT 300",
             (now - replay_depth * 300, now - (horizon + 3) * 300)).fetchall()]
     if not pending:
+        # A gate transition can happen after all eligible paths were collected.
+        _promote(paper, zq)
         return 0
     grouped = {}
     for row in pending:
