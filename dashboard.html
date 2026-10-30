@@ -246,12 +246,12 @@ function render(){
  const wins=Number(state.summary.wins)||0,losses=Number(state.summary.losses)||0,avg=state.summary.avgRet;
  const gateWins=Number(state.summary.gateWins)||0,gateLosses=Number(state.summary.gateLosses)||0,gateTotal=Number(state.summary.gateTotal)||0;
  const gateReady=gateWins>=500&&gateLosses>=500;
+ const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
  const heroCycle=$("heroCycle"),heroTracked=$("heroTracked"),heroEvaluated=$("heroEvaluated"),heroUpdated=$("heroUpdated");
  if(heroCycle)heroCycle.textContent=String(cycle);
  if(heroTracked)heroTracked.textContent=fmt(Number(state.summary.openTracked||0)+Number(state.summary.closedTracked||0));
  if(heroEvaluated)heroEvaluated.textContent=fmt(labeledCount);
  if(heroUpdated)heroUpdated.textContent=state.manifest?.generated_at?timeFmt(state.manifest.generated_at):"—";
- const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
  $("metrics").innerHTML=metric("Tous les signaux enregistrés",total,"Table signals dans SQLite")+metric("Signaux évalués",labeledCount,"Y compris les signaux non suivis")+metric("Signaux suivis ouverts",state.summary.openTracked,"Statut OPEN")+metric("Signaux suivis clôturés",state.summary.closedTracked,"Statut CLOSED")+metric("Gagnants admissibles à l’entraînement",gateWins,"Clôturés + rendement positif")+metric("Perdants admissibles à l’entraînement",gateLosses,"Clôturés + rendement négatif")+metric("Seuil d’entraînement",gateReady?"Prête":"En attente des résultats",gateWins+"/500 Gagnant · "+gateLosses+"/500 Perdant");
  $("system").innerHTML=showRows({"Dépôt":DASHBOARD_REPOSITORY.owner+"/"+DASHBOARD_REPOSITORY.repo,"Branche des données":DASHBOARD_REPOSITORY.branch,"Cycle d’analyse":cycle,"Enregistrement des signaux":paused?"Temporairement suspendu":"Actif selon meta","Base de données":"Non téléchargée dans le navigateur — conservée dans state-data","Données": "Lecture seule — aucune transaction"});
  const winRate=labeledCount?(wins/labeledCount*100):null;
