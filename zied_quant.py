@@ -944,8 +944,6 @@ class Paper:
             if column not in tracked_columns:
                 self.db.execute(f"ALTER TABLE tracked_signals ADD COLUMN {column} {declaration}")
         self.db.execute("UPDATE signals SET feature_ts=ts WHERE feature_ts IS NULL")
-        if "prob_source" not in tracked_columns:
-            self.db.execute("ALTER TABLE tracked_signals ADD COLUMN prob_source TEXT NOT NULL DEFAULT 'legacy_unknown'")
         self.db.execute("UPDATE tracked_signals SET peak_price=entry WHERE peak_price IS NULL")
         self.db.commit()
 
