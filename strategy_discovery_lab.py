@@ -212,13 +212,10 @@ def run_lab(zq, paper):
     """Run bounded research work; safe to call after each normal scan."""
     _ensure(paper)
     now = time.time()
-    last = float(paper._get("discovery_lab_last_run") or 0)
-    if now - last < 6 * 3600:
-        return {"status": "skipped_recent"}
+    # Run on every unified analysis cycle; INSERT OR IGNORE prevents duplicate research rows.
     missed_n = _missed_and_timing(zq, paper)
     similar_n = _similarity(zq, paper)
     report = _report(paper, zq.CFG["DIR"])
-    paper._set("discovery_lab_last_run", now)
     zq.log.info("Zied Strategy Discovery Lab: missed=%d timing_evaluated=%d analogues=%d",
                 missed_n, missed_n, similar_n)
     return {"status": "ok", "missed_processed": missed_n,
