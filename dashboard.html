@@ -4,14 +4,58 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Zied Quant — لوحة بيانات البرنامج</title>
 <style>
-:root{--bg:#0b1020;--panel:#141e33;--line:#2a3854;--txt:#edf3ff;--mut:#9eacc6;--green:#4cdaa4;--red:#ff788b;--blue:#7aa8ff;--gold:#f0c66b}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.55 system-ui,Arial,sans-serif}
-header{padding:16px;position:sticky;top:0;background:#0b1020f2;border-bottom:1px solid var(--line);z-index:5}
-.top,.controls,.tabs,.brand{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.top{justify-content:space-between}.brand h1{margin:0;font-size:19px}.logo{background:#315bb0;padding:10px 12px;border-radius:12px;font-weight:bold}.muted,.sub,.status{color:var(--mut);font-size:12px}
-main{max-width:1450px;margin:auto;padding:16px}.notice{background:#302817;border:1px solid #5b4928;color:#f8dc9c;padding:12px;border-radius:12px;margin:10px 0}
-.controls{margin:13px 0}input,select{background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px;min-width:110px;flex:1}button{background:#18243b;border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 12px;cursor:pointer;white-space:nowrap}.primary,.active{background:#315bb0}
-.tabs{overflow:auto;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:13px;min-width:0}.label{color:var(--mut);font-size:12px}.value{font-size:23px;font-weight:750;margin:5px 0;overflow-wrap:anywhere}.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.section{margin-top:13px}.section h2,.card h2{font-size:16px;margin:0 0 10px}.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:8px}table{border-collapse:collapse;width:100%;font-size:12px;white-space:nowrap}th,td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--line);max-width:360px}td{overflow:hidden;text-overflow:ellipsis;max-width:300px}th{background:#1a2942;color:#cbd8f3;position:sticky;top:0}tr:last-child td{border:0}.empty{padding:22px;text-align:center;color:var(--mut)}.row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.row:last-child{border:0}.hide{display:none!important}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-left:6px}.good{color:var(--green)}.bad{color:var(--red)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1425;padding:12px;border-radius:9px;max-height:65vh;overflow:auto;font-size:12px}.foot{text-align:center;color:var(--mut);font-size:11px;margin:24px}
-@media(max-width:850px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}}@media(max-width:480px){main{padding:10px}.grid{gap:7px}.card{padding:10px}.value{font-size:19px}header{padding:10px}.brand h1{font-size:16px}}
+:root{
+ --bg:#f5f7fb;--panel:#ffffff;--line:#e5eaf2;--txt:#17243a;--mut:#718096;
+ --green:#12805c;--red:#d6455d;--blue:#315fbd;--gold:#a66b12;
+ --shadow:0 5px 22px rgba(25,45,80,.055);--radius:16px
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.65 system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+header{padding:18px clamp(14px,3vw,34px);position:sticky;top:0;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line);z-index:5;backdrop-filter:blur(12px);box-shadow:0 3px 14px rgba(20,40,70,.035)}
+.top,.controls,.tabs,.brand{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.top{justify-content:space-between}
+.brand h1{margin:0;font-size:20px;font-weight:800;letter-spacing:-.35px;color:#14233b}
+.logo{background:linear-gradient(145deg,#315fbd,#234583);color:#fff;padding:11px 13px;border-radius:14px;font-weight:850;box-shadow:0 5px 12px rgba(49,95,189,.2)}
+.muted,.sub,.status{color:var(--mut);font-size:12px}
+main{max-width:1480px;margin:auto;padding:22px clamp(12px,2.5vw,30px) 36px}
+.notice{background:#eff5ff;border:1px solid #d8e6ff;color:#34517f;padding:13px 16px;border-radius:13px;margin:12px 0}
+#error{background:#fff1f1;border-color:#ffd7dc;color:#9c3042}
+.controls{margin:16px 0;padding:13px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+input,select{background:#fff;border:1px solid #dce3ed;color:var(--txt);border-radius:10px;padding:10px 12px;min-width:110px;flex:1;outline:none;transition:border .15s,box-shadow .15s}
+input:focus,select:focus{border-color:#83a5e8;box-shadow:0 0 0 3px rgba(49,95,189,.1)}
+button{background:#fff;border:1px solid #dce3ed;color:#34445d;border-radius:10px;padding:9px 13px;cursor:pointer;white-space:nowrap;font-weight:650;transition:background .15s,border .15s,transform .15s}
+button:hover{background:#f3f6fc;border-color:#bdcbe0}
+button:active{transform:translateY(1px)}
+.primary,.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.primary:hover,.active:hover{background:#274f9e;border-color:#274f9e;color:#fff}
+.tabs{overflow:auto;margin:18px 0 20px;padding:5px 2px 9px;gap:8px}
+.tabs button{border-radius:999px;padding:9px 16px;box-shadow:0 2px 7px rgba(20,40,70,.035)}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:17px;min-width:0;box-shadow:var(--shadow)}
+.label{color:var(--mut);font-size:12px;font-weight:600}
+.value{font-size:25px;font-weight:800;margin:5px 0;color:#172b4d;overflow-wrap:anywhere;letter-spacing:-.4px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:14px}
+.section{margin-top:15px}
+.section h2,.card h2{font-size:15px;font-weight:750;margin:0 0 12px;color:#1b2d49}
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;margin-top:9px;background:#fff}
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;white-space:nowrap}
+th,td{text-align:right;padding:11px 12px;border-bottom:1px solid #edf0f5;max-width:360px}
+td{overflow:hidden;text-overflow:ellipsis;max-width:300px;color:#35445b}
+th{background:#f2f5fa;color:#42536d;position:sticky;top:0;font-weight:750}
+tbody tr:hover{background:#f8faff}
+tr:last-child td{border-bottom:0}
+.empty{padding:26px;text-align:center;color:var(--mut)}
+.row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #edf0f5;overflow-wrap:anywhere}
+.row:last-child{border:0}
+.hide{display:none!important}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-left:6px;box-shadow:0 0 0 3px rgba(166,107,18,.1)}
+.good{color:var(--green);font-weight:700}
+.bad{color:var(--red);font-weight:700}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;border:1px solid var(--line);color:#34445d;padding:14px;border-radius:12px;max-height:65vh;overflow:auto;font-size:12px}
+.foot{text-align:center;color:#8a96a8;font-size:11px;margin:28px 0 8px}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}}
+@media(max-width:560px){main{padding:12px 10px 28px}.grid{gap:8px}.card{padding:12px;border-radius:13px}.value{font-size:21px}header{padding:11px 12px}.brand h1{font-size:16px}.logo{padding:9px 11px}.controls{padding:10px}.controls input{min-width:100%;flex-basis:100%}.controls button{flex:1}.tabs{margin:12px 0 15px}.tabs button{padding:8px 12px;font-size:12px}.notice{font-size:12px;padding:11px 12px}}
 </style></head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — بيانات البرنامج</h1><div class="muted">لوحة قراءة فقط · تقرأ ملفًا مختصرًا يُحدّث مع كل دورة</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">لم يتم الاتصال</span></span></div></header>
