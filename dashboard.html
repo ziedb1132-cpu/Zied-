@@ -18,7 +18,7 @@ main{max-width:1450px;margin:auto;padding:16px}.notice{background:#302817;border
 <main>
 <div class="notice">لوحة قراءة فقط. GitHub Actions ينشئ ملف عرض مختصرًا بعد كل دورة. المتصفح يقرأ هذا الملف فقط ولا ينزّل قاعدة البيانات أو أجزاءها أو ملفات التدريب.</div>
 <div id="error" class="notice" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere"></div>
-<div class="controls"><input id="owner" value="ziedb1132-cpu" aria-label="مالك المستودع" placeholder="مالك المستودع"><input id="repo" value="Zied-" aria-label="المستودع" placeholder="المستودع"><input id="branch" value="state-data" aria-label="فرع البيانات" placeholder="فرع البيانات"><button id="connect" class="primary">تحديث البيانات</button></div>
+<div class="controls"><input id="owner" value="ziedb1132-cpu" aria-label="مالك المستودع" placeholder="مالك المستودع"><input id="repo" value="Zied-" aria-label="المستودع" placeholder="المستودع"><input id="branch" value="state-data" aria-label="فرع البيانات" placeholder="فرع البيانات"><input id="token" type="password" autocomplete="off" aria-label="GitHub read-only token" placeholder="رمز وصول للقراءة فقط (للمستودع الخاص)"><button id="connect" class="primary">تحديث البيانات</button></div>
 <div class="tabs"><button class="active" data-tab="overview">نظرة عامة</button><button data-tab="trackedOpen">الإشارات المفتوحة</button><button data-tab="trackedClosed">الإشارات المغلقة</button><button data-tab="recentSignals">أحدث الإشارات</button><button data-tab="signals">كل الإشارات</button><button data-tab="ai">الذكاء الاصطناعي</button><button data-tab="ranking">ترتيب العملات</button><button data-tab="files">جميع الملفات</button><button data-tab="raw">بيانات تقنية</button></div>
 <section id="page-overview"><div id="metrics" class="grid"></div><div class="cols"><div class="card"><h2>حالة التشغيل</h2><div id="system"></div></div><div class="card"><h2>نتائج تقييم الإشارات</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>ملخص الذاكرة المحفوظة</h2><div id="metaPreview"></div></div></section>
 <section id="page-trackedOpen" class="hide section"><h2>الإشارات المتتبعة المفتوحة</h2><p class="muted">الإشارات التي لم تُغلق بعد.</p><div id="trackedOpen" class="tablewrap"></div></section>
@@ -73,27 +73,6 @@ function render(){
  const select=$("rawSelect"),old=select.value;select.innerHTML=Object.keys(state.contents).map(k=>'<option value="'+esc(k)+'">'+esc(k)+'</option>').join("");if(Object.keys(state.contents).includes(old))select.value=old;renderRaw();
 }
 function renderRaw(){const key=$("rawSelect").value;if(!key){$("rawData").textContent="لا توجد ملفات نصية قابلة للعرض.";return}let val=state.contents[key];$("rawData").textContent=(typeof val==="string"?val:JSON.stringify(val,null,2)).slice(0,50000)}
-async function fetchApi(path,owner,repo,branch,headers){
- const url="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/"+path.split("/").map(encodeURIComponent).join("/")+"?ref="+encodeURIComponent(branch);
- const r=await fetch(url,{headers});if(!r.ok)throw new Error(path+" — HTTP "+r.status);
- return await r.json();
-}
-function decodeContent(j){if(!j.content)return "";const bin=atob(j.content.replace(/\s/g,""));const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));return new TextDecoder().decode(bytes)}
-async function loadFileBytes(path,parts,owner,repo,branch,headers){
- const arrays=[];
- for(const part of (parts||[])){
-  const api="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/zied_data_store/"+part.split("/").map(encodeURIComponent).join("/")+"?ref="+encodeURIComponent(branch);
-  const h={...headers,Accept:"application/vnd.github.raw+json"};
-  let response=await fetch(api,{headers:h});
-  if(!response.ok){const raw="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/zied_data_store/"+part.split("/").map(encodeURIComponent).join("/");response=await fetch(raw);}
-  if(!response.ok)throw new Error("تعذر تحميل جزء "+part+" — HTTP "+response.status);
-  const type=(response.headers.get("content-type")||"").toLowerCase();
-  if(type.includes("application/json")){
-   const j=await response.json();const bin=atob((j.content||"").replace(/\\s/g,""));arrays.push(Uint8Array.from(bin,c=>c.charCodeAt(0)));
-  }else arrays.push(new Uint8Array(await response.arrayBuffer()));
- }
- const total=arrays.reduce((a,b)=>a+b.length,0),out=new Uint8Array(total);let at=0;for(const a of arrays){out.set(a,at);at+=a.length}return out;
-}
 async function connect(){
  const owner=$("owner").value.trim(),repo=$("repo").value.trim(),branch=$("branch").value.trim()||"state-data";
  if(!owner||!repo){alert("أدخل مالك المستودع واسم المستودع");return}
@@ -101,10 +80,15 @@ async function connect(){
  $("status").textContent="جار قراءة ملف العرض الصغير…";$("dot").style.background="var(--gold)";
  state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
  try{
-  const url="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/dashboard_data.json?ts="+Date.now();
-  const response=await fetch(url,{cache:"no-store"});
-  if(!response.ok)throw new Error("dashboard_data.json — HTTP "+response.status);
-  const data=await response.json();
+  const headers={Accept:"application/vnd.github+json"};
+  const token=$("token").value.trim();if(token)headers.Authorization="Bearer "+token;
+  const url="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/dashboard_data.json?ref="+encodeURIComponent(branch);
+  const response=await fetch(url,{headers,cache:"no-store"});
+  if(!response.ok)throw new Error("dashboard_data.json — HTTP "+response.status+" (تحقق من رمز القراءة للفرع الخاص)");
+  const file=await response.json();if(!file.content)throw new Error("ملف العرض فارغ أو لا يمكن قراءته");
+  const binary=atob(file.content.replace(/\s/g,""));
+  const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+  const data=JSON.parse(new TextDecoder().decode(bytes));
   state.meta=data.meta||{};state.summary={...state.summary,...(data.summary||{})};
   state.signals=Array.isArray(data.signals)?data.signals:[];
   state.tracked=Array.isArray(data.tracked)?data.tracked:[];
@@ -124,5 +108,5 @@ async function connect(){
 $("connect").addEventListener("click",connect);$("rawSelect").addEventListener("change",renderRaw);
 document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(!b)return;document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+b.dataset.tab))});
 render();
-window.addEventListener("load",()=>setTimeout(connect,300));
+window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000)});
 </script></body></html>
