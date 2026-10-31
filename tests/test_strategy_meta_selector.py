@@ -60,7 +60,7 @@ class MetaSelectorTests(unittest.TestCase):
 
     def test_drawdown_includes_initial_equity(self):
         m = _metrics([{"net_return":-0.10},{"net_return":0.02}])
-        self.assertGreaterEqual(m["max_drawdown"],0.10)
+        self.assertAlmostEqual(m["max_drawdown"],0.10,places=12)
 
     def test_shadow_state_persists_without_live_integration(self):
         with tempfile.TemporaryDirectory() as td:
