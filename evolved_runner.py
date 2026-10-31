@@ -9,6 +9,7 @@ import candle_news_intelligence
 import ai_trade_controller
 import exit_evolution
 import strategy_discovery_lab
+import autonomous_strategy_engine
 import advanced_intelligence
 
 # Expand the schema/model before installing guarded train/tune/holdout promotion.
@@ -66,6 +67,15 @@ def _scan_with_strategy_discovery(brain, paper, universe=None, cycle=0, trade=Tr
             zied_quant.log.info("strategy evolution: %s", outcome.get("status"))
         lab_outcome = strategy_discovery_lab.run_lab(zied_quant, paper)
         zied_quant.log.info("strategy discovery lab: %s", lab_outcome.get("status"))
+        # Ten new symbolic strategy experiments per cycle. Research-only; no live
+        # ranking, AI weights, entry/exit rules, or portfolio settings are changed.
+        discovery = autonomous_strategy_engine.run_discovery(
+            uni, zied_quant.get_candles, zied_quant.CFG["DIR"], zied_quant.tg,
+            batch_size=10, max_coins=5)
+        zied_quant.log.info(
+            "autonomous strategy discovery: generation=%s generated=%s passed=%s",
+            discovery.get("generation"), discovery.get("generated"),
+            discovery.get("validation_passed"))
     except Exception as exc:
         zied_quant.log.warning("strategy evolution skipped after error: %s", exc)
     return result
