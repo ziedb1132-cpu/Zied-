@@ -14,6 +14,7 @@ import pandas as pd
 COST = 0.0020  # round-trip fees + slippage reserve; conservative fixed 20 bps
 HOLD = 24
 MIN_TRADES = 30
+WF_FOLDS = 10
 
 
 def _features(df):
@@ -57,7 +58,15 @@ def candidate_specs():
     for rsi_low, trend_filter in itertools.product((25, 30, 35, 40), (True, False)):
         specs.append({"kind": "rsi_reversal_confirmed", "rsi_low": rsi_low,
                       "trend_filter": trend_filter})
-    return specs
+    # Exactly 55 extra volume-breakout variants: total candidate set = 150.
+    extra = itertools.product((8, 12, 16, 20, 24, 30, 36, 48),
+                               (0.65, 0.8, 0.95, 1.1), (True, False))
+    for lookback, vol_mult, trend_filter in extra:
+        if len(specs) >= 150:
+            break
+        specs.append({"kind": "volume_breakout", "lookback": lookback,
+                      "vol_mult": vol_mult, "trend_filter": trend_filter})
+    return specs[:150]
 
 
 def signal_for(df, spec):
@@ -78,6 +87,10 @@ def signal_for(df, spec):
     elif kind == "range_breakout":
         high = h.shift(1).rolling(spec["lookback"], min_periods=spec["lookback"]).max()
         trend_ok = (c > el) if spec["trend_filter"] else pd.Series(True, index=c.index)
+        sig = (c > high) & (v > vm * spec["vol_mult"]) & trend_ok
+    elif kind == "volume_breakout":
+        high = h.shift(1).rolling(spec["lookback"], min_periods=spec["lookback"]).max()
+        trend_ok = (c > es) if spec["trend_filter"] else pd.Series(True, index=c.index)
         sig = (c > high) & (v > vm * spec["vol_mult"]) & trend_ok
     elif kind == "rsi_reversal_confirmed":
         low = spec["rsi_low"]
@@ -120,38 +133,47 @@ def evaluate(df, signals, start, end):
             "_returns": x.tolist()}
 
 
+def _merge_metrics(chunks):
+    x = np.asarray([r for chunk in chunks for r in chunk["_returns"]], dtype=float)
+    if not len(x):
+        return {"trades": 0, "avg_net": None, "win_rate": None, "profit_factor": 0.0}
+    wins, losses = float(x[x > 0].sum()), float(-x[x < 0].sum())
+    pf = wins / losses if losses > 0 else (999.0 if wins > 0 else 0.0)
+    return {"trades": int(len(x)), "avg_net": float(x.mean()),
+            "win_rate": float((x > 0).mean()), "profit_factor": float(pf)}
+
+
 def evaluate_candidate(frames, spec):
-    """Aggregate multiple coins, then use strictly chronological train/tune/holdout windows."""
-    totals = {"train": [], "tune": [], "test": []}
+    """Ten chronological expanding walk-forward validation folds plus a final untouched 20% holdout."""
+    train_chunks, fold_chunks, test_chunks = [], [], []
+    fold_reports = []
     for df in frames:
         if df is None or len(df) < 300:
             continue
         sig = signal_for(df, spec)
         n = len(df)
-        # Boundaries have a 24-bar embargo to reduce label overlap across splits.
-        a, b = int(n * .60), int(n * .80)
-        for name, start, end in (
-            ("train", 80, a - HOLD),
-            ("tune", a + HOLD, b - HOLD),
-            ("test", b + HOLD, n - HOLD - 1),
-        ):
-            m = evaluate(df, sig, start, end)
-            # Keep returns unavailable at this summary layer; aggregate net metrics
-            # by collecting the split-level metrics with trade-count weighting.
-            if m["trades"] and m["avg_net"] is not None:
-                totals[name].append(m)
-    out = {}
-    for name, chunks in totals.items():
-        x = np.asarray([r for chunk in chunks for r in chunk["_returns"]], dtype=float)
-        if not len(x):
-            out[name] = {"trades": 0, "avg_net": None, "win_rate": None, "profit_factor": 0.0}
-            continue
-        gross_win = float(x[x > 0].sum())
-        gross_loss = float(-x[x < 0].sum())
-        pf = gross_win / gross_loss if gross_loss > 0 else (999.0 if gross_win > 0 else 0.0)
-        out[name] = {"trades": int(len(x)), "avg_net": float(x.mean()),
-                     "win_rate": float((x > 0).mean()), "profit_factor": float(pf)}
-    return out
+        # Initial historical warm-up/train segment; final 20% is never used for fold selection.
+        train_end = int(n * 0.20)
+        m = evaluate(df, sig, 80, train_end - HOLD)
+        if m["trades"]:
+            train_chunks.append(m)
+        # Ten contiguous validation windows span 20%-80%; each is evaluated after
+        # an expanding history window, with a 24-bar embargo at each boundary.
+        for fold in range(WF_FOLDS):
+            start_pct = 0.20 + fold * 0.06
+            end_pct = start_pct + 0.06
+            start, end = int(n * start_pct) + HOLD, int(n * end_pct) - HOLD
+            fm = evaluate(df, sig, start, end)
+            if fm["trades"]:
+                fold_chunks.append(fm)
+            fold_reports.append({"fold": fold + 1, "trades": fm["trades"],
+                                 "avg_net": fm["avg_net"], "profit_factor": fm["profit_factor"]})
+        # Final 20% holdout is evaluated only after tuning is complete.
+        tm = evaluate(df, sig, int(n * 0.80) + HOLD, n - HOLD - 1)
+        if tm["trades"]:
+            test_chunks.append(tm)
+    return {"train": _merge_metrics(train_chunks), "tune": _merge_metrics(fold_chunks),
+            "test": _merge_metrics(test_chunks), "walk_forward_folds": fold_reports}
 
 
 def run_evolution(universe, get_candles, state_dir, telegram=None, max_coins=8):
@@ -218,10 +240,10 @@ def run_evolution(universe, get_candles, state_dir, telegram=None, max_coins=8):
                              "accepted_at": now, "symbols": symbols, "cost_round_trip": COST,
                              "max_hold_hours": HOLD}
     result = {"status": "accepted" if accepted else "no_candidate_passed",
-              "last_run": now, "symbols": symbols, "candidate_count": len(results),
+              "last_run": now, "symbols": symbols, "candidate_count": len(results), "walk_forward_folds": WF_FOLDS,
               "eligible_on_tuning": len(eligible), "candidate_audit": candidate_audit, "latest_tested": champion,
               "champion": champion_to_store,
-              "note": "Research-only: does not alter live entries. Holdout gate requires >=30 trades, positive net expectancy after 20 bps costs, PF > 1.05."}
+              "note": "Research-only: does not alter live entries. 10-fold chronological walk-forward validation; final untouched 20% holdout gate requires >=30 trades, positive net expectancy after 20 bps costs, PF > 1.05."}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, allow_nan=False, indent=2)
     if telegram:
