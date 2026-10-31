@@ -76,7 +76,7 @@ def _scan_with_strategy_discovery(brain, paper, universe=None, cycle=0, trade=Tr
 zied_quant.scan = _scan_with_strategy_discovery
 
 
-def run_comprehensive_backtest():
+def run_comprehensive_backtest(universe=None, paper=None):
     """Run all isolated research layers after the core purged walk-forward model test."""
     state_dir = zied_quant.CFG["DIR"]
     os.makedirs(state_dir, exist_ok=True)
@@ -90,7 +90,7 @@ def run_comprehensive_backtest():
         "learning_gate": "unchanged: 500 closed winners AND 500 closed losers",
         "layers": {},
     }
-    universe = zied_quant.get_universe()
+    universe = universe if universe is not None else zied_quant.get_universe()
     if universe is None or universe.empty:
         raise RuntimeError("Comprehensive backtest: OKX returned an empty universe")
 
@@ -125,14 +125,14 @@ def run_comprehensive_backtest():
     # Compare current, TP, SL, trailing and time-exit variants on matured closed-signal
     # 5m paths. This collects counterfactual samples; promotion remains separately gated.
     try:
-        paper = zied_quant.Paper()
-        evaluated = exit_evolution._evaluate(paper, zied_quant)
+        exit_paper = paper if paper is not None else zied_quant.Paper()
+        evaluated = exit_evolution._evaluate(exit_paper, zied_quant)
         report["layers"]["exit_policy_evolution"] = {
             "status": "ok",
             "new_matured_signals_evaluated": int(evaluated),
             "policy_count": len(exit_evolution.POLICIES),
             "policy_names": [p[0] for p in exit_evolution.POLICIES],
-            "feedback": exit_evolution._exit_learning_report(paper),
+            "feedback": exit_evolution._exit_learning_report(exit_paper),
             "promotion_gate": "500 wins + 500 losses plus independent holdout",
             "live_integration": False,
         }
@@ -173,6 +173,22 @@ def run_comprehensive_backtest():
     )
     zied_quant.log.info("comprehensive backtest saved: %s", output)
     return report
+
+
+# Run the full research suite immediately after the normal walk-forward test
+# in every scheduled analysis cycle. It reuses the cycle's universe and Paper DB.
+_original_cycle_backtest = zied_quant.run_cycle_backtest
+
+def _cycle_backtest_with_comprehensive_research(universe, paper=None, folds=5):
+    core_result = _original_cycle_backtest(universe, paper, folds)
+    try:
+        run_comprehensive_backtest(universe=universe, paper=paper)
+    except Exception as exc:
+        zied_quant.log.exception("cycle comprehensive backtest failed: %s", exc)
+        zied_quant.tg(f"⚠️ تعذر إكمال Backtest الشامل في هذه الدورة: {exc}")
+    return core_result
+
+zied_quant.run_cycle_backtest = _cycle_backtest_with_comprehensive_research
 
 
 if len(sys.argv) > 1 and sys.argv[1] == "backtest":
