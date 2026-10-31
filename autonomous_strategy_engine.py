@@ -246,6 +246,7 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
                 "message":"Need at least 3 symbols with 400+ hourly candles."}
         memory.update({"generation":generation,"last_run":time.time(),"last_result":result})
         _atomic_write(path,memory)
+        _atomic_write(os.path.join(state_dir,"autonomous_strategy_report.json"),result)
         return result
     features=[build_features(d) for d in frames]
     archive=memory.get("archive",[])
