@@ -7,8 +7,12 @@ on:
         description: "walk-forward folds"
         default: "5"
 
+concurrency:
+  group: zied-quant
+  cancel-in-progress: false
+
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   backtest:
@@ -63,6 +67,25 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python evolved_runner.py backtest ${{ github.event.inputs.folds }}
+      - name: Persist research state to state-data
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          backup="$RUNNER_TEMP/zied-backtest-state"
+          mkdir -p "$backup"
+          cp -a zied_data "$backup/zied_data"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan state-data-backtest-${GITHUB_RUN_ID}
+          git rm -rf . >/dev/null 2>&1 || true
+          rm -rf zied_data zied_data_store
+          python state_chunks.py pack "$backup/zied_data" zied_data_store
+          python dashboard_export.py "$backup/zied_data" "$RUNNER_TEMP/dashboard_data.json"
+          cp "$RUNNER_TEMP/dashboard_data.json" dashboard_data.json
+          git add -f zied_data_store dashboard_data.json
+          git commit -m "Persist comprehensive backtest research state [skip ci]"
+          git push --force origin HEAD:state-data
       - uses: actions/upload-artifact@v4
         if: always()
         with:
