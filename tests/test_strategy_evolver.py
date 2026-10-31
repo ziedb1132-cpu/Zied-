@@ -17,10 +17,10 @@ def sample_candles(n=1200, seed=4):
 class StrategyEvolutionTests(unittest.TestCase):
     def test_candidate_generator_has_multiple_rule_families(self):
         specs = candidate_specs()
-        self.assertGreater(len(specs), 20)
+        self.assertEqual(len(specs), 150)
         self.assertEqual({s["kind"] for s in specs}, {
             "trend_pullback", "breakout", "rsi_reversal",
-            "momentum_continuation", "range_breakout", "rsi_reversal_confirmed",
+            "momentum_continuation", "range_breakout", "rsi_reversal_confirmed", "volume_breakout",
         })
 
     def test_signals_are_boolean_and_correct_length(self):
@@ -42,8 +42,10 @@ class StrategyEvolutionTests(unittest.TestCase):
     def test_chronological_splits_produce_complete_report(self):
         df = sample_candles()
         result = evaluate_candidate([df, df.assign(c=df["c"] * 1.001)], candidate_specs()[0])
-        self.assertEqual(set(result), {"train", "tune", "test"})
+        self.assertEqual(set(result), {"train", "tune", "test", "walk_forward_folds"})
         self.assertIn("trades", result["test"])
+        self.assertEqual(len(result["walk_forward_folds"]), 10)
+        self.assertEqual([f["fold"] for f in result["walk_forward_folds"]], list(range(1, 11)))
 
 
 if __name__ == "__main__":
