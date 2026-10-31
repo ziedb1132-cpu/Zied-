@@ -51,7 +51,7 @@ if db_path.exists():
     data["tracked"] = closed_tracked + open_tracked
     conn.close()
 
-for name in ("meta.json","strategy_evolution.json","strategy_discovery_lab.json","autonomous_strategy_report.json","top_gainer_learning.json","entry_method_memory.json","candle_patterns.json","news_sentiment.json"):
+for name in ("meta.json","strategy_evolution.json","strategy_discovery_lab.json","autonomous_strategy_report.json","strategy_meta_selector_report.json","top_gainer_learning.json","entry_method_memory.json","candle_patterns.json","news_sentiment.json"):
     value = safe_json(root / name)
     if value is not None:
         data["contents"][name] = value
