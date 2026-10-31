@@ -146,7 +146,7 @@ def _merge_metrics(chunks):
 def evaluate_candidate(frames, spec):
     """Ten chronological expanding walk-forward validation folds plus a final untouched 20% holdout."""
     train_chunks, fold_chunks, test_chunks = [], [], []
-    fold_reports = []
+    fold_chunks_by_idx = [[] for _ in range(WF_FOLDS)]
     for df in frames:
         if df is None or len(df) < 300:
             continue
@@ -166,12 +166,13 @@ def evaluate_candidate(frames, spec):
             fm = evaluate(df, sig, start, end)
             if fm["trades"]:
                 fold_chunks.append(fm)
-            fold_reports.append({"fold": fold + 1, "trades": fm["trades"],
-                                 "avg_net": fm["avg_net"], "profit_factor": fm["profit_factor"]})
+                fold_chunks_by_idx[fold].append(fm)
         # Final 20% holdout is evaluated only after tuning is complete.
         tm = evaluate(df, sig, int(n * 0.80) + HOLD, n - HOLD - 1)
         if tm["trades"]:
             test_chunks.append(tm)
+    fold_reports = [{"fold": i + 1, **_merge_metrics(chunks)}
+                    for i, chunks in enumerate(fold_chunks_by_idx)]
     return {"train": _merge_metrics(train_chunks), "tune": _merge_metrics(fold_chunks),
             "test": _merge_metrics(test_chunks), "walk_forward_folds": fold_reports}
 
@@ -221,6 +222,7 @@ def run_evolution(universe, get_candles, state_dir, telegram=None, max_coins=8):
 
     candidate_audit = [{
         "spec": row["spec"], "tune": row["tune"], "test": row["test"],
+        "walk_forward_folds": row["walk_forward_folds"],
         "eligible": not rejection_reasons(row),
         "rejection_reasons": rejection_reasons(row),
     } for row in results]
