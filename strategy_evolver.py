@@ -158,6 +158,24 @@ def run_evolution(universe, get_candles, state_dir, telegram=None, max_coins=8):
         splits = evaluate_candidate(frames, spec)
         results.append({"spec": spec, **splits})
     # Only tuning can rank candidates; holdout is consulted once for the selected candidate.
+    def rejection_reasons(row):
+        tune = row["tune"]
+        reasons = []
+        if tune["trades"] < MIN_TRADES:
+            reasons.append("Insufficient trades")
+        if tune["avg_net"] is None:
+            reasons.append("No measurable net expectancy")
+        elif tune["avg_net"] <= 0:
+            reasons.append("Net expectancy <= 0 after costs")
+        if tune["profit_factor"] <= 1.05:
+            reasons.append("Profit Factor <= 1.05")
+        return reasons
+
+    candidate_audit = [{
+        "spec": row["spec"], "tune": row["tune"], "test": row["test"],
+        "eligible": not rejection_reasons(row),
+        "rejection_reasons": rejection_reasons(row),
+    } for row in results]
     eligible = [r for r in results if r["tune"]["trades"] >= MIN_TRADES
                 and r["tune"]["avg_net"] is not None and r["tune"]["avg_net"] > 0
                 and r["tune"]["profit_factor"] > 1.05]
@@ -175,7 +193,7 @@ def run_evolution(universe, get_candles, state_dir, telegram=None, max_coins=8):
                              "max_hold_hours": HOLD}
     result = {"status": "accepted" if accepted else "no_candidate_passed",
               "last_run": now, "symbols": symbols, "candidate_count": len(results),
-              "eligible_on_tuning": len(eligible), "latest_tested": champion,
+              "eligible_on_tuning": len(eligible), "candidate_audit": candidate_audit, "latest_tested": champion,
               "champion": champion_to_store,
               "note": "Research-only: does not alter live entries. Holdout gate requires >=30 trades, positive net expectancy after 20 bps costs, PF > 1.05."}
     with open(path, "w", encoding="utf-8") as f:
