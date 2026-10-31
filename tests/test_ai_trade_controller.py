@@ -15,7 +15,11 @@ import numpy as np
 import zied_quant as zq
 import deep_learning_evolution as ext
 import ai_trade_controller as ctl
+import candle_news_intelligence as cni
 ext.install(zq)
+cni.fetch_news = lambda: []
+zq.get_candles = lambda *args, **kwargs: __import__('pandas').DataFrame()
+cni.install(zq)
 with tempfile.TemporaryDirectory() as d:
     zq.CFG["DIR"] = d
     idx = zq.FEATURE_COLS.index("1H_ret1")
@@ -42,6 +46,14 @@ with tempfile.TemporaryDirectory() as d:
 ctl.install(zq)
 ctl.install(zq)
 assert zq._pattern_controller_installed
+
+# Regression: both overlays must preserve rank_universe(paper=..., regimes=...).
+import pandas as pd
+X = pd.DataFrame(0.0, index=["AAA-USDT", "BBB-USDT"], columns=zq.FEATURE_COLS)
+vol = pd.Series([1_000_000.0, 2_000_000.0], index=X.index)
+regimes = pd.Series(["BULL", "RANGE"], index=X.index)
+ranked = zq.rank_universe(X, vol, paper=None, regimes=regimes)
+assert len(ranked) == 2 and set(ranked.index) == set(X.index), ranked
 """
         proc = subprocess.run(
             [sys.executable, "-c", script],
