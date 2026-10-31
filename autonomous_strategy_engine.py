@@ -218,8 +218,8 @@ def _evaluate(df, features, spec, start, end):
     if not len(x):
         return {"trades":0,"avg_net":None,"win_rate":None,"profit_factor":0.0,
                 "max_drawdown":None,"sharpe":None}
-    equity = np.cumprod(1+x)
-    peaks = np.maximum.accumulate(np.r_[1.0,equity])[1:]
+    equity = np.r_[1.0, np.cumprod(1+x)]
+    peaks = np.maximum.accumulate(equity)
     dd = equity/peaks-1
     std = float(x.std(ddof=1)) if len(x)>1 else 0.0
     return {"trades":int(len(x)),"avg_net":float(x.mean()),
