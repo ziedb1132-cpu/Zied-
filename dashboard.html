@@ -584,12 +584,12 @@ function renderIndependentPages(){
  const closedWithReturn=closed.filter(r=>r.ret!==null&&r.ret!==undefined&&Number.isFinite(Number(r.ret)));
  const regimeGroups={};
  closedWithReturn.forEach(r=>{const key=regimeOf(r);(regimeGroups[key]??=[]).push(r);});
- const regimeRows=Object.entries(regimeGroups).map(([regime,rows])=>{
+ const marketRegimeRows=Object.entries(regimeGroups).map(([regime,rows])=>{
   const values=rows.map(r=>Number(r.ret)),wins=values.filter(v=>v>0).length,losses=values.filter(v=>v<0).length;
   const gp=values.filter(v=>v>0).reduce((a,v)=>a+v,0),gl=-values.filter(v=>v<0).reduce((a,v)=>a+v,0);
   return {regime,count:rows.length,wins,losses,winRate:wins/rows.length,avg:values.reduce((a,v)=>a+v,0)/rows.length,net:values.reduce((a,v)=>a+v,0),pf:gl>0?gp/gl:(gp>0?Infinity:null)};
  }).sort((a,b)=>b.count-a.count);
- const knownRegimes=regimeRows.filter(r=>r.regime!=="UNKNOWN").length,totalRegimeSignals=closedWithReturn.length;
+ const knownRegimes=marketRegimeRows.filter(r=>r.regime!=="UNKNOWN").length,totalRegimeSignals=closedWithReturn.length;
  const avgRegime=totalRegimeSignals?closedWithReturn.reduce((n,r)=>n+Number(r.ret),0)/totalRegimeSignals:null;
  const winRegime=totalRegimeSignals?closedWithReturn.filter(r=>Number(r.ret)>0).length/totalRegimeSignals:null;
  const openRegime=state.tracked.filter(r=>String(r.status).toUpperCase()==="OPEN"&&regimeOf(r)!=="UNKNOWN").sort((a,b)=>Number(b.opened_ts||0)-Number(a.opened_ts||0))[0];
@@ -600,7 +600,7 @@ function renderIndependentPages(){
   metric("Rendement moyen",avgRegime===null?na:(avgRegime*100).toFixed(3)+"%","Signaux clôturés avec rendement")+
   metric("Win rate global",winRegime===null?na:(winRegime*100).toFixed(1)+"%","Calculé sur les signaux clôturés");
  const regimeCols=[["Régime",r=>regimeName(r)],["Signaux clôturés","count"],["Gagnants","wins"],["Perdants","losses"],["Win rate",r=>(r.winRate*100).toFixed(1)+"%"],["Rendement moyen",r=>(r.avg*100).toFixed(3)+"%"],["Rendement cumulé",r=>(r.net*100).toFixed(3)+"%"],["Profit factor",r=>r.pf===null?na:Number.isFinite(r.pf)?r.pf.toFixed(2):"∞"]];
- $("regimeTable").innerHTML=regimeRows.length?table(regimeRows,regimeCols):'<div class="empty">Aucun signal clôturé avec un rendement exploitable. Les statistiques apparaîtront après la première clôture exportée.</div>';
+ $("regimeTable").innerHTML=marketRegimeRows.length?table(marketRegimeRows,regimeCols):'<div class="empty">Aucun signal clôturé avec un rendement exploitable. Les statistiques apparaîtront après la première clôture exportée.</div>';
  const regimeNotice=document.querySelector("#page-marketRegime .notice");
  if(regimeNotice)regimeNotice.textContent=knownRegimes
   ?"Les statistiques sont calculées à partir des signaux suivis et clôturés. Les lignes « Non renseigné » indiquent les enregistrements sans régime dans l’export."
