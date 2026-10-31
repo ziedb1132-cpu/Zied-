@@ -1,0 +1,413 @@
+{
+  "updated_at": 1793475600.3885903,
+  "feeds": [
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://cointelegraph.com/rss",
+    "https://decrypt.co/feed",
+    "https://cryptoslate.com/feed/"
+  ],
+  "headline_count": 104,
+  "coins": {
+    "BTC-USDT": {
+      "score": -0.05767373920066433,
+      "headlines": [
+        {
+          "title": "Bitcoin Treasury Datavault AI Says It Can’t Access Its BTC, Stock Tanks",
+          "link": "https://decrypt.co/382116/bitcoin-treasury-datavault-ai-stock-crashes-cant-access-btc",
+          "published": "Wed, 28 Oct 2026 21:46:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "AI Security Startup Upwind Raises $400M at $3.8B Valuation",
+          "link": "https://decrypt.co/382101/ai-security-startup-upwind-raises-400m",
+          "published": "Wed, 28 Oct 2026 20:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "More Americans Have Tried Crypto, But Few Are Sticking With It: Survey",
+          "link": "https://decrypt.co/382100/more-americans-tried-crypto-few-staying-survey",
+          "published": "Wed, 28 Oct 2026 19:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Fed Stands Pat, Bitcoin Holds Steady—But a December Rate Hike Is in Play",
+          "link": "https://decrypt.co/382092/fed-hold-interest-rate-steady-bitcoin-december-rate-hike",
+          "published": "Wed, 28 Oct 2026 18:25:18 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Binance hack rattles markets as BNB falls 8%, Bitcoin nears $77K",
+          "link": "https://cointelegraph.com/markets/binance-hack-rattles-crypto-markets-bnb-bitcoin-slide?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 29 Oct 2026 23:24:21 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": -1.0
+        }
+      ]
+    },
+    "ETH-USDT": {
+      "score": -0.00476591320149473,
+      "headlines": [
+        {
+          "title": "Bitcoin Treasury Datavault AI Says It Can’t Access Its BTC, Stock Tanks",
+          "link": "https://decrypt.co/382116/bitcoin-treasury-datavault-ai-stock-crashes-cant-access-btc",
+          "published": "Wed, 28 Oct 2026 21:46:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "AI Security Startup Upwind Raises $400M at $3.8B Valuation",
+          "link": "https://decrypt.co/382101/ai-security-startup-upwind-raises-400m",
+          "published": "Wed, 28 Oct 2026 20:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "More Americans Have Tried Crypto, But Few Are Sticking With It: Survey",
+          "link": "https://decrypt.co/382100/more-americans-tried-crypto-few-staying-survey",
+          "published": "Wed, 28 Oct 2026 19:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Fed Stands Pat, Bitcoin Holds Steady—But a December Rate Hike Is in Play",
+          "link": "https://decrypt.co/382092/fed-hold-interest-rate-steady-bitcoin-december-rate-hike",
+          "published": "Wed, 28 Oct 2026 18:25:18 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Binance hack rattles markets as BNB falls 8%, Bitcoin nears $77K",
+          "link": "https://cointelegraph.com/markets/binance-hack-rattles-crypto-markets-bnb-bitcoin-slide?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 29 Oct 2026 23:24:21 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": -1.0
+        }
+      ]
+    },
+    "HYPE-USDT": {
+      "score": 0.0,
+      "headlines": [
+        {
+          "title": "Hyperliquid's HYPE Jumps 13% as NYSE Owner ICE Moves to Bring Its Perpetual Futures to the US",
+          "link": "https://decrypt.co/382149/hyperliquid-hype-jumps-nyse-owner-ice-perpetual-futures-us",
+          "published": "Thu, 29 Oct 2026 15:59:48 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        }
+      ]
+    },
+    "ZEC-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SOL-USDT": {
+      "score": -0.00476591320149473,
+      "headlines": [
+        {
+          "title": "Bitcoin Treasury Datavault AI Says It Can’t Access Its BTC, Stock Tanks",
+          "link": "https://decrypt.co/382116/bitcoin-treasury-datavault-ai-stock-crashes-cant-access-btc",
+          "published": "Wed, 28 Oct 2026 21:46:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "AI Security Startup Upwind Raises $400M at $3.8B Valuation",
+          "link": "https://decrypt.co/382101/ai-security-startup-upwind-raises-400m",
+          "published": "Wed, 28 Oct 2026 20:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "More Americans Have Tried Crypto, But Few Are Sticking With It: Survey",
+          "link": "https://decrypt.co/382100/more-americans-tried-crypto-few-staying-survey",
+          "published": "Wed, 28 Oct 2026 19:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Fed Stands Pat, Bitcoin Holds Steady—But a December Rate Hike Is in Play",
+          "link": "https://decrypt.co/382092/fed-hold-interest-rate-steady-bitcoin-december-rate-hike",
+          "published": "Wed, 28 Oct 2026 18:25:18 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Binance hack rattles markets as BNB falls 8%, Bitcoin nears $77K",
+          "link": "https://cointelegraph.com/markets/binance-hack-rattles-crypto-markets-bnb-bitcoin-slide?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 29 Oct 2026 23:24:21 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": -1.0
+        }
+      ]
+    },
+    "TRX-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "PEPE-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XRP-USDT": {
+      "score": -0.00476591320149473,
+      "headlines": [
+        {
+          "title": "Bitcoin Treasury Datavault AI Says It Can’t Access Its BTC, Stock Tanks",
+          "link": "https://decrypt.co/382116/bitcoin-treasury-datavault-ai-stock-crashes-cant-access-btc",
+          "published": "Wed, 28 Oct 2026 21:46:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "AI Security Startup Upwind Raises $400M at $3.8B Valuation",
+          "link": "https://decrypt.co/382101/ai-security-startup-upwind-raises-400m",
+          "published": "Wed, 28 Oct 2026 20:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "More Americans Have Tried Crypto, But Few Are Sticking With It: Survey",
+          "link": "https://decrypt.co/382100/more-americans-tried-crypto-few-staying-survey",
+          "published": "Wed, 28 Oct 2026 19:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Fed Stands Pat, Bitcoin Holds Steady—But a December Rate Hike Is in Play",
+          "link": "https://decrypt.co/382092/fed-hold-interest-rate-steady-bitcoin-december-rate-hike",
+          "published": "Wed, 28 Oct 2026 18:25:18 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Binance hack rattles markets as BNB falls 8%, Bitcoin nears $77K",
+          "link": "https://cointelegraph.com/markets/binance-hack-rattles-crypto-markets-bnb-bitcoin-slide?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 29 Oct 2026 23:24:21 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": -1.0
+        }
+      ]
+    },
+    "NEAR-USDT": {
+      "score": 0.5,
+      "headlines": [
+        {
+          "title": "Jupiter Lend’s withdrawal liquidity rebounds from near zero to 29 million USDC",
+          "link": "https://cryptoslate.com/jupiter-lend-usdc-withdrawal-liquidity-rebounds/",
+          "published": "Sat, 31 Oct 2026 19:10:09 +0000",
+          "source": "cryptoslate.com",
+          "sentiment": 0.5
+        }
+      ]
+    },
+    "DOGE-USDT": {
+      "score": -0.00476591320149473,
+      "headlines": [
+        {
+          "title": "Bitcoin Treasury Datavault AI Says It Can’t Access Its BTC, Stock Tanks",
+          "link": "https://decrypt.co/382116/bitcoin-treasury-datavault-ai-stock-crashes-cant-access-btc",
+          "published": "Wed, 28 Oct 2026 21:46:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "AI Security Startup Upwind Raises $400M at $3.8B Valuation",
+          "link": "https://decrypt.co/382101/ai-security-startup-upwind-raises-400m",
+          "published": "Wed, 28 Oct 2026 20:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "More Americans Have Tried Crypto, But Few Are Sticking With It: Survey",
+          "link": "https://decrypt.co/382100/more-americans-tried-crypto-few-staying-survey",
+          "published": "Wed, 28 Oct 2026 19:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Fed Stands Pat, Bitcoin Holds Steady—But a December Rate Hike Is in Play",
+          "link": "https://decrypt.co/382092/fed-hold-interest-rate-steady-bitcoin-december-rate-hike",
+          "published": "Wed, 28 Oct 2026 18:25:18 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Binance hack rattles markets as BNB falls 8%, Bitcoin nears $77K",
+          "link": "https://cointelegraph.com/markets/binance-hack-rattles-crypto-markets-bnb-bitcoin-slide?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 29 Oct 2026 23:24:21 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": -1.0
+        }
+      ]
+    },
+    "UNI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAUT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ZRO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "LIT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SUI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "WLD-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "BNB-USDT": {
+      "score": -0.20381273056119578,
+      "headlines": [
+        {
+          "title": "Bitcoin Treasury Datavault AI Says It Can’t Access Its BTC, Stock Tanks",
+          "link": "https://decrypt.co/382116/bitcoin-treasury-datavault-ai-stock-crashes-cant-access-btc",
+          "published": "Wed, 28 Oct 2026 21:46:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "AI Security Startup Upwind Raises $400M at $3.8B Valuation",
+          "link": "https://decrypt.co/382101/ai-security-startup-upwind-raises-400m",
+          "published": "Wed, 28 Oct 2026 20:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "More Americans Have Tried Crypto, But Few Are Sticking With It: Survey",
+          "link": "https://decrypt.co/382100/more-americans-tried-crypto-few-staying-survey",
+          "published": "Wed, 28 Oct 2026 19:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Fed Stands Pat, Bitcoin Holds Steady—But a December Rate Hike Is in Play",
+          "link": "https://decrypt.co/382092/fed-hold-interest-rate-steady-bitcoin-december-rate-hike",
+          "published": "Wed, 28 Oct 2026 18:25:18 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Binance hack rattles markets as BNB falls 8%, Bitcoin nears $77K",
+          "link": "https://cointelegraph.com/markets/binance-hack-rattles-crypto-markets-bnb-bitcoin-slide?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 29 Oct 2026 23:24:21 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": -1.0
+        }
+      ]
+    },
+    "LINK-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ENA-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "BCH-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "LSK-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "GRAM-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "STX-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "RSR-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ONDO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "AAVE-USDT": {
+      "score": 0.0,
+      "headlines": [
+        {
+          "title": "Aave reopens frozen markets but blocks new collateral loans",
+          "link": "https://cryptoslate.com/aave-reopens-frozen-markets-but-blocks-new-collateral-loans/",
+          "published": "Sat, 31 Oct 2026 03:40:43 +0000",
+          "source": "cryptoslate.com",
+          "sentiment": 0.0
+        }
+      ]
+    },
+    "RE-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "OP-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ZAMA-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "OKB-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XCRCL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SOPH-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ARB-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "STRK-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XPL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "LTC-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "PUMP-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "NFT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "FIL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XLM-USDT": {
+      "score": 0.0,
+      "headlines": []
+    }
+  },
+  "note": "Headline sentiment is a lightweight keyword heuristic; missing news is neutral."
+}

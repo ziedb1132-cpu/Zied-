@@ -1,0 +1,108 @@
+{
+  "format": 1,
+  "chunk_size": 47185920,
+  "files": [
+    {
+      "path": "autonomous_strategy_memory.json",
+      "size": 1317604,
+      "sha256": "bc119c50c02abe7bcdcceaa1633d00617f8e07cb4cbacd9519846e000c89e8aa",
+      "chunks": [
+        "parts/00000000.part"
+      ]
+    },
+    {
+      "path": "autonomous_strategy_report.json",
+      "size": 40229,
+      "sha256": "172590f1e4b735d998896db64c74b2d812d2b6dc625b1e9de71cff7b8afc253c",
+      "chunks": [
+        "parts/00000001.part"
+      ]
+    },
+    {
+      "path": "backtest.json",
+      "size": 954,
+      "sha256": "4e8296a1f5041d17c3c0deb0d6b599e9d5fb7d8eeda873dd67ee3aa6d6a19dc7",
+      "chunks": [
+        "parts/00000002.part"
+      ]
+    },
+    {
+      "path": "candle_patterns.json",
+      "size": 8981,
+      "sha256": "ad06e26d69f1d2e8cda04cc356869a5d9d7d692c07157fc0293588c42063a618",
+      "chunks": [
+        "parts/00000003.part"
+      ]
+    },
+    {
+      "path": "news_sentiment.json",
+      "size": 14616,
+      "sha256": "92fb6d16293f75e533b71a7e4026bc1f6aef50a015de1ad81bcbda7f3bbc5c6e",
+      "chunks": [
+        "parts/00000004.part"
+      ]
+    },
+    {
+      "path": "paper.db",
+      "size": 289918976,
+      "sha256": "46368e695ea4b24838d1d4c1ccc4cf20383f9145018a7eb62973322181a83070",
+      "chunks": [
+        "parts/00000005.part",
+        "parts/00000006.part",
+        "parts/00000007.part",
+        "parts/00000008.part",
+        "parts/00000009.part",
+        "parts/00000010.part",
+        "parts/00000011.part"
+      ]
+    },
+    {
+      "path": "ranking.csv",
+      "size": 18350,
+      "sha256": "fa9b8ab059ebb9cb05c2827d9b5be6c74520d1d9682e0ffbc6851af3162b7bfd",
+      "chunks": [
+        "parts/00000012.part"
+      ]
+    },
+    {
+      "path": "strategy_discovery_lab.json",
+      "size": 999,
+      "sha256": "a88f968830d1326f1af88410362a0c20e60a3f31ee1140066684eed88b8a7cd6",
+      "chunks": [
+        "parts/00000013.part"
+      ]
+    },
+    {
+      "path": "strategy_evolution.json",
+      "size": 362909,
+      "sha256": "faa06b690891592c826beaedaffac77d80f2e7cb54abc51eba1340820753302e",
+      "chunks": [
+        "parts/00000014.part"
+      ]
+    },
+    {
+      "path": "strategy_meta_selector_memory.json",
+      "size": 2588,
+      "sha256": "877fce06b496638ad86f6f70dd8465d3a55acae5404654d91d67af6844e8fcce",
+      "chunks": [
+        "parts/00000015.part"
+      ]
+    },
+    {
+      "path": "strategy_meta_selector_report.json",
+      "size": 526,
+      "sha256": "6e3476715ea024d84dd2aebf99133b59248a6cfe0662ee0e5e0e2e7105c5b321",
+      "chunks": [
+        "parts/00000016.part"
+      ]
+    },
+    {
+      "path": "train.npz",
+      "size": 18971898,
+      "sha256": "832e2b2d517489403e564350008611f9a9b01826ca51da259cb1ee4cb4858199",
+      "chunks": [
+        "parts/00000017.part"
+      ]
+    }
+  ]
+}
