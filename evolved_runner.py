@@ -51,28 +51,10 @@ zied_quant.retrain = _retrain_with_intelligence_diagnostics
 
 _original_scan = zied_quant.scan
 def _scan_with_strategy_discovery(brain, paper, universe=None, cycle=0, trade=True):
-    result = _original_scan(brain, paper, universe, cycle, trade)
-    try:
-        uni = universe if universe is not None else zied_quant.get_universe()
-        if not uni.empty:
-            outcome = strategy_evolver.run_evolution(
-                uni, zied_quant.get_candles, zied_quant.CFG["DIR"], zied_quant.tg)
-            zied_quant.log.info("strategy evolution: %s", outcome.get("status"))
-        lab_outcome = strategy_discovery_lab.run_lab(zied_quant, paper)
-        zied_quant.log.info("strategy discovery lab: %s", lab_outcome.get("status"))
-        discovery = autonomous_strategy_engine.run_discovery(
-            uni, zied_quant.get_candles, zied_quant.CFG["DIR"], zied_quant.tg,
-            batch_size=10, max_coins=5)
-        meta_report = strategy_meta_selector.run_meta_selector(
-            uni, zied_quant.get_candles, zied_quant.CFG["DIR"],
-            discovery_report=discovery, telegram=zied_quant.tg, max_symbols=5)
-        zied_quant.log.info(
-            "strategy meta-selector: cycle=%s shadow_closed=%s approved_regimes=%s",
-            meta_report.get("cycle"), meta_report.get("closed_shadow_trades"),
-            sum(len(v) for v in meta_report.get("selected_by_regime", {}).values()))
-    except Exception as exc:
-        zied_quant.log.warning("strategy evolution skipped after error: %s", exc)
-    return result
+    # Strategy research runs once, from run_comprehensive_backtest after the
+    # core walk-forward backtest. Do not repeat it during the scan.
+    return _original_scan(brain, paper, universe, cycle, trade)
+
 zied_quant.scan = _scan_with_strategy_discovery
 
 
@@ -102,6 +84,13 @@ def run_comprehensive_backtest(universe=None, paper=None):
         report["layers"]["six_strategy_families"] = result
     except Exception as exc:
         report["layers"]["six_strategy_families"] = {"status": "error", "error": str(exc)}
+
+    # Run the strategy discovery lab once and keep its output in this canonical report.
+    try:
+        lab = strategy_discovery_lab.run_lab(zied_quant, paper)
+        report["layers"]["strategy_discovery_lab"] = lab
+    except Exception as exc:
+        report["layers"]["strategy_discovery_lab"] = {"status": "error", "error": str(exc)}
 
     # Evolve symbolic rules over the causal 546-feature library and preserve its archive.
     try:
