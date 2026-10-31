@@ -83,8 +83,9 @@ def install(zq):
         return
     original_rank = zq.rank_universe
 
-    def rank_with_patterns(X, vol24):
-        base = original_rank(X, vol24)
+    def rank_with_patterns(X, vol24, *args, **kwargs):
+        # Preserve the full rank_universe API (paper, regimes, and future options).
+        base = original_rank(X, vol24, *args, **kwargs)
         try:
             ps = pattern_scores(zq, X.loc[base.index, zq.FEATURE_COLS].to_numpy())
             # A modest ranking influence helps matching setups enter the AI's candidate set.
