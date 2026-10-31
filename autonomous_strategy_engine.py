@@ -97,12 +97,10 @@ def _new_spec(rng, generation, parent=None):
             item["threshold"] = rng.choice(THRESHOLDS[feature])
             item["op"] = rng.choice(["gt", "lt"])
         count = max(2, count + len(conditions))
-    used = {x["feature"] for x in conditions}
+    # Repeated features are allowed with different thresholds/operators; this
+    # permits arbitrarily deep rule trees without a hard condition-count ceiling.
     while len(conditions) < count:
         feature = rng.choice(FEATURES)
-        if feature in used:
-            continue
-        used.add(feature)
         conditions.append({"feature": feature, "op": rng.choice(["gt", "lt"]),
                            "threshold": rng.choice(THRESHOLDS[feature])})
     rng.shuffle(conditions)
