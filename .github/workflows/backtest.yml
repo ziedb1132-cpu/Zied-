@@ -86,6 +86,9 @@ jobs:
           git add -f zied_data_store dashboard_data.json
           git commit -m "Persist comprehensive backtest research state [skip ci]"
           git push --force origin HEAD:state-data
+          git checkout --detach -f "$GITHUB_SHA"
+          rm -rf zied_data zied_data_store
+          cp -a "$backup/zied_data" ./zied_data
       - uses: actions/upload-artifact@v4
         if: always()
         with:
