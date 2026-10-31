@@ -136,7 +136,6 @@ def run_comprehensive_backtest():
             "promotion_gate": "500 wins + 500 losses plus independent holdout",
             "live_integration": False,
         }
-        paper.close()
     except Exception as exc:
         report["layers"]["exit_policy_evolution"] = {"status": "error", "error": str(exc)}
 
