@@ -44,6 +44,19 @@ def candidate_specs():
         specs.append({"kind": "breakout", "lookback": lookback, "vol_mult": vol_mult})
     for rsi_low in (20, 25, 30, 35):
         specs.append({"kind": "rsi_reversal", "rsi_low": rsi_low})
+    # Additional independent rule families broaden research without touching live signals.
+    for fast, slow, rsi_floor, rsi_ceiling in itertools.product(
+            (8, 12, 16), (24, 36, 48), (45, 50), (65, 72)):
+        if fast < slow and rsi_floor < rsi_ceiling:
+            specs.append({"kind": "momentum_continuation", "fast": fast, "slow": slow,
+                          "rsi_floor": rsi_floor, "rsi_ceiling": rsi_ceiling})
+    for lookback, vol_mult, trend_filter in itertools.product(
+            (12, 24, 36), (0.8, 1.0, 1.25), (True, False)):
+        specs.append({"kind": "range_breakout", "lookback": lookback,
+                      "vol_mult": vol_mult, "trend_filter": trend_filter})
+    for rsi_low, trend_filter in itertools.product((25, 30, 35, 40), (True, False)):
+        specs.append({"kind": "rsi_reversal_confirmed", "rsi_low": rsi_low,
+                      "trend_filter": trend_filter})
     return specs
 
 
@@ -57,6 +70,19 @@ def signal_for(df, spec):
     elif kind == "breakout":
         high = h.shift(1).rolling(spec["lookback"], min_periods=spec["lookback"]).max()
         sig = (c > high) & (v > vm * spec["vol_mult"]) & (c > el)
+    elif kind == "momentum_continuation":
+        fast = c.ewm(span=spec["fast"], adjust=False).mean()
+        slow = c.ewm(span=spec["slow"], adjust=False).mean()
+        sig = ((fast > slow) & (c > es) & (rsi >= spec["rsi_floor"])
+               & (rsi < spec["rsi_ceiling"]))
+    elif kind == "range_breakout":
+        high = h.shift(1).rolling(spec["lookback"], min_periods=spec["lookback"]).max()
+        trend_ok = (c > el) if spec["trend_filter"] else pd.Series(True, index=c.index)
+        sig = (c > high) & (v > vm * spec["vol_mult"]) & trend_ok
+    elif kind == "rsi_reversal_confirmed":
+        low = spec["rsi_low"]
+        trend_ok = (c > es) if spec["trend_filter"] else pd.Series(True, index=c.index)
+        sig = (rsi.shift(1) < low) & (rsi >= low) & trend_ok
     else:
         low = spec["rsi_low"]
         sig = (rsi.shift(1) < low) & (rsi >= low) & (c > es)
