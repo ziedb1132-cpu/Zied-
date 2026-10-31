@@ -18,7 +18,10 @@ class StrategyEvolutionTests(unittest.TestCase):
     def test_candidate_generator_has_multiple_rule_families(self):
         specs = candidate_specs()
         self.assertGreater(len(specs), 20)
-        self.assertEqual({s["kind"] for s in specs}, {"trend_pullback", "breakout", "rsi_reversal"})
+        self.assertEqual({s["kind"] for s in specs}, {
+            "trend_pullback", "breakout", "rsi_reversal",
+            "momentum_continuation", "range_breakout", "rsi_reversal_confirmed",
+        })
 
     def test_signals_are_boolean_and_correct_length(self):
         df = sample_candles()
