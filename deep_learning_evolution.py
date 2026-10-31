@@ -72,23 +72,53 @@ def _install_features(zq):
     old_tf_isolated = types.FunctionType(
         old_tf.__code__, old_globals, old_tf.__name__, old_tf.__defaults__, old_tf.__closure__
     )
-    new_names = old_names + EXTRA_NAMES
+    # Load only independently approved symbolic features. Their names become part
+    # of the model schema, so the cache/model version changes when the registry does.
+    registry_path = os.path.join(zq.CFG["DIR"], "derived_strategy_features.json")
+    try:
+        with open(registry_path, "r", encoding="utf-8") as fh:
+            registry = json.load(fh)
+    except (OSError, ValueError):
+        registry = {"features": []}
+    approved = [r for r in registry.get("features", [])
+                if isinstance(r, dict) and r.get("status") == "approved"]
+    derived_names = sorted({
+        r.get("feature_name") for r in approved
+        if isinstance(r.get("feature_name"), str) and r.get("feature_name")
+    })
+    new_names = old_names + EXTRA_NAMES + derived_names
     def expanded_tf_features(df):
         base = old_tf_isolated(df)
         extra = _extra_features(df)
         extra.index = base.index
-        return pd.concat([base, extra], axis=1)[new_names]
+        combined = pd.concat([base, extra], axis=1)
+        if derived_names:
+            try:
+                from autonomous_strategy_engine import build_features as build_discovery_features
+                from derived_strategy_features import approved_feature_matrix
+                discovery = build_discovery_features(df)
+                derived = approved_feature_matrix(discovery, registry)
+                # Keep schema deterministic; missing/uncomputable approved columns are NaN.
+                for name in derived_names:
+                    combined[name] = derived[name].reindex(combined.index) if name in derived else np.nan
+            except Exception as exc:
+                zq.log.warning("approved derived feature computation skipped: %s", exc)
+                for name in derived_names:
+                    combined[name] = np.nan
+        return combined.reindex(columns=new_names)
     zq.NAMES = new_names
     zq.TF_COLS = [f"{tf}_{n}" for tf in zq.TFS for n in new_names]
     zq.CTX_COLS = [f"ctx_{n}" for n in zq.CTX_NAMES]
     zq.FEATURE_COLS = zq.TF_COLS + zq.CTX_COLS
     zq.N_FEATURES = len(zq.FEATURE_COLS)
-    if zq.N_FEATURES != 300:
-        raise RuntimeError(f"Expected 300 features, got {zq.N_FEATURES}")
+    if zq.N_FEATURES < 300:
+        raise RuntimeError(f"Expected at least 300 features, got {zq.N_FEATURES}")
     zq.tf_features = expanded_tf_features
-    # Old cached arrays/models use 200 columns and must be rebuilt, not padded.
-    zq.DATA_VER = 4
-    zq.CFG["REQUIRED_SIGNAL_FEATURES"] = 300
+    # Schema hash forces cached matrices and models to rebuild when approved features change.
+    import hashlib
+    schema = "|".join(zq.FEATURE_COLS).encode("utf-8")
+    zq.DATA_VER = 4 + int(hashlib.sha256(schema).hexdigest()[:8], 16)
+    zq.CFG["REQUIRED_SIGNAL_FEATURES"] = zq.N_FEATURES
     zq.CFG["TOP_AI"] = 50
     zq.CFG["LOG_TOP"] = 50
     zq.CFG["MAX_OPEN"] = 10
