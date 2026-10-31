@@ -95,10 +95,11 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
     memory_path = os.path.join(state_dir, "strategy_meta_selector_memory.json")
     report_path = os.path.join(state_dir, "strategy_meta_selector_report.json")
     memory = _load(memory_path) or {
-        "schema": 1, "cycle": 0, "positions": {}, "closed_trades": [],
+        "schema": 1, "cycle": 0, "positions": {}, "pending_entries": {}, "closed_trades": [],
         "last_seen_bar": {}, "strategy_specs": {}, "last_report": {}
     }
     memory.setdefault("positions", {})
+    memory.setdefault("pending_entries", {})
     memory.setdefault("closed_trades", [])
     memory.setdefault("last_seen_bar", {})
     memory.setdefault("strategy_specs", {})
@@ -161,36 +162,46 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
             _close_position(pos, item["close"], "TIME_EXIT", item["bar"], memory["closed_trades"])
             del memory["positions"][key]
 
-    # New independent shadow entries. One open position per strategy and symbol.
+    # Fill queued signals at the next observed hourly candle open.
+    for key, pending in list(memory["pending_entries"].items()):
+        item = market.get(pending["symbol"])
+        if not item or item["bar"] == pending.get("signal_bar"):
+            continue
+        entry = float(item["df"].iloc[-1]["o"])
+        if not np.isfinite(entry) or entry <= 0:
+            del memory["pending_entries"][key]
+            continue
+        atr = float(pending["atr_pct"])
+        spec = memory["strategy_specs"].get(pending["strategy_id"], {})
+        memory["positions"][key] = {
+            "strategy_id": pending["strategy_id"], "symbol": pending["symbol"],
+            "entry_regime": pending["entry_regime"], "entry_price": entry,
+            "stop_price": entry * (1.0 - float(spec.get("sl_atr", 1.5)) * atr),
+            "target_price": entry * (1.0 + float(spec.get("tp_atr", 2.0)) * atr),
+            "max_hold": int(spec.get("max_hold", 24)), "bars_held": 0,
+            "entry_bar": item["bar"], "last_bar": item["bar"], "opened_at": time.time()
+        }
+        del memory["pending_entries"][key]
+
+    # New signals are queued, never filled on the candle that generated them.
     for symbol, item in market.items():
         for candidate in candidates:
-            sid = candidate.get("id")
-            spec = candidate.get("spec")
+            sid, spec = candidate.get("id"), candidate.get("spec")
             if not sid or not isinstance(spec, dict):
                 continue
             key = sid + "|" + symbol
-            if key in memory["positions"] or memory["last_seen_bar"].get(key) == item["bar"]:
+            if (key in memory["positions"] or key in memory["pending_entries"]
+                    or memory["last_seen_bar"].get(key) == item["bar"]):
                 continue
             try:
-                if not bool(_signals(item["features"], spec)[-1]):
-                    memory["last_seen_bar"][key] = item["bar"]
-                    continue
-                entry = item["close"]
-                atr = item["atr_pct"]
-                sl_mult = float(spec.get("sl_atr", 1.5))
-                tp_mult = float(spec.get("tp_atr", 2.0))
-                memory["positions"][key] = {
-                    "strategy_id": sid, "symbol": symbol, "entry_regime": item["regime"],
-                    "entry_price": entry, "stop_price": entry * (1.0 - sl_mult * atr),
-                    "target_price": entry * (1.0 + tp_mult * atr),
-                    "max_hold": int(spec.get("max_hold", 24)), "bars_held": 0,
-                    "entry_bar": item["bar"], "last_bar": item["bar"],
-                    "opened_at": time.time()
-                }
+                if bool(_signals(item["features"], spec)[-1]):
+                    memory["pending_entries"][key] = {
+                        "strategy_id": sid, "symbol": symbol, "entry_regime": item["regime"],
+                        "signal_bar": item["bar"], "atr_pct": item["atr_pct"]
+                    }
                 memory["last_seen_bar"][key] = item["bar"]
             except (KeyError, TypeError, ValueError, IndexError):
                 continue
-
     # Learn a separate performance profile for every strategy x entry regime.
     groups = defaultdict(list)
     for trade in memory["closed_trades"]:
@@ -220,6 +231,7 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
             s: x["regime"] for s, x in market.items()},
         "candidates_monitored": len(candidates),
         "open_shadow_positions": len(memory["positions"]),
+        "pending_shadow_entries": len(memory["pending_entries"]),
         "closed_shadow_trades": len(memory["closed_trades"]),
         "profiles": profiles, "selected_by_regime": selected,
         "approval_rules": {"min_trades": MIN_SHADOW_TRADES,
