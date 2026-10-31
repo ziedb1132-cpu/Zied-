@@ -1794,6 +1794,10 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
             log.warning("feature drift monitoring skipped: %s", exc)
     current_regimes = pd.Series({i: classify_market_regime(X.loc[i]) for i in X.index})
     score = rank_universe(X, uni["vol"], paper=paper, regimes=current_regimes)
+    for regime, info in score.attrs.get("adaptive_diagnostics", {}).items():
+        log.info("adaptive ranking regime=%s samples=%d mode=%s weights=%s", regime,
+                 info["samples"], "LEARNED" if info["adaptive"] else "BASELINE",
+                 json.dumps(info["weights"], sort_keys=True))
     R = pd.DataFrame({"ranking_score": score, "score": score})
     R.attrs["adaptive_diagnostics"] = score.attrs.get("adaptive_diagnostics", {})
     R["rank"] = np.arange(1, len(R) + 1)
