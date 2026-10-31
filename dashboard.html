@@ -579,8 +579,32 @@ function renderIndependentPages(){
  $("featureMetrics").innerHTML=metric("Coins analysées",coins.length||na,"candle_patterns.json")+metric("Motifs détectés",patternRows.length,"Motifs publiés")+metric("Features par signal",na,"Non inclus dans le flux actuel");
  $("featurePatterns").innerHTML=table(patternRows.slice(0,100),[["Actif","coin"],["Motif","name"],["Direction","direction"],["Confiance",r=>r.confidence==null?na:(Number(r.confidence)*100).toFixed(1)+"%"]]);
  $("featureNote").textContent="Importance des features, relation features/résultats et drift : N/A jusqu’à publication de rapports réels.";
- $("regimeMetrics").innerHTML=metric("Régimes détectés",na,"Champ regime absent")+metric("Rendement moyen par régime",na,"Données non publiées")+metric("Win rate par régime",na,"Données non publiées");
- $("regimeTable").innerHTML=table([], [["Régime","regime"],["Signaux","count"],["Win rate","winRate"],["Rendement net","net"]]);
+ // Derive market-regime performance from exported tracked signal records.
+ const regimeOf=r=>String(r.regime||r.market_regime||r.marketRegime||"UNKNOWN").trim().toUpperCase()||"UNKNOWN";
+ const closedWithReturn=closed.filter(r=>r.ret!==null&&r.ret!==undefined&&Number.isFinite(Number(r.ret)));
+ const regimeGroups={};
+ closedWithReturn.forEach(r=>{const key=regimeOf(r);(regimeGroups[key]??=[]).push(r);});
+ const regimeRows=Object.entries(regimeGroups).map(([regime,rows])=>{
+  const values=rows.map(r=>Number(r.ret)),wins=values.filter(v=>v>0).length,losses=values.filter(v=>v<0).length;
+  const gp=values.filter(v=>v>0).reduce((a,v)=>a+v,0),gl=-values.filter(v=>v<0).reduce((a,v)=>a+v,0);
+  return {regime,count:rows.length,wins,losses,winRate:wins/rows.length,avg:values.reduce((a,v)=>a+v,0)/rows.length,net:values.reduce((a,v)=>a+v,0),pf:gl>0?gp/gl:(gp>0?Infinity:null)};
+ }).sort((a,b)=>b.count-a.count);
+ const knownRegimes=regimeRows.filter(r=>r.regime!=="UNKNOWN").length,totalRegimeSignals=closedWithReturn.length;
+ const avgRegime=totalRegimeSignals?closedWithReturn.reduce((n,r)=>n+Number(r.ret),0)/totalRegimeSignals:null;
+ const winRegime=totalRegimeSignals?closedWithReturn.filter(r=>Number(r.ret)>0).length/totalRegimeSignals:null;
+ const openRegime=state.tracked.filter(r=>String(r.status).toUpperCase()==="OPEN"&&regimeOf(r)!=="UNKNOWN").sort((a,b)=>Number(b.opened_ts||0)-Number(a.opened_ts||0))[0];
+ const regimeName=r=>r.regime==="UNKNOWN"?"Non renseigné":r.regime;
+ $("regimeMetrics").innerHTML=
+  metric("Régimes identifiés",knownRegimes,"Sur les signaux clôturés")+
+  metric("Régime des positions ouvertes",openRegime?regimeName({regime:regimeOf(openRegime)}):"—",openRegime?"Régime à l’entrée":"Aucune position ouverte avec régime")+
+  metric("Rendement moyen",avgRegime===null?na:(avgRegime*100).toFixed(3)+"%","Signaux clôturés avec rendement")+
+  metric("Win rate global",winRegime===null?na:(winRegime*100).toFixed(1)+"%","Calculé sur les signaux clôturés");
+ const regimeCols=[["Régime",r=>regimeName(r)],["Signaux clôturés","count"],["Gagnants","wins"],["Perdants","losses"],["Win rate",r=>(r.winRate*100).toFixed(1)+"%"],["Rendement moyen",r=>(r.avg*100).toFixed(3)+"%"],["Rendement cumulé",r=>(r.net*100).toFixed(3)+"%"],["Profit factor",r=>r.pf===null?na:Number.isFinite(r.pf)?r.pf.toFixed(2):"∞"]];
+ $("regimeTable").innerHTML=regimeRows.length?table(regimeRows,regimeCols):'<div class="empty">Aucun signal clôturé avec un rendement exploitable. Les statistiques apparaîtront après la première clôture exportée.</div>';
+ const regimeNotice=document.querySelector("#page-marketRegime .notice");
+ if(regimeNotice)regimeNotice.textContent=knownRegimes
+  ?"Les statistiques sont calculées à partir des signaux suivis et clôturés. Les lignes « Non renseigné » indiquent les enregistrements sans régime dans l’export."
+  :"Aucun régime identifiable n’est présent dans les signaux clôturés exportés. Vérifiez que dashboard_data.json inclut le champ regime de tracked_signals ; les résultats ne sont pas inventés.";
  $("exitMetrics").innerHTML=metric("Signaux clôturés",closed.length,"Suivi des signaux")+metric("TP",reasonRows.filter(x=>x.reason==="TP").reduce((s,x)=>s+x.count,0),"Objectif atteint")+metric("SL / TRAIL",reasonRows.filter(x=>["SL","TRAIL","STOP","STOP_LOSS","TRAILING_STOP"].includes(x.reason)).reduce((s,x)=>s+x.count,0),"Stops")+metric("TIME EXIT",reasonRows.filter(x=>["TIME","TIME_EXIT","TIMEOUT","MAX_HOLD"].includes(x.reason)).reduce((s,x)=>s+x.count,0),"Sortie temporelle");
  $("exitTable").innerHTML=table(reasonRows,[["Motif","reason"],["Nombre","count"],["Gagnants","win"],["Rendement moyen",r=>r.avg===null?na:(r.avg*100).toFixed(3)+"%"]]);
  $("modelHealthMetrics").innerHTML=metric("État du modèle",meta.mode||na,"meta.json")+metric("AUC",meta.auc??na,"Validation publiée")+metric("Brier score",meta.brier??na,"Calibration")+metric("Feature drift",meta.feature_drift??na,"Surveillance");
