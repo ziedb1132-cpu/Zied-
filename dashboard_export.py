@@ -43,7 +43,7 @@ if db_path.exists():
       WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL""") or [{}])[0]
     data["summary"].update({"gateWins":gate.get("wins") or 0,"gateLosses":gate.get("losses") or 0,
       "gateTotal":gate.get("total") or 0})
-    data["signals"] = rows(conn, "SELECT id,ts,inst,price,atr,prob,rank,labeled,label,ret,hold,feature_ts FROM signals ORDER BY ts DESC LIMIT 500")
+    data["signals"] = rows(conn, "SELECT id,ts,inst,price,atr,prob,rank,labeled,label,ret,hold,feature_ts FROM signals ORDER BY ts DESC LIMIT 10")
     # Export every closed and open tracked signal so dashboard analytics use the full history.
     tracked_cols = "id,inst,status,entry,exit_price,sl,tp,prob,opened_ts,ret,closed_ts,outcome,close_reason,hold"
     open_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='OPEN' ORDER BY opened_ts DESC")
