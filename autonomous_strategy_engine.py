@@ -299,6 +299,9 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
                    "last_run":time.time(),"archive":archive,"champion":champion,
                    "last_result":{k:v for k,v in result.items() if k!="latest_experiments"}})
     _atomic_write(path,memory)
+    # Publish a compact dashboard report; the full experiment archive stays in
+    # durable state and is not copied wholesale into dashboard_data.json.
+    _atomic_write(os.path.join(state_dir,"autonomous_strategy_report.json"),result)
     if telegram:
         telegram("🧬 Autonomous Strategy Discovery\n"
                  f"Generation: {generation} | New candidates: {len(results)} | "
