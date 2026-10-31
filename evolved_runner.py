@@ -10,6 +10,7 @@ import ai_trade_controller
 import exit_evolution
 import strategy_discovery_lab
 import autonomous_strategy_engine
+import strategy_meta_selector
 import advanced_intelligence
 
 # Expand the schema/model before installing guarded train/tune/holdout promotion.
@@ -76,6 +77,15 @@ def _scan_with_strategy_discovery(brain, paper, universe=None, cycle=0, trade=Tr
             "autonomous strategy discovery: generation=%s generated=%s passed=%s",
             discovery.get("generation"), discovery.get("generated"),
             discovery.get("validation_passed"))
+        # Regime-aware selector learns from a separate shadow portfolio only.
+        # It cannot alter live signals, model weights, or production positions.
+        meta_report = strategy_meta_selector.run_meta_selector(
+            uni, zied_quant.get_candles, zied_quant.CFG["DIR"],
+            discovery_report=discovery, telegram=zied_quant.tg, max_symbols=5)
+        zied_quant.log.info(
+            "strategy meta-selector: cycle=%s shadow_closed=%s approved_regimes=%s",
+            meta_report.get("cycle"), meta_report.get("closed_shadow_trades"),
+            sum(len(v) for v in meta_report.get("selected_by_regime", {}).values()))
     except Exception as exc:
         zied_quant.log.warning("strategy evolution skipped after error: %s", exc)
     return result
