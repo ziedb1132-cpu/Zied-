@@ -1044,6 +1044,75 @@ class Paper:
                     total=int(row["total"] or 0))
 
     @locked
+    def adaptive_ranking_weights(self, regime, min_samples=60, lookback=500):
+        """Estimate conservative regime-specific factor weights from realized net outcomes."""
+        base = {
+            "ret1h": 0.20, "ret4h": 0.20, "ret1d": 0.15, "ret15m": 0.10,
+            "trend": 0.10, "volume_ratio": 0.08, "adx": 0.05, "obv": 0.05,
+            "liquidity": 0.05, "atr_penalty": -0.10, "overbought_penalty": -0.10,
+        }
+        rows = self.db.execute(
+            "SELECT feats,ret FROM tracked_signals WHERE status='CLOSED' AND regime=? "
+            "AND ret IS NOT NULL ORDER BY closed_ts DESC LIMIT ?",
+            (str(regime), int(lookback))).fetchall()
+        if len(rows) < int(min_samples):
+            return base, len(rows), False
+        idx = {name: i for i, name in enumerate(FEATURE_COLS)}
+        factors = {k: [] for k in base}
+        returns = []
+        for row in rows:
+            try:
+                v = np.asarray(json.loads(row["feats"]), dtype=np.float64)
+                ret = float(row["ret"])
+                if v.size != N_FEATURES or not np.isfinite(v).all() or not np.isfinite(ret):
+                    continue
+                def mean_tf(name):
+                    return float(np.mean([v[idx[f"{tf}_{name}"]] for tf in TFS]))
+                factors["ret1h"].append(v[idx["1H_ret20"]])
+                factors["ret4h"].append(v[idx["4H_ret20"]])
+                factors["ret1d"].append(v[idx["1D_ret10"]])
+                factors["ret15m"].append(v[idx["15m_ret20"]])
+                factors["trend"].append(mean_tf("ema_dist21"))
+                factors["volume_ratio"].append(v[idx["1H_vol_ratio"]])
+                factors["adx"].append(v[idx["1H_adx14"]])
+                factors["obv"].append(v[idx["1H_obv_slope"]])
+                factors["liquidity"].append(v[idx["ctx_log_dvol24"]])
+                factors["atr_penalty"].append(v[idx["1H_atr_pct"]])
+                factors["overbought_penalty"].append(max(v[idx["1H_rsi14"]] - 75.0, 0.0))
+                returns.append(ret)
+            except (ValueError, TypeError, KeyError, IndexError):
+                continue
+        n = len(returns)
+        if n < int(min_samples):
+            return base, n, False
+        y = np.asarray(returns, dtype=np.float64)
+        learned = {}
+        # Correlation is shrunk toward zero and tightly bounded to prevent small
+        # samples or outliers from radically changing the established ranking.
+        for name, values in factors.items():
+            x = np.asarray(values, dtype=np.float64)
+            if len(x) != n or np.std(x) < 1e-12 or np.std(y) < 1e-12:
+                learned[name] = 1.0
+                continue
+            corr = float(np.corrcoef(x, y)[0, 1])
+            if not np.isfinite(corr):
+                corr = 0.0
+            direction = -1.0 if name in ("atr_penalty", "overbought_penalty") else 1.0
+            aligned = float(np.clip(corr * direction, -0.5, 0.5))
+            shrink = min(1.0, n / 200.0)
+            learned[name] = float(np.clip(1.0 + aligned * shrink, 0.75, 1.25))
+        adjusted = {k: base[k] * learned[k] for k in base}
+        # Preserve the original total positive and negative weight budgets.
+        for group, target in ((1, sum(v for v in base.values() if v > 0)),
+                              (-1, sum(abs(v) for v in base.values() if v < 0))):
+            keys = [k for k, v in adjusted.items() if v * group > 0]
+            total = sum(abs(adjusted[k]) for k in keys)
+            if total > 0:
+                for k in keys:
+                    adjusted[k] = group * abs(adjusted[k]) * target / total
+        return adjusted, n, True
+
+    @locked
     def regime_stats(self, regime):
         row = self.db.execute(
             "SELECT COUNT(*) AS n, AVG(ret) AS avg_ret, "
@@ -1286,15 +1355,34 @@ def monitor_tracked_signals(paper):
 # =====================================================================
 # RANKING (best -> worst)
 # =====================================================================
-def rank_universe(X, vol24):
+def rank_universe(X, vol24, paper=None, regimes=None):
+    """Cross-sectional ranking with conservative regime-specific learned factor weights."""
     z = lambda s: ((s - s.median()) / (s.std() + 1e-9)).clip(-3, 3)
     trend = sum(X[f"{tf}_ema_dist21"] for tf in TFS) / len(TFS)
     overbought = (X["1H_rsi14"] - 75).clip(lower=0)
-    score = (0.20 * z(X["1H_ret20"]) + 0.20 * z(X["4H_ret20"]) + 0.15 * z(X["1D_ret10"])
-             + 0.10 * z(X["15m_ret20"]) + 0.10 * z(trend) + 0.08 * z(X["1H_vol_ratio"])
-             + 0.05 * z(X["1H_adx14"]) + 0.05 * z(X["1H_obv_slope"])
-             + 0.05 * z(np.log(vol24.reindex(X.index)))
-             - 0.10 * z(X["1H_atr_pct"]) - 0.10 * z(overbought))
+    factors = {
+        "ret1h": z(X["1H_ret20"]), "ret4h": z(X["4H_ret20"]),
+        "ret1d": z(X["1D_ret10"]), "ret15m": z(X["15m_ret20"]),
+        "trend": z(trend), "volume_ratio": z(X["1H_vol_ratio"]),
+        "adx": z(X["1H_adx14"]), "obv": z(X["1H_obv_slope"]),
+        "liquidity": z(np.log(vol24.reindex(X.index))),
+        "atr_penalty": z(X["1H_atr_pct"]), "overbought_penalty": z(overbought),
+    }
+    base = {"ret1h":.20,"ret4h":.20,"ret1d":.15,"ret15m":.10,"trend":.10,
+            "volume_ratio":.08,"adx":.05,"obv":.05,"liquidity":.05,
+            "atr_penalty":-.10,"overbought_penalty":-.10}
+    score = pd.Series(0.0, index=X.index)
+    diagnostics = {}
+    regime_series = regimes.reindex(X.index) if regimes is not None else pd.Series("UNKNOWN", index=X.index)
+    for regime in regime_series.dropna().unique():
+        coins = regime_series.index[regime_series == regime]
+        weights, samples, adaptive = (paper.adaptive_ranking_weights(regime)
+                                      if paper is not None else (base, 0, False))
+        part = sum(weights[k] * factors[k].loc[coins] for k in base)
+        score.loc[coins] = part
+        diagnostics[str(regime)] = {"samples": int(samples), "adaptive": bool(adaptive),
+                                    "weights": weights}
+    score.attrs["adaptive_diagnostics"] = diagnostics
     return score.sort_values(ascending=False)
 
 
@@ -1704,8 +1792,10 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                          drift["feature_count"])
         except Exception as exc:
             log.warning("feature drift monitoring skipped: %s", exc)
-    score = rank_universe(X, uni["vol"])
+    current_regimes = pd.Series({i: classify_market_regime(X.loc[i]) for i in X.index})
+    score = rank_universe(X, uni["vol"], paper=paper, regimes=current_regimes)
     R = pd.DataFrame({"ranking_score": score, "score": score})
+    R.attrs["adaptive_diagnostics"] = score.attrs.get("adaptive_diagnostics", {})
     R["rank"] = np.arange(1, len(R) + 1)
     R["ai_probability"] = np.nan
     R["prob"] = np.nan
@@ -1713,7 +1803,7 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     entry_quality = {i: evaluate_entry_quality(X.loc[i]) for i in R.index}
     R["entry_score"] = [entry_quality[i][0] for i in R.index]
     R["stretched"] = [entry_quality[i][1] for i in R.index]
-    R["regime"] = [classify_market_regime(X.loc[i]) for i in R.index]
+    R["regime"] = [current_regimes.loc[i] for i in R.index]
     ai_prediction_error = None
     learning_mode = not brain.ready
     if learning_mode:
