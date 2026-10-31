@@ -54,14 +54,23 @@ if db_path.exists():
     data["tracked"] = closed_tracked + open_tracked
     conn.close()
 
-for name in ("meta.json","strategy_evolution.json","strategy_discovery_lab.json","autonomous_strategy_report.json","strategy_meta_selector_report.json","comprehensive_backtest.json","top_gainer_learning.json","entry_method_memory.json","candle_patterns.json","news_sentiment.json"):
+# Publish one canonical research report. Its layers contain the strategy,
+# discovery-lab, regime-selector, exit-policy and model walk-forward results.
+for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json"):
     value = safe_json(root / name)
     if value is not None:
+        if name == "candle_patterns.json" and isinstance(value, dict):
+            coins = value.get("coins")
+            if isinstance(coins, dict):
+                value["coins"] = {
+                    symbol: item for symbol, item in coins.items()
+                    if isinstance(item, dict) and (
+                        (isinstance(item.get("patterns"), list) and item["patterns"])
+                        or any(k not in ("patterns", "score") and v not in (None, "", 0, [], {})
+                               for k, v in item.items())
+                    )
+                }
         data["contents"][name] = value
-for name in ("meta.json","strategy_evolution.json","strategy_discovery_lab.json","top_gainer_learning.json","entry_method_memory.json","candle_patterns.json","news_sentiment.json"):
-    if name in data["contents"]:
-        data["contents"][name] = data["contents"][name]
-data["contents"]["paper.db"] = "قاعدة البيانات محفوظة في مخزن الحالة؛ لا يتم تنزيلها إلى المتصفح."
 out.parent.mkdir(parents=True, exist_ok=True)
 tmp = out.with_suffix(".tmp")
 tmp.write_text(json.dumps(data, ensure_ascii=False, separators=(",",":"), default=str), encoding="utf-8")
