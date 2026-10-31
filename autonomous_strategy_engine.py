@@ -86,8 +86,9 @@ def _new_spec(rng, generation, parent=None):
     conditions = []
     used = set()
     if parent and rng.random() < 0.65:
-        conditions = [dict(x) for x in parent.get("conditions", [])]
-        # Mutate, remove, or add conditions; variable complexity has no fixed cap.
+        parent_spec = parent.get("spec", parent)
+        conditions = [dict(x) for x in parent_spec.get("conditions", [])]
+        # Mutate, remove, or add conditions; no fixed strategy-complexity ceiling.
         if conditions and rng.random() < 0.35:
             conditions.pop(rng.randrange(len(conditions)))
         if conditions and rng.random() < 0.55:
@@ -95,7 +96,8 @@ def _new_spec(rng, generation, parent=None):
             feature = item["feature"]
             item["threshold"] = rng.choice(THRESHOLDS[feature])
             item["op"] = rng.choice(["gt", "lt"])
-        count = max(2, min(15, count + len(conditions)))
+        count = max(2, count + len(conditions))
+    used = {x["feature"] for x in conditions}
     while len(conditions) < count:
         feature = rng.choice(FEATURES)
         if feature in used:
@@ -177,6 +179,7 @@ def _evaluate(df, features, spec, start, end):
     std = float(x.std(ddof=1)) if len(x)>1 else 0.0
     return {"trades":int(len(x)),"avg_net":float(x.mean()),
             "win_rate":float((x>0).mean()),"profit_factor":float(pf),
+            "gross_profit":float(wins),"gross_loss":float(losses),
             "max_drawdown":float(abs(dd.min())),"sharpe":float(x.mean()/std*np.sqrt(len(x))) if std>0 else 0.0}
 
 
@@ -188,10 +191,11 @@ def _aggregate(rows):
                 "max_drawdown":None,"sharpe":None}
     avg=sum(r["avg_net"]*r["trades"] for r in valid)/n
     win=sum(r["win_rate"]*r["trades"] for r in valid)/n
-    gp=sum(max(0,r["profit_factor"])*r["trades"] for r in valid)
-    # PF is recomputed from trade-weighted approximation only when exact returns aren't retained.
+    gp=sum(float(r.get("gross_profit",0.0)) for r in valid)
+    gl=sum(float(r.get("gross_loss",0.0)) for r in valid)
     return {"trades":n,"avg_net":float(avg),"win_rate":float(win),
-            "profit_factor":float(np.mean([r["profit_factor"] for r in valid])),
+            "profit_factor":float(gp/gl) if gl>0 else (999.0 if gp>0 else 0.0),
+            "gross_profit":float(gp),"gross_loss":float(gl),
             "max_drawdown":float(max((r["max_drawdown"] or 0) for r in valid)),
             "sharpe":float(np.mean([r["sharpe"] or 0 for r in valid]))}
 
