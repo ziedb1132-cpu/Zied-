@@ -247,8 +247,9 @@ def install(zq):
     """Install a conservative live-ranking overlay without altering the ML feature schema."""
     old_rank = zq.rank_universe
 
-    def rank_with_candle_news(X, vol24):
-        base_scores = old_rank(X, vol24)
+    def rank_with_candle_news(X, vol24, *args, **kwargs):
+        # Forward optional ranking context instead of narrowing the wrapped API.
+        base_scores = old_rank(X, vol24, *args, **kwargs)
         if X is None or X.empty:
             return base_scores
         headlines = fetch_news()
