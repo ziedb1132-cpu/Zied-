@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from autonomous_strategy_engine import (
-    build_features, _new_spec, _spec_id, _signals, _evaluate, run_discovery
+    build_features, FEATURES, _LIBRARY_FEATURES, _new_spec, _spec_id, _signals, _evaluate, run_discovery
 )
 
 
@@ -24,8 +24,20 @@ class AutonomousStrategyTests(unittest.TestCase):
     def test_features_are_causal_shape_and_finite_after_warmup(self):
         d=candles()
         f=build_features(d)
-        self.assertEqual(f.shape,(len(d),15))
-        self.assertTrue(np.isfinite(f.iloc[100:].to_numpy()).all())
+        self.assertEqual(len(_LIBRARY_FEATURES),546)
+        self.assertEqual(len(FEATURES),561)
+        self.assertEqual(f.shape,(len(d),561))
+        self.assertTrue(np.isfinite(f.iloc[250:].to_numpy()).all())
+
+    def test_feature_library_has_no_future_data_leakage(self):
+        d=candles(n=700)
+        full=build_features(d)
+        truncated=build_features(d.iloc[:600].copy())
+        pd.testing.assert_frame_equal(
+            full.iloc[:600].reset_index(drop=True),
+            truncated.reset_index(drop=True),
+            check_exact=False, rtol=1e-10, atol=1e-10,
+        )
 
     def test_generated_rules_are_unique_and_variable_complexity(self):
         import random
