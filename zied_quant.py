@@ -1847,6 +1847,25 @@ def mark_bootstrap_training_attempt(paper, now=None):
     paper._set("bootstrap_attempt_labels", paper.count("signals", "labeled=1"))
 
 
+def run_cycle_backtest(universe, paper=None, folds=5):
+    """Run the walk-forward research backtest as part of each analysis cycle."""
+    try:
+        ds = load_trainset()
+        if ds is None:
+            ds = build_trainset(universe)
+        rep = walk_forward(ds, folds=folds)
+        txt = backtest_report(rep)
+        path = os.path.join(CFG["DIR"], "backtest.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(rep, f, indent=2)
+        log.info("cycle backtest completed: %s", path)
+        tg("🔄 Backtest داخل دورة التحليل\n" + txt)
+        return rep
+    except Exception as e:
+        log.exception("cycle backtest failed: %s", e)
+        tg(f"⚠️ تعذر إكمال Backtest في هذه الدورة: {e}")
+        return None
+
 def once():
     """One full cycle for schedulers (GitHub Actions)."""
     brain, paper = Brain(), Paper()
@@ -1870,6 +1889,7 @@ def once():
                  status["wins"], status["losses"])
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
+    run_cycle_backtest(uni, paper)
     paper._set("cycle", cycle + 1)
     status = learning_gate_status(paper)
     if status["ready"] and need_retrain(paper):
@@ -1918,6 +1938,7 @@ def run():
                     log.info("AI learning gate: wins=%d/500 losses=%d/500; model disabled",
                              status["wins"], status["losses"])
                 scan(brain, paper, None, cycle)
+                run_cycle_backtest(uni, paper)
                 cycle += 1
             except Exception as e:
                 log.exception("scan failed: %s", e)
