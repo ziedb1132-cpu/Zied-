@@ -45,7 +45,10 @@ if db_path.exists():
       "gateTotal":gate.get("total") or 0})
     data["signals"] = rows(conn, "SELECT id,ts,inst,price,atr,prob,rank,labeled,label,ret,hold,feature_ts FROM signals ORDER BY ts DESC LIMIT 10")
     # Export every closed and open tracked signal so dashboard analytics use the full history.
-    tracked_cols = "id,inst,status,entry,exit_price,sl,tp,prob,opened_ts,ret,closed_ts,outcome,close_reason,hold"
+    # Preserve the entry-time market regime in the dashboard snapshot. The regime is
+    # stored on tracked_signals when each signal is created; omitting it here made
+    # every historical dashboard row appear as "Non renseigné".
+    tracked_cols = "id,inst,status,entry,exit_price,sl,tp,prob,opened_ts,ret,closed_ts,outcome,close_reason,hold,regime,entry_score"
     open_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='OPEN' ORDER BY opened_ts DESC")
     closed_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='CLOSED' ORDER BY closed_ts DESC, id DESC")
     data["tracked"] = closed_tracked + open_tracked
