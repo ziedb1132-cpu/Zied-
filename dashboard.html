@@ -690,7 +690,7 @@ async function connect(){
   
   state.contents=data.contents||{};
   state.manifest={generated_at:data.generated_at};
-  $("status").textContent="Connecté · "+(data.generated_at||"Heure indisponible")+" · "+source;
+  $("status").textContent="Connecté · "+(data.generated_at?timeFmt(data.generated_at):"Heure indisponible")+" · "+source;
   $("dot").style.background="var(--green)";
  }catch(e){
   const message=e&&e.message?e.message:String(e);
