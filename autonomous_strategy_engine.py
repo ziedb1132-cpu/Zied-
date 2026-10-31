@@ -18,12 +18,12 @@ HORIZON = 24
 BATCH_SIZE = 10
 MIN_TRADES = 20
 MAX_ARCHIVE = 2000
-FEATURES = (
+LEGACY_FEATURES = (
     "ret1", "ret3", "ret6", "ret12", "rsi", "ema_gap", "ema_slope",
     "atr_pct", "range_pos", "volume_ratio", "body_pct", "upper_wick",
     "lower_wick", "breakout_dist", "close_location",
 )
-THRESHOLDS = {
+LEGACY_THRESHOLDS = {
     "ret1": (-0.025, -0.01, 0.0, 0.01, 0.025),
     "ret3": (-0.04, -0.02, 0.0, 0.02, 0.04),
     "ret6": (-0.06, -0.03, 0.0, 0.03, 0.06),
@@ -41,8 +41,40 @@ THRESHOLDS = {
     "close_location": (0.2, 0.35, 0.5, 0.65, 0.8),
 }
 
+from feature_library import (
+    PERIODS as FEATURE_PERIODS,
+    ROLL_WINDOWS as FEATURE_ROLL_WINDOWS,
+    LIBRARY_VERSION as FEATURE_LIBRARY_VERSION,
+    build_feature_library,
+    feature_thresholds,
+)
 
-def build_features(df):
+# The 546 generated features are selectable by the genetic strategy builder.
+# Keep the original 15 names available so archived strategies remain readable.
+_FEATURE_FAMILIES = (
+    "ret", "rsi", "ema_gap", "ema_slope", "atr_pct", "range_pos",
+    "volume_ratio", "body_pct", "upper_wick", "lower_wick",
+    "breakout_dist", "close_location", "downside_vol", "upside_vol",
+    "efficiency", "volume_trend", "vwap_dist", "drawdown",
+)
+_CORE_CONCEPTS = LEGACY_FEATURES
+_LIBRARY_FEATURES = (
+    [f"{family}_{period}" for family in _FEATURE_FAMILIES for period in FEATURE_PERIODS]
+    + [f"{name}__{kind}{window}" for name in _CORE_CONCEPTS
+       for window in FEATURE_ROLL_WINDOWS for kind in ("z", "rank")]
+    + [f"interaction__{left}__{right}" for i, left in enumerate(_CORE_CONCEPTS)
+       for right in _CORE_CONCEPTS[i + 1:]]
+    + [f"core__{name}" for name in _CORE_CONCEPTS]
+)
+FEATURES = tuple(LEGACY_FEATURES) + tuple(_LIBRARY_FEATURES)
+THRESHOLDS = {
+    **LEGACY_THRESHOLDS,
+    **feature_thresholds(_LIBRARY_FEATURES),
+}
+
+
+
+def _build_core_features(df):
     """Causal OHLCV feature set; all rolling references use current/past bars only."""
     o = pd.to_numeric(df["o"], errors="coerce")
     h = pd.to_numeric(df["h"], errors="coerce")
@@ -74,6 +106,21 @@ def build_features(df):
         "breakout_dist": c/(prior_high+1e-12)-1,
         "close_location": (c-l)/(candle_range+1e-12),
     }, index=df.index).replace([np.inf,-np.inf],np.nan)
+
+def build_features(df):
+    """Return legacy features plus the complete 546-column causal library."""
+    core = _build_core_features(df)
+    expanded = build_feature_library(df, core=core)
+    combined = pd.concat([core, expanded], axis=1)
+    # Guard against accidental name collisions without silently dropping legacy data.
+    if not combined.columns.is_unique:
+        raise ValueError("Duplicate feature names in autonomous feature matrix")
+    if len(_LIBRARY_FEATURES) != 546 or len(expanded.columns) != 546:
+        raise RuntimeError(
+            f"Feature library schema mismatch: expected 546, got {len(expanded.columns)}"
+        )
+    return combined
+
 
 
 def _spec_id(spec):
@@ -296,6 +343,8 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
     result={"status":"ok","generation":generation,"generated":len(candidates),
             "tested":len(results),"validation_passed":sum(x["status"]=="validation_pass" for x in results),
             "archive_size":len(archive),"symbols":symbols,"champion":champion,
+            "feature_count":len(_LIBRARY_FEATURES),"total_feature_columns":len(FEATURES),
+            "feature_library_version":FEATURE_LIBRARY_VERSION,
             "latest_experiments":results,
             "note":"Research-only. Validation uses chronological train/tune blocks; holdout is observational and never used for ranking or breeding. No live strategy/model changes."}
     memory.update({"schema":1,"generation":generation,"seed":int(memory.get("seed",1729)),
@@ -309,7 +358,7 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
         telegram("🧬 Autonomous Strategy Discovery\n"
                  f"Generation: {generation} | New candidates: {len(results)} | "
                  f"Passed validation: {result['validation_passed']}\n"
-                 f"Archive: {len(archive)} | Mode: research-only; no live changes.")
+                 f"Features: {len(_LIBRARY_FEATURES)} | Archive: {len(archive)} | Mode: research-only; no live changes.")
     return result
 
 
