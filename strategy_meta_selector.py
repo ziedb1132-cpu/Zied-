@@ -62,9 +62,9 @@ def _metrics(trades):
     returns = np.asarray([float(x["net_return"]) for x in trades], dtype=float)
     gp = float(returns[returns > 0].sum())
     gl = float(-returns[returns < 0].sum())
-    equity = np.cumprod(1.0 + returns)
-    peaks = np.maximum.accumulate(np.r_[1.0, equity])[1:]
-    dd = float(abs(np.min(equity / peaks - 1.0)))
+    equity = np.r_[1.0, np.cumprod(1.0 + returns)]
+    peaks = np.maximum.accumulate(equity)
+    dd = float(np.max(1.0 - equity / peaks))
     return {"trades": int(len(returns)),
             "win_rate": float(np.mean(returns > 0)),
             "avg_net": float(np.mean(returns)),
@@ -107,10 +107,23 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
 
     archive = (discovery_report or {}).get("latest_experiments", [])
     champion = (discovery_report or {}).get("champion")
-    candidates = [x for x in archive if x.get("status") == "validation_pass"]
-    if champion and champion.get("id") and all(x.get("id") != champion.get("id") for x in candidates):
-        candidates.append(champion)
-    # Also continue shadow monitoring of strategies already in the persistent archive.
+
+    # Shadow paper is an experiment layer, not a reward reserved for strategies
+    # that already passed validation. Monitor fresh rejected candidates too;
+    # only the stricter independent shadow metrics below can approve a regime.
+    fresh = [x for x in archive
+             if x.get("id") and isinstance(x.get("spec"), dict)]
+    fresh.sort(key=lambda x: (
+        x.get("status") == "validation_pass",
+        float(x.get("score", -100.0))
+    ), reverse=True)
+    candidates = list(fresh)
+    if champion and champion.get("id") and isinstance(champion.get("spec"), dict):
+        if all(x.get("id") != champion.get("id") for x in candidates):
+            candidates.append(champion)
+
+    # Continue monitoring prior experiments without allowing them to crowd
+    # out this cycle's fresh candidates.
     for sid, spec in memory["strategy_specs"].items():
         if all(x.get("id") != sid for x in candidates):
             candidates.append({"id": sid, "spec": spec, "status": "paper_candidate"})
@@ -118,6 +131,10 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
     for item in candidates:
         if item.get("id") and isinstance(item.get("spec"), dict):
             memory["strategy_specs"][item["id"]] = item["spec"]
+
+    candidate_status_counts = defaultdict(int)
+    for item in candidates:
+        candidate_status_counts[str(item.get("status", "paper_candidate"))] += 1
 
     market = {}
     for symbol in list(universe.index[:max_symbols]):
@@ -184,6 +201,9 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
         del memory["pending_entries"][key]
 
     # New signals are queued, never filled on the candle that generated them.
+    signal_checks = 0
+    signals_detected = 0
+    candidate_hits = defaultdict(int)
     for symbol, item in market.items():
         for candidate in candidates:
             sid, spec = candidate.get("id"), candidate.get("spec")
@@ -194,7 +214,11 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
                     or memory["last_seen_bar"].get(key) == item["bar"]):
                 continue
             try:
-                if bool(_signals(item["features"], spec)[-1]):
+                signal_checks += 1
+                hit = bool(_signals(item["features"], spec)[-1])
+                if hit:
+                    signals_detected += 1
+                    candidate_hits[sid] += 1
                     memory["pending_entries"][key] = {
                         "strategy_id": sid, "symbol": symbol, "entry_regime": item["regime"],
                         "signal_bar": item["bar"], "atr_pct": item["atr_pct"]
@@ -230,6 +254,11 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
         "status": "ok", "cycle": memory["cycle"], "market_regimes": {
             s: x["regime"] for s, x in market.items()},
         "candidates_monitored": len(candidates),
+        "candidate_status_counts": dict(candidate_status_counts),
+        "symbols_with_market_data": len(market),
+        "signal_checks": int(signal_checks),
+        "signals_detected": int(signals_detected),
+        "candidate_signal_hits": dict(candidate_hits),
         "open_shadow_positions": len(memory["positions"]),
         "pending_shadow_entries": len(memory["pending_entries"]),
         "closed_shadow_trades": len(memory["closed_trades"]),
