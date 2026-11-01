@@ -112,7 +112,7 @@ def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
         if active:
             # After the +1% protection is armed, each further +5% of
             # peak price over entry ratchets the stop by another +5%.
-            milestones = max(0, int((peak / entry - 1.0 + 1e-12) // 0.05))
+            milestones = max(0, int(((peak - activation_price) / (entry * 0.05) + 1e-12) // 1))
             stepped_stop = entry * (1.01 + 0.05 * milestones)
             trail = max(trail, entry * 1.01, stepped_stop)
     else:
