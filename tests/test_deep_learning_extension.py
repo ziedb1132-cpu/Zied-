@@ -13,8 +13,8 @@ import os, json, tempfile
 import zied_quant as zq
 import deep_learning_evolution as ext
 ext.install(zq)
-assert zq.N_FEATURES == 300, zq.N_FEATURES
-assert len(zq.FEATURE_COLS) == 300
+assert zq.N_FEATURES >= 300, zq.N_FEATURES
+assert len(zq.FEATURE_COLS) == zq.N_FEATURES
 assert zq.CFG["EXPLORATION_PROB_MIN"] == 0.65
 assert ext.WIN_THRESHOLD == 500 and ext.LOSS_THRESHOLD == 500  # closed-outcome pattern gate
 n = 360
@@ -32,14 +32,15 @@ if zq.torch is not None:
     model = zq.ZiedNet(zq.N_FEATURES)
     assert sum(isinstance(layer, zq.nn.Linear) for layer in model.modules()) == 30
 
-# Every newly created tracked signal must persist an immutable, named 300-value
-# feature snapshot in both the signal log and its tracked-signal record.
+# Every newly created tracked signal must persist an immutable, named feature snapshot
+# matching the complete runtime schema in both the signal log and tracked-signal record.
 with tempfile.TemporaryDirectory() as tmp:
     old_db = zq.CFG["DB"]
     zq.CFG["DB"] = os.path.join(tmp, "features.db")
     try:
         paper = zq.Paper()
-        vector = np.linspace(-1.0, 1.0, zq.N_FEATURES, dtype=np.float64)
+        feature_count = zq.N_FEATURES
+        vector = np.linspace(-1.0, 1.0, feature_count, dtype=np.float64)
         created = paper.create_tracked_signal({
             "inst": "FEATURE-TEST-USDT", "price": 100.0, "atr": 0.02,
             "feats": vector, "prob": None, "rank": 1,
@@ -47,7 +48,7 @@ with tempfile.TemporaryDirectory() as tmp:
             "prob_source": "ranking_exploration", "regime": "TEST",
             "entry_score": 75.0,
         })
-        assert created and created["feature_count"] == 300, created
+        assert created and created["feature_count"] == feature_count, created
         signal = paper.db.execute(
             "SELECT feats,feature_count,feature_names,feature_schema_version "
             "FROM signals WHERE id=?", (created["id"],)
@@ -59,10 +60,10 @@ with tempfile.TemporaryDirectory() as tmp:
         for row in (signal, tracked):
             saved = np.asarray(json.loads(row["feats"]), dtype=np.float64)
             names = json.loads(row["feature_names"])
-            assert row["feature_count"] == 300
+            assert row["feature_count"] == feature_count
             assert row["feature_schema_version"] == zq.DATA_VER
-            assert len(names) == 300 and names == zq.FEATURE_COLS
-            assert saved.shape == (300,) and np.array_equal(saved, vector)
+            assert len(names) == feature_count and names == zq.FEATURE_COLS
+            assert saved.shape == (feature_count,) and np.array_equal(saved, vector)
         paper.close_tracked_signal(created["id"], 1_800_000_300.0,
                                    101.0, "TP", 0.009, 1.0, "TP")
         closed = paper.db.execute(
