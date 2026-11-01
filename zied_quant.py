@@ -1318,15 +1318,17 @@ def monitor_tracked_signals(paper):
                     peak = max(old_peak, high)
                     entry_price = float(s["entry"])
                     atr_pct = float(s["atr_pct"])
-                    # Keep the existing +1.5 ATR trigger, but never activate
-                    # until the +1% profit-protection stop is below market.
-                    activation_atr = float(s.get("trail_activation_atr") or 1.5)
-                    trail_distance_atr = float(s.get("trail_distance_atr") or 1.8)
-                    activation_gain = max(activation_atr * atr_pct, 0.01)
-                    activation = entry_price * (1.0 + activation_gain)
+                    # Arm at 30% of the entry-to-TP distance. Once armed,
+                    # protect +1%; then ratchet +5% per each +5% price milestone.
+                    activation = entry_price + 0.30 * (float(s["tp"]) - entry_price)
                     active = bool(s.get("trail_active")) or peak >= activation
-                    trail = max(float(s["sl"]), entry_price * 1.01,
-                                peak * (1.0 - trail_distance_atr * atr_pct)) if active else float(s["sl"])
+                    if active:
+                        milestones = max(0, int((peak / entry_price - 1.0 + 1e-12) // 0.05))
+                        stepped_stop = entry_price * (1.01 + 0.05 * milestones)
+                        trail = max(float(s.get("trailing_sl") or s["sl"]),
+                                    float(s["sl"]), entry_price * 1.01, stepped_stop)
+                    else:
+                        trail = float(s["sl"])
                     paper.update_trailing(s["id"], peak, trail, active)
                     s["peak_price"], s["trailing_sl"], s["trail_active"] = peak, trail, int(active)
                 if reason:
