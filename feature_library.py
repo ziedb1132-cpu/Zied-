@@ -59,7 +59,10 @@ def build_feature_library(df, core=None):
         raw[f"vwap_dist_{n}"] = c/(vwap+eps)-1
         raw[f"drawdown_{n}"] = c/(c.rolling(n).max()+eps)-1
 
-    out = pd.DataFrame(raw, index=df.index).replace([np.inf,-np.inf],np.nan)
+    # Build all derived columns in dictionaries, then concatenate once. Repeated
+    # DataFrame column insertion fragments pandas' internal blocks and slows down
+    # the large 546-feature discovery matrix without changing feature values.
+    expanded = {}
 
     # Expand the 15 core concepts with rolling robust z-scores and percentile ranks.
     if core is not None:
@@ -69,9 +72,9 @@ def build_feature_library(df, core=None):
                 minp = max(3, w//2)
                 mean = x.rolling(w, min_periods=minp).mean()
                 std = x.rolling(w, min_periods=minp).std().replace(0,np.nan)
-                out[f"{name}__z{w}"] = ((x-mean)/(std+eps)).clip(-8,8)
+                expanded[f"{name}__z{w}"] = ((x-mean)/(std+eps)).clip(-8,8)
                 # Rolling percentile rank is causal; only the current rolling window is used.
-                out[f"{name}__rank{w}"] = x.rolling(w, min_periods=minp).rank(pct=True)
+                expanded[f"{name}__rank{w}"] = x.rolling(w, min_periods=minp).rank(pct=True)
 
         # Pairwise interactions use bounded rolling z-scores to avoid scale dominance.
         names = list(core.columns)
@@ -82,12 +85,15 @@ def build_feature_library(df, core=None):
                     wstd = series.rolling(40, min_periods=20).std()
                     return ((series-wmean)/(wstd+eps)).clip(-3,3)/3
                 a, b = zscore(core[left]), zscore(core[right])
-                out[f"interaction__{left}__{right}"] = a*b
+                expanded[f"interaction__{left}__{right}"] = a*b
 
         for name in names:
-            out[f"core__{name}"] = pd.to_numeric(core[name], errors="coerce")
+            expanded[f"core__{name}"] = pd.to_numeric(core[name], errors="coerce")
 
-    out = out.replace([np.inf,-np.inf],np.nan)
+    out = pd.concat(
+        [pd.DataFrame(raw, index=df.index), pd.DataFrame(expanded, index=df.index)],
+        axis=1,
+    ).replace([np.inf,-np.inf],np.nan)
     out.attrs["feature_library_version"] = LIBRARY_VERSION
     return out
 
