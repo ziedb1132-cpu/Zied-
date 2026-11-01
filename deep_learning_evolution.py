@@ -101,6 +101,16 @@ def _install_features(zq):
         combined = pd.concat([base, extra], axis=1)
         try:
             discovery = build_discovery_features(df)
+            # The legacy feature function indexes rows by candle timestamps,
+            # while the research builder preserves df's original RangeIndex.
+            # Align the research matrix to the exact same candle timestamps
+            # before reindexing columns; otherwise every research value becomes
+            # NaN even though the features were computed successfully.
+            if len(discovery) != len(base):
+                raise ValueError(
+                    f"Research feature row mismatch: {len(discovery)} != {len(base)}"
+                )
+            discovery.index = base.index
             # Research features are causal OHLCV transformations. Align to the same
             # closed-candle index; absent columns remain NaN and are removed by
             # the existing dataset's dropna, never filled with future data.
