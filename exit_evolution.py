@@ -91,10 +91,11 @@ def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
     peak = entry
     trail = sl
     active = False
+    activation_price = entry + 0.30 * (tp - entry)
     last = min(len(closes), int(max_bars))
     for i in range(last):
         hi, lo = float(highs[i]), float(lows[i])
-        # Stops active before this candle are checked first; same-candle
+        # Check the stop from the prior completed candle first. Same-candle
         # ambiguity is resolved conservatively in favour of the stop.
         active_sl = max(sl, trail)
         if lo <= active_sl:
@@ -105,10 +106,15 @@ def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
             px, reason, hold = tp, "TP", i + 1
             break
         peak = max(peak, hi)
-        if not active and peak >= entry * (1.0 + max(activation_atr * atr, 0.01)):
+        if not active and peak >= activation_price:
             active = True
+            trail = max(trail, entry * 1.01)
         if active:
-            trail = max(trail, entry * 1.01, peak * (1.0 - distance_atr * atr))
+            # After the +1% protection is armed, each further +5% of
+            # peak price over entry ratchets the stop by another +5%.
+            milestones = max(0, int((peak / entry - 1.0 + 1e-12) // 0.05))
+            stepped_stop = entry * (1.01 + 0.05 * milestones)
+            trail = max(trail, entry * 1.01, stepped_stop)
     else:
         if last <= 0:
             return None
