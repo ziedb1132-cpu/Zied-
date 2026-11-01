@@ -22,9 +22,10 @@ zq.get_candles = lambda *args, **kwargs: __import__('pandas').DataFrame()
 cni.install(zq)
 with tempfile.TemporaryDirectory() as d:
     zq.CFG["DIR"] = d
+    feature_count = zq.N_FEATURES
     idx = zq.FEATURE_COLS.index("1H_ret1")
     payload = {
-        "feature_count": 300, "winning_samples": 500, "losing_samples": 500,
+        "feature_count": feature_count, "winning_samples": 500, "losing_samples": 500,
         "top_recurring_features": [{
             "feature": "1H_ret1", "winner_median": 2.0, "loser_median": -2.0,
             "winner_q25_q75": [1.0, 3.0], "loser_q25_q75": [-3.0, -1.0],
@@ -33,8 +34,8 @@ with tempfile.TemporaryDirectory() as d:
     }
     with open(os.path.join(d, "winning_patterns.json"), "w") as f:
         json.dump(payload, f)
-    winner_like = np.zeros(300); winner_like[idx] = 2.0
-    loser_like = np.zeros(300); loser_like[idx] = -2.0
+    winner_like = np.zeros(feature_count); winner_like[idx] = 2.0
+    loser_like = np.zeros(feature_count); loser_like[idx] = -2.0
     scores = ctl.pattern_scores(zq, np.vstack([winner_like, loser_like]))
     assert scores[0] > scores[1], scores
     assert scores[0] > 0.5 and scores[1] < 0.5, scores
