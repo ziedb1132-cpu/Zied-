@@ -1,4 +1,4 @@
-"""Isolated regression tests for the runtime 300-feature/30-layer extension."""
+"""Isolated regression tests for the expanded runtime feature schema and 30-layer extension."""
 import subprocess
 import sys
 import unittest
@@ -25,7 +25,7 @@ df = pd.DataFrame({
     "avail": pd.date_range("2025-01-01", periods=n, freq="h"),
 })
 out = zq.tf_features(df)
-assert out.shape == (n, 58), out.shape
+assert out.shape == (n, len(zq.NAMES)), out.shape
 assert set(ext.EXTRA_NAMES).issubset(out.columns)
 assert np.isfinite(out.iloc[-1].to_numpy(dtype=float)).all()
 if zq.torch is not None:
@@ -71,7 +71,7 @@ with tempfile.TemporaryDirectory() as tmp:
             "FROM signals s JOIN tracked_signals t ON t.signal_id=s.id "
             "WHERE s.id=?", (created["id"],)
         ).fetchone()
-        assert closed["feature_count"] == 300
+        assert closed["feature_count"] == feature_count
         assert closed["status"] == "CLOSED" and closed["labeled"] == 1
         assert np.array_equal(np.asarray(json.loads(closed["feats"])), vector)
         paper.db.close()
