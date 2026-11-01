@@ -1323,7 +1323,7 @@ def monitor_tracked_signals(paper):
                     activation = entry_price + 0.30 * (float(s["tp"]) - entry_price)
                     active = bool(s.get("trail_active")) or peak >= activation
                     if active:
-                        milestones = max(0, int((peak / entry_price - 1.0 + 1e-12) // 0.05))
+                        milestones = max(0, int(((peak - activation) / (entry_price * 0.05) + 1e-12) // 1))
                         stepped_stop = entry_price * (1.01 + 0.05 * milestones)
                         trail = max(float(s.get("trailing_sl") or s["sl"]),
                                     float(s["sl"]), entry_price * 1.01, stepped_stop)
