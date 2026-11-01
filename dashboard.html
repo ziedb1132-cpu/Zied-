@@ -499,11 +499,26 @@ function renderCharts(){
  const grid=[max,(max+min)/2,min].map(v=>'<line x1="'+L+'" y1="'+py(v)+'" x2="'+(W-R)+'" y2="'+py(v)+'" stroke="#e8edf4" stroke-dasharray="4 5"/><text x="'+(L-8)+'" y="'+(py(v)+4)+'" text-anchor="end" fill="#718096" font-size="11">'+v.toFixed(1)+'%</text>').join("");
  $("returnChart").innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Courbe du rendement cumulé des signaux clôturés">'+grid+'<line x1="'+L+'" y1="'+zero+'" x2="'+(W-R)+'" y2="'+zero+'" stroke="#aab6c7"/><path d="'+poly+'" fill="none" stroke="#315fbd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><circle cx="'+px(points.length-1)+'" cy="'+py(last)+'" r="5" fill="#315fbd"/><text x="'+L+'" y="'+(H-8)+'" fill="#718096" font-size="11">Signal le plus ancien</text><text x="'+(W-R)+'" y="'+(H-8)+'" text-anchor="end" fill="#718096" font-size="11">Signal le plus récent</text></svg><div class="chartlegend"><span><i class="legenddot" style="background:#315fbd"></i>Rendement cumulé théorique : <b>'+last.toFixed(2)+'%</b></span><span>Nombre de signaux : '+closed.length+'</span></div>';
 
- const reasonMap={};closed.forEach(r=>{const reason=String(r.close_reason||r.outcome||"Autre").toUpperCase();if(!reasonMap[reason])reasonMap[reason]={n:0,sum:0};reasonMap[reason].n++;reasonMap[reason].sum+=Number(r.ret)*100;});
- const reasonData=Object.entries(reasonMap).map(([name,v])=>({name,n:v.n,avg:v.sum/v.n})).sort((a,b)=>b.avg-a.avg).slice(0,5);
- if(!reasonData.length){$("exitPerformanceChart").innerHTML='<div class="empty">Les performances par motif apparaîtront après les premières clôtures.</div>';}
- else {const lo=Math.min(0,...reasonData.map(x=>x.avg)),hi=Math.max(0,...reasonData.map(x=>x.avg)),range=hi-lo||1;const x0=150,plotW=165;
- $("exitPerformanceChart").innerHTML='<svg viewBox="0 0 360 '+(reasonData.length*38+24)+'" role="img" aria-label="Rendement moyen par motif de clôture">'+reasonData.map((d,i)=>{const y=12+i*38,w=Math.abs(d.avg)/range*plotW,x=d.avg>=0?x0:x0-w,c=d.avg>=0?"#12805c":"#d6455d";return '<text x="142" y="'+(y+14)+'" text-anchor="end" fill="#42536d" font-size="11">'+d.name.slice(0,17)+'</text><line x1="'+x0+'" y1="'+(y-2)+'" x2="'+x0+'" y2="'+(y+20)+'" stroke="#aab6c7"/><rect x="'+x+'" y="'+y+'" width="'+Math.max(2,w)+'" height="17" rx="5" fill="'+c+'"/><text x="350" y="'+(y+13)+'" text-anchor="end" fill="#17243a" font-size="11" font-weight="700">'+d.avg.toFixed(2)+'% · '+d.n+'</text>'}).join("")+'</svg><div class="chartlegend"><span>Valeur = rendement moyen · nombre de clôtures</span></div>';}
+ const exitCategories=[
+  {key:"TP",label:"TP",aliases:["TP"],color:"#12805c"},
+  {key:"SL",label:"SL",aliases:["SL","STOP","STOP_LOSS"],color:"#d6455d"},
+  {key:"TRAILING",label:"TRAILLING",aliases:["TRAIL","TRAILING","TRAILING_STOP"],color:"#16856a"},
+  {key:"TIME_OUT",label:"TIME OUT",aliases:["TIME","TIME_EXIT","TIMEOUT","MAX_HOLD"],color:"#315fbd"}
+ ];
+ const reasonMap=Object.fromEntries(exitCategories.map(x=>[x.key,{n:0,sum:0,label:x.label,color:x.color}]));
+ closed.forEach(r=>{
+  const raw=String(r.close_reason||r.outcome||"").trim().toUpperCase().replace(/[ -]+/g,"_");
+  const category=exitCategories.find(x=>x.aliases.includes(raw));
+  if(!category)return;
+  const bucket=reasonMap[category.key];bucket.n++;bucket.sum+=Number(r.ret)*100;
+ });
+ const reasonData=exitCategories.map(x=>{const v=reasonMap[x.key];return {...v,avg:v.n?v.sum/v.n:0};});
+ const lo=Math.min(0,...reasonData.map(x=>x.avg)),hi=Math.max(0,...reasonData.map(x=>x.avg)),range=hi-lo||1;
+ const x0=150,plotW=165;
+ $("exitPerformanceChart").innerHTML='<svg viewBox="0 0 390 190" role="img" aria-label="Rendement moyen et nombre de clôtures TP, SL, TRAILLING et TIME OUT">'+reasonData.map((d,i)=>{
+  const y=12+i*40,w=d.n?Math.abs(d.avg)/range*plotW:0,x=d.avg>=0?x0:x0-w,c=d.avg>=0?d.color:"#d6455d";
+  return '<text x="140" y="'+(y+14)+'" text-anchor="end" fill="#42536d" font-size="11" font-weight="600">'+d.label+'</text><line x1="'+x0+'" y1="'+(y-2)+'" x2="'+x0+'" y2="'+(y+20)+'" stroke="#aab6c7"/><rect x="'+x+'" y="'+y+'" width="'+Math.max(d.n?2:0,w)+'" height="17" rx="5" fill="'+c+'"/><text x="385" y="'+(y+13)+'" text-anchor="end" fill="#17243a" font-size="11" font-weight="700">'+(d.n?d.avg.toFixed(2)+"% · "+d.n+" "+d.label:"— · 0 "+d.label)+'</text>';
+ }).join("")+'</svg><div class="chartlegend"><span>Chaque ligne affiche le rendement moyen, le nombre de clôtures et son motif.</span></div>';
 
 
  $("chartReturnMeta").textContent=closed.length+" signal clôturé";
