@@ -82,6 +82,12 @@ def _install_features(zq):
         registry = {"features": []}
     approved = [r for r in registry.get("features", [])
                 if isinstance(r, dict) and r.get("status") == "approved"]
+    derived_names = sorted({
+        r.get("feature_name") for r in approved
+        if isinstance(r.get("feature_name"), str) and r.get("feature_name")
+    })
+    approved = [r for r in registry.get("features", [])
+                if isinstance(r, dict) and r.get("status") == "approved"]
     # Bring the full causal feature library used by autonomous strategy research
     # into the model's input matrix, not only strategies that passed the approval gate.
     from autonomous_strategy_engine import _LIBRARY_FEATURES, build_features as build_discovery_features
