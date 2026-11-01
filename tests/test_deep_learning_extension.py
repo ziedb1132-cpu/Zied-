@@ -17,7 +17,7 @@ assert zq.N_FEATURES >= 300, zq.N_FEATURES
 assert len(zq.FEATURE_COLS) == zq.N_FEATURES
 assert zq.CFG["EXPLORATION_PROB_MIN"] == 0.65
 assert ext.WIN_THRESHOLD == 500 and ext.LOSS_THRESHOLD == 500  # closed-outcome pattern gate
-n = 360
+n = 800
 c = pd.Series(100 * np.exp(np.linspace(0, .2, n)))
 df = pd.DataFrame({
     "o": c * .999, "h": c * 1.01, "l": c * .99, "c": c,
