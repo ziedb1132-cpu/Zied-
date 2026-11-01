@@ -112,12 +112,20 @@ def build_features(df):
     core = _build_core_features(df)
     expanded = build_feature_library(df, core=core)
     combined = pd.concat([core, expanded], axis=1)
-    # Guard against accidental name collisions without silently dropping legacy data.
+    # Validate the actual names, not only the column count. A same-sized but
+    # differently named matrix would otherwise be silently converted to NaNs
+    # by the model feature-alignment layer.
     if not combined.columns.is_unique:
         raise ValueError("Duplicate feature names in autonomous feature matrix")
-    if len(_LIBRARY_FEATURES) != 546 or len(expanded.columns) != 546:
+    expected = set(_LIBRARY_FEATURES)
+    actual = set(expanded.columns)
+    missing = sorted(expected - actual)
+    unexpected = sorted(actual - expected)
+    if len(_LIBRARY_FEATURES) != 546 or len(expanded.columns) != 546 or missing or unexpected:
         raise RuntimeError(
-            f"Feature library schema mismatch: expected 546, got {len(expanded.columns)}"
+            "Feature library schema mismatch: "
+            f"expected=546 actual={len(expanded.columns)} "
+            f"missing={missing[:12]} unexpected={unexpected[:12]}"
         )
     return combined
 
