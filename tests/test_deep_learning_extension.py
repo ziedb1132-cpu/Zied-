@@ -18,10 +18,16 @@ assert len(zq.FEATURE_COLS) == zq.N_FEATURES
 assert zq.CFG["EXPLORATION_PROB_MIN"] == 0.65
 assert ext.WIN_THRESHOLD == 500 and ext.LOSS_THRESHOLD == 500  # closed-outcome pattern gate
 n = 800
-c = pd.Series(100 * np.exp(np.linspace(0, .2, n)))
+t = np.arange(n, dtype=float)
+c = pd.Series(100 * np.exp(
+    np.linspace(0, .2, n) + .015*np.sin(t/7) + .007*np.sin(t/17)
+))
 df = pd.DataFrame({
-    "o": c * .999, "h": c * 1.01, "l": c * .99, "c": c,
-    "vol": np.linspace(1000, 2000, n),
+    "o": c * (0.999 + .0005*np.sin(t/5)),
+    "h": c * (1.006 + .001*np.sin(t/11)),
+    "l": c * (0.994 - .001*np.sin(t/13)),
+    "c": c,
+    "vol": np.linspace(1000, 2000, n) * (1 + .2*np.sin(t/9)),
     "avail": pd.date_range("2025-01-01", periods=n, freq="h"),
 })
 out = zq.tf_features(df)
