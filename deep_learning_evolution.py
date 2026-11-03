@@ -114,13 +114,24 @@ def _install_features(zq):
             # Research features are causal OHLCV transformations. Align to the same
             # closed-candle index; absent columns remain NaN and are removed by
             # the existing dataset's dropna, never filled with future data.
-            for name in research_names:
-                combined[name] = discovery[name].reindex(combined.index) if name in discovery else np.nan
+            # Assemble research and derived columns separately, then concatenate
+            # once. Repeated DataFrame column insertion fragments memory and slows
+            # feature construction without changing the feature values or schema.
+            research_columns = {
+                name: discovery[name].reindex(combined.index) if name in discovery else np.nan
+                for name in research_names
+            }
             if derived_names:
                 from derived_strategy_features import approved_feature_matrix
                 derived = approved_feature_matrix(discovery, registry)
-                for name in derived_names:
-                    combined[name] = derived[name].reindex(combined.index) if name in derived else np.nan
+                derived_columns = {
+                    name: derived[name].reindex(combined.index) if name in derived else np.nan
+                    for name in derived_names
+                }
+                research_columns.update(derived_columns)
+            if research_columns:
+                research_frame = pd.DataFrame(research_columns, index=combined.index)
+                combined = pd.concat([combined, research_frame], axis=1)
         except Exception as exc:
             zq.log.warning("research/approved feature computation skipped: %s", exc)
             for name in research_names + derived_names:
