@@ -1,6 +1,9 @@
 name: Zied Quant hourly
 
 on:
+  schedule:
+    # 03:00 Tunisia time (UTC+1) = 02:00 UTC
+    - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
       reset_state:
@@ -101,6 +104,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           CYCLES_PER_WORKFLOW: "1"
+          RUN_DAILY_BACKTEST: ${{ github.event_name == 'schedule' && github.event.schedule == '0 2 * * *' && '1' || '0' }}
         run: bash .github/scripts/run_100_cycles.sh
 
       - name: Save state cache
@@ -119,8 +123,3 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Start next workflow after successful cycle
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run zied-quant.yml --ref main
