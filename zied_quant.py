@@ -1985,7 +1985,11 @@ def once():
                  status["wins"], status["losses"])
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
-    run_cycle_backtest(uni, paper)
+    if os.getenv("RUN_DAILY_BACKTEST", "0") == "1":
+        log.info("daily scheduled run: executing walk-forward backtest")
+        run_cycle_backtest(uni, paper)
+    else:
+        log.info("daily backtest skipped; this is not the scheduled backtest run")
     paper._set("cycle", cycle + 1)
     status = learning_gate_status(paper)
     if status["ready"] and need_retrain(paper):
