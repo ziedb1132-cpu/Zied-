@@ -2021,6 +2021,31 @@ def run_cycle_backtest(universe, paper=None, folds=5):
         tg(f"⚠️ تعذر إكمال Backtest في هذه الدورة: {e}")
         return None
 
+def daily_training_due(paper, now=None):
+    """Allow at most one AI training attempt per rolling 24 hours across workflow runs."""
+    now = time.time() if now is None else float(now)
+    last = float(paper._get("daily_ai_training_attempt_ts") or 0)
+    return last <= 0 or now - last >= 86400
+
+
+def mark_daily_training_attempt(paper, now=None):
+    """Persist the training-attempt time before training, including rejected/failed attempts."""
+    now = time.time() if now is None else float(now)
+    paper._set("daily_ai_training_attempt_ts", now)
+
+
+def daily_backtest_due(paper, now=None):
+    """Persist a rolling 24-hour backtest guard so reruns cannot repeat the heavy job."""
+    now = time.time() if now is None else float(now)
+    last = float(paper._get("daily_backtest_attempt_ts") or 0)
+    return last <= 0 or now - last >= 86400
+
+
+def mark_daily_backtest_attempt(paper, now=None):
+    now = time.time() if now is None else float(now)
+    paper._set("daily_backtest_attempt_ts", now)
+
+
 def once():
     """One full cycle for schedulers (GitHub Actions)."""
     brain, paper = Brain(), Paper()
@@ -2032,32 +2057,44 @@ def once():
     label_signals(paper)
     status = enforce_closed_outcome_gate(brain, paper)
     if status["ready"] and (not brain.ready or need_retrain(paper)):
-        try:
-            retrain(brain, paper, uni, "تعلّم من الإشارات المغلقة")
-        except Exception as e:
-            log.exception("closed-signal retraining failed: %s", e)
-            tg(f"⚠️ فشل تحديث التعلم من الإشارات المغلقة: {e}")
-        finally:
-            paper._set("last_learning_attempt_closed_count", status["total"])
+        if daily_training_due(paper):
+            mark_daily_training_attempt(paper)
+            try:
+                retrain(brain, paper, uni, "تعلّم من الإشارات المغلقة")
+            except Exception as e:
+                log.exception("closed-signal retraining failed: %s", e)
+                tg(f"⚠️ فشل تحديث التعلم من الإشارات المغلقة: {e}")
+            finally:
+                paper._set("last_learning_attempt_closed_count", status["total"])
+        else:
+            log.info("AI training skipped: daily 24-hour limit has not elapsed")
     elif not status["ready"]:
         log.info("AI learning gate: closed wins=%d/500 losses=%d/500; model disabled",
                  status["wins"], status["losses"])
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
     if os.getenv("RUN_DAILY_BACKTEST", "0") == "1":
-        log.info("daily scheduled run: executing walk-forward backtest")
-        run_cycle_backtest(uni, paper)
+        if daily_backtest_due(paper):
+            log.info("daily scheduled run: executing walk-forward backtest")
+            mark_daily_backtest_attempt(paper)
+            run_cycle_backtest(uni, paper)
+        else:
+            log.info("daily backtest skipped: rolling 24-hour limit has not elapsed")
     else:
         log.info("daily backtest skipped; this is not the scheduled backtest run")
     paper._set("cycle", cycle + 1)
     status = learning_gate_status(paper)
     if status["ready"] and need_retrain(paper):
-        try:
-            retrain(brain, paper, uni, "تحديث بعد إشارة مغلقة")
-        except Exception as e:
-            log.exception("post-closure learning failed: %s", e)
-        finally:
-            paper._set("last_learning_attempt_closed_count", status["total"])
+        if daily_training_due(paper):
+            mark_daily_training_attempt(paper)
+            try:
+                retrain(brain, paper, uni, "تحديث بعد إشارة مغلقة")
+            except Exception as e:
+                log.exception("post-closure learning failed: %s", e)
+            finally:
+                paper._set("last_learning_attempt_closed_count", status["total"])
+        else:
+            log.info("post-scan AI training skipped: daily 24-hour limit has not elapsed")
     # Statistics are available on demand via /stats; no wallet or exchange orders.
 
 def telegram_loop(paper, brain, stop):
