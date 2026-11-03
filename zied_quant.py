@@ -1317,16 +1317,16 @@ def monitor_tracked_signals(paper):
                     old_peak = float(s.get("peak_price") or s["entry"])
                     peak = max(old_peak, high)
                     entry_price = float(s["entry"])
-                    atr_pct = float(s["atr_pct"])
-                    # Arm at 30% of the entry-to-TP distance. Once armed,
-                    # protect +1%; then ratchet +5% per each +5% price milestone.
-                    activation = entry_price + 0.30 * (float(s["tp"]) - entry_price)
+                    tp_distance = float(s["tp"]) - entry_price
+                    # Arm when price reaches 15% of the entry-to-TP distance.
+                    # Thereafter keep the stop 10% of that distance below the peak.
+                    activation = entry_price + 0.15 * tp_distance
+                    trail_gap = 0.10 * tp_distance
                     active = bool(s.get("trail_active")) or peak >= activation
                     if active:
-                        milestones = max(0, int(((peak - activation) / (entry_price * 0.05) + 1e-12) // 1))
-                        stepped_stop = entry_price * (1.01 + 0.05 * milestones)
+                        stepped_stop = peak - trail_gap
                         trail = max(float(s.get("trailing_sl") or s["sl"]),
-                                    float(s["sl"]), entry_price * 1.01, stepped_stop)
+                                    float(s["sl"]), stepped_stop)
                     else:
                         trail = float(s["sl"])
                     paper.update_trailing(s["id"], peak, trail, active)
