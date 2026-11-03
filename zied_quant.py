@@ -175,34 +175,93 @@ def get_prices():
         prices[inst] = price
     return prices
 
-def get_candles(inst, bar, depth):
-    """Closed candles, oldest first. depth > 1400 switches to the history endpoint."""
-    hist = depth > 1400
-    path = "/api/v5/market/history-candles" if hist else "/api/v5/market/candles"
-    lim, gap = (100, 0.11) if hist else (300, 0.07)
-    out, after = [], None
-    while len(out) < depth:
-        p = {"instId": inst, "bar": bar, "limit": lim}
-        if after:
-            p["after"] = after
-        r = okx_get(path, p, gap=gap)
-        if not r:
-            break
-        out += r
-        after = r[-1][0]
-        if len(r) < lim:
-            break
-    if not out:
+def _candle_cache_path(inst, bar):
+    # Persistent cache for every symbol/timeframe; Actions restores zied_data between runs.
+    safe_inst = str(inst).replace("/", "_").replace("-", "_")
+    return os.path.join(CFG["DIR"], "candles", f"{safe_inst}_{bar}.csv")
+
+def _normalize_candles(rows, bar, depth):
+    if not rows:
         return None
-    out = [(list(r) + ["1"])[:9] for r in out]
-    df = pd.DataFrame(out, columns=["ts", "o", "h", "l", "c", "vol", "volccy", "volq", "confirm"])
-    df = df[df["confirm"] == "1"].copy()                  # closed candles only
+    rows = [(list(r) + ["1"])[:9] for r in rows]
+    df = pd.DataFrame(rows, columns=["ts", "o", "h", "l", "c", "vol", "volccy", "volq", "confirm"])
+    df = df[df["confirm"].astype(str) == "1"].copy()
+    if df.empty:
+        return None
     for k in ("o", "h", "l", "c", "vol"):
-        df[k] = df[k].astype(float)
+        df[k] = pd.to_numeric(df[k], errors="coerce")
+    df["ts"] = pd.to_numeric(df["ts"], errors="coerce")
+    df = df.dropna(subset=["ts", "o", "h", "l", "c", "vol"])
     df["ts"] = df["ts"].astype("int64")
     df = df.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
     df["avail"] = pd.to_datetime(df["ts"] + CFG["TF_SEC"][bar] * 1000, unit="ms")
     return df.iloc[-depth:].reset_index(drop=True)
+
+def get_candles(inst, bar, depth):
+    """Read persisted closed candles and incrementally merge recent bars for all timeframes."""
+    path = _candle_cache_path(inst, bar)
+    cached = None
+    try:
+        if os.path.isfile(path):
+            cached = pd.read_csv(path)
+            if not cached.empty:
+                cached["ts"] = pd.to_numeric(cached["ts"], errors="coerce")
+                cached = cached.dropna(subset=["ts"])
+                cached["ts"] = cached["ts"].astype("int64")
+                cached = cached.drop_duplicates("ts").sort_values("ts")
+                cached["avail"] = pd.to_datetime(cached["ts"] + CFG["TF_SEC"][bar] * 1000, unit="ms")
+                cached = cached.iloc[-depth:].reset_index(drop=True)
+    except Exception as exc:
+        log.warning("candle cache read failed for %s %s: %s", inst, bar, exc)
+        cached = None
+
+    now_ms = int(time.time() * 1000)
+    tf_ms = CFG["TF_SEC"][bar] * 1000
+    cache_ok = cached is not None and len(cached) >= 60
+    # If the cache is current, request only a few latest bars instead of the full candle payload.
+    if cache_ok:
+        age = now_ms - int(cached["ts"].iloc[-1]) - tf_ms
+        cache_ok = age <= 3 * tf_ms
+
+    hist = depth > 1400
+    api_path = "/api/v5/market/history-candles" if hist else "/api/v5/market/candles"
+    lim = 3 if cache_ok else (100 if hist else 300)
+    gap = 0.11 if hist else 0.07
+    out, after = [], None
+    while len(out) < (lim if cache_ok else depth):
+        params = {"instId": inst, "bar": bar, "limit": lim}
+        if after:
+            params["after"] = after
+        rows = okx_get(api_path, params, gap=gap)
+        if not rows:
+            break
+        out += rows
+        after = rows[-1][0]
+        if len(rows) < lim:
+            break
+        if cache_ok:
+            break
+    fresh = _normalize_candles(out, bar, depth)
+    if cache_ok and fresh is not None:
+        merged = pd.concat([cached, fresh], ignore_index=True)
+        merged = merged.drop_duplicates("ts", keep="last").sort_values("ts").iloc[-depth:].reset_index(drop=True)
+        merged["avail"] = pd.to_datetime(merged["ts"] + tf_ms, unit="ms")
+        result = merged
+    elif fresh is not None:
+        result = fresh
+    elif cache_ok:
+        result = cached
+    else:
+        return None
+
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        temp_path = path + ".tmp"
+        result.to_csv(temp_path, index=False)
+        os.replace(temp_path, path)
+    except Exception as exc:
+        log.warning("candle cache write failed for %s %s: %s", inst, bar, exc)
+    return result.iloc[-depth:].reset_index(drop=True)
 
 def hist_depth():
     d = CFG["HIST_DAYS"]
