@@ -34,7 +34,7 @@ persist_state() {
   if ! curl -fsSL --retry 2 --connect-timeout 10 \
     "https://raw.githubusercontent.com/ziedb1132-cpu/Zied-Strategy-Lab/main/data/dashboard_summary.json" \
     -o "$RUNNER_TEMP/strategy_lab_summary.json"; then
-    printf '%s\\n' '{"updated_at":null,"cycle":0,"strategies_discovered":0,"successful_buy_strategies":0,"strategies":[]}' > "$RUNNER_TEMP/strategy_lab_summary.json"
+    printf '%s\n' '{"updated_at":null,"cycle":0,"strategies_discovered":0,"successful_buy_strategies":0,"strategies":[]}' > "$RUNNER_TEMP/strategy_lab_summary.json"
     echo "WARNING: Strategy Lab summary unavailable; preserving the single-file dashboard format with empty summary."
   fi
   python "$RUNNER_TEMP/dashboard_export.py" "$STATE_BACKUP/zied_data" "$RUNNER_TEMP/dashboard_data.json" "$RUNNER_TEMP/strategy_lab_summary.json"
