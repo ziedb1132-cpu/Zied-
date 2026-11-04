@@ -901,7 +901,7 @@ function renderStrategyMonitor(data,error){
  const activeSignal=data?.active_signal===true;
  $("monitorCurrentPrice").textContent=monitorPrice(data?.buy_now);
  const items=[
-  ["Buy Now",activeSignal?data?.buy_at:null,"يظهر فقط عند وجود إشارة شراء نشطة"],
+  ["Buy Now",activeSignal?data?.buy_now:null,"Affiché uniquement lorsqu’un signal BUY est actif"],
   ["Buy At",activeSignal?data?.buy_at:null,"Prix d’entrée de la stratégie"],
   ["SL",activeSignal?data?.sl:null,"Stop Loss"],
   ["TP",activeSignal?data?.tp:null,"Take Profit"]
