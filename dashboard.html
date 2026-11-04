@@ -35,14 +35,15 @@ button:active{transform:translateY(1px)}
 .strategy-tv-heading h2{margin:0}
 .strategy-tv-heading p{margin:3px 0 0}
 .strategy-tv-symbol{font-size:12px;font-weight:750;color:#315fbd;background:#edf3ff;border:1px solid #dbe7ff;padding:6px 10px;border-radius:999px}
-.strategy-tv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.strategy-tv-panel{min-width:0;border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#fff}
-.strategy-tv-panel:first-child{grid-column:1/-1}
-.strategy-tv-panel-title{font-weight:750;padding:9px 12px;border-bottom:1px solid var(--line);background:#fafbfd}
-.tradingview-chart{height:430px;width:100%}
-.strategy-tv-panel:first-child .tradingview-chart{height:480px}
+.strategy-tv-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.strategy-tv-single{width:100%;min-width:0;border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#fff}
+.tradingview-chart{height:620px;width:100%}
+.strategy-tv-single:fullscreen{background:#fff;padding:10px;box-sizing:border-box}
+.strategy-tv-single:fullscreen .tradingview-chart{height:calc(100vh - 20px)}
+.strategy-tv-single.tv-expanded{position:fixed;inset:0;z-index:99999;background:#fff;padding:10px;box-sizing:border-box;border:0;border-radius:0}
+.strategy-tv-single.tv-expanded .tradingview-chart{height:calc(100dvh - 20px)}
 .strategy-tv-footnote{margin:12px 0 0}
-@media(max-width:850px){.strategy-tv-grid{grid-template-columns:1fr}.strategy-tv-panel:first-child{grid-column:auto}.tradingview-chart,.strategy-tv-panel:first-child .tradingview-chart{height:390px}}
+@media(max-width:850px){.tradingview-chart{height:480px}}
 
 .tabs button{border-radius:999px;padding:9px 16px;box-shadow:0 2px 7px rgba(20,40,70,.035)}
 .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
@@ -483,13 +484,9 @@ header{padding-left:278px}
 <p class="muted">Données publiées par le laboratoire indépendant · Actualisation automatique</p>
 <div id="strategyLabZMetrics" class="grid"></div>
 <div class="card section strategy-tv-section">
- <div class="strategy-tv-heading"><div><h2>TradingView · SOL / USDT</h2><p class="muted">Graphiques de marché en direct · Source TradingView · Marché OKX</p></div><span class="strategy-tv-symbol">OKX:SOLUSDT</span></div>
- <div id="strategyLabTradingView" class="strategy-tv-grid">
-  <div class="strategy-tv-panel"><div class="strategy-tv-panel-title">15 minutes</div><div id="tvSol15" class="tradingview-chart"></div></div>
-  <div class="strategy-tv-panel"><div class="strategy-tv-panel-title">1 heure</div><div id="tvSol60" class="tradingview-chart"></div></div>
-  <div class="strategy-tv-panel"><div class="strategy-tv-panel-title">4 heures</div><div id="tvSol240" class="tradingview-chart"></div></div>
- </div>
- <p class="muted strategy-tv-footnote">Les graphiques sont fournis directement par TradingView. Ils ne modifient pas les signaux papier ni les données de dashboard_data.json.</p>
+ <div class="strategy-tv-heading"><div><h2>TradingView · SOL / USDT</h2><p class="muted">Graphique de marché en direct · Source TradingView · Marché OKX</p></div><div class="strategy-tv-actions"><span class="strategy-tv-symbol">OKX:SOLUSDT</span><button type="button" id="tvFullscreenBtn" class="secondary">Plein écran ⛶</button></div></div>
+ <div id="strategyLabTradingView" class="strategy-tv-single"><div id="tvSolMain" class="tradingview-chart"></div></div>
+ <p class="muted strategy-tv-footnote">Graphique TradingView indépendant des signaux papier et des données de dashboard_data.json.</p>
 </div>
 <div class="card section"><h2>Stratégies ayant réussi tous les tests</h2><div id="strategyLabZList" class="strategy-lab-list"><div class="empty">Chargement du rapport Strategy Lab…</div></div></div>
 <div id="strategyLabZStatus" class="muted" style="margin-top:10px"></div>
@@ -758,33 +755,42 @@ function render(){
 let strategyTradingViewMounted=false;
 function mountStrategyLabTradingView(){
  if(strategyTradingViewMounted)return;
- const charts=[
-  {id:"tvSol15",interval:"15"},
-  {id:"tvSol60",interval:"60"},
-  {id:"tvSol240",interval:"240"}
- ];
- charts.forEach(chart=>{
-  const host=$(chart.id);if(!host)return;
-  const container=document.createElement("div");
-  container.className="tradingview-widget-container";
-  container.style.width="100%";container.style.height="100%";
-  const widget=document.createElement("div");
-  widget.className="tradingview-widget-container__widget";
-  widget.style.width="100%";widget.style.height="100%";
-  container.appendChild(widget);
-  const script=document.createElement("script");
-  script.type="text/javascript";
-  script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-  script.async=true;
-  script.text=JSON.stringify({
-   autosize:true,symbol:"OKX:SOLUSDT",interval:chart.interval,
-   timezone:"Africa/Tunis",theme:"light",style:"1",locale:"fr",
-   allow_symbol_change:false,calendar:false,details:false,
-   hotlist:false,hide_side_toolbar:false,save_image:false,
-   support_host:"https://www.tradingview.com"
-  });
-  container.appendChild(script);host.replaceChildren(container);
+ const host=$("tvSolMain");if(!host)return;
+ const container=document.createElement("div");
+ container.className="tradingview-widget-container";
+ container.style.width="100%";container.style.height="100%";
+ const widget=document.createElement("div");
+ widget.className="tradingview-widget-container__widget";
+ widget.style.width="100%";widget.style.height="100%";
+ container.appendChild(widget);
+ const script=document.createElement("script");
+ script.type="text/javascript";
+ script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+ script.async=true;
+ script.text=JSON.stringify({
+  autosize:true,symbol:"OKX:SOLUSDT",interval:"60",
+  timezone:"Africa/Tunis",theme:"light",style:"1",locale:"fr",
+  allow_symbol_change:false,calendar:false,details:false,
+  hotlist:false,hide_side_toolbar:false,save_image:false,
+  support_host:"https://www.tradingview.com"
  });
+ container.appendChild(script);host.replaceChildren(container);
+ const chartBox=$("strategyLabTradingView"),button=$("tvFullscreenBtn");
+ if(button&&chartBox&&!button.dataset.bound){
+  button.dataset.bound="1";
+  const updateLabel=()=>{button.textContent=(document.fullscreenElement===chartBox||chartBox.classList.contains("tv-expanded"))?"Quitter le plein écran":"Plein écran ⛶";};
+  button.addEventListener("click",async()=>{
+   try{
+    if(document.fullscreenElement===chartBox){await document.exitFullscreen();}
+    else if(chartBox.classList.contains("tv-expanded")){chartBox.classList.remove("tv-expanded");}
+    else if(chartBox.requestFullscreen){await chartBox.requestFullscreen();}
+    else{chartBox.classList.add("tv-expanded");}
+   }catch(_){chartBox.classList.toggle("tv-expanded");}
+   updateLabel();
+  });
+  document.addEventListener("fullscreenchange",updateLabel);
+  updateLabel();
+ }
  strategyTradingViewMounted=true;
 }
 function renderStrategyLabZ(){
