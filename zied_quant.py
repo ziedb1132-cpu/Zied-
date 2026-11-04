@@ -52,7 +52,7 @@ CFG = dict(
     TFS=["5m", "15m", "1H", "4H", "1D"],
     TF_SEC={"5m": 300, "15m": 900, "1H": 3600, "4H": 14400, "1D": 86400},
     BASE_TF="1H",
-    SCAN_DEPTH=100,                    # live scan needs only a compact rolling window (max feature horizon 60 bars)
+    SCAN_DEPTH=260,                    # covers the 200-bar causal feature library plus warm-up on every timeframe
     HIST_DAYS=30,                      # history used for the bootstrap dataset
     TRAIN_TOP=40,                      # coins (by volume) in the bootstrap dataset
     MIN_VOL_USDT=0,                    # scan every live non-stable SPOT-USDT pair; rank liquidity as a feature
@@ -217,7 +217,10 @@ def get_candles(inst, bar, depth):
 
     now_ms = int(time.time() * 1000)
     tf_ms = CFG["TF_SEC"][bar] * 1000
-    cache_ok = cached is not None and len(cached) >= 60
+    # Incremental refresh is safe only when the cache already covers the full requested lookback.
+    # Otherwise fetch the complete depth; a short cache plus 3 new candles leaves long-window
+    # features (e.g. 120/200-bar ranks and z-scores) permanently NaN.
+    cache_ok = cached is not None and len(cached) >= depth
     # If the cache is current, request only a few latest bars instead of the full candle payload.
     if cache_ok:
         age = now_ms - int(cached["ts"].iloc[-1]) - tf_ms
