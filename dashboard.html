@@ -778,6 +778,8 @@ function mountStrategyLabTradingView(){
   const candles=payload&&Array.isArray(payload.candles)?payload.candles:[];
   const info=$("tvSignalInfo");
   if(!candles.length){
+   if(strategyChart){try{strategyChart.remove();}catch(_){}}
+   strategyChart=null;host.innerHTML="";
    if(info)info.textContent="En attente des premières bougies et d’une stratégie validée. Les données seront intégrées au prochain cycle du laboratoire.";
    return;
   }
@@ -831,7 +833,7 @@ function mountStrategyLabTradingView(){
 }
 function renderStrategyLabZ(){
  const report=state.strategy_lab||null;
- if(!report){const st=$("strategyLabZStatus");if(st)st.textContent="Les données apparaîtront après la prochaine mise à jour de dashboard_data.json."; $("strategyLabZMetrics").innerHTML=metric("Cycles effectués","—","Rapport indisponible")+metric("Stratégies découvertes","—","Total cumulé")+metric("Stratégies réussies","—","Validation et test réussis");$("strategyLabZList").innerHTML='<div class="empty">Le rapport du Strategy Lab n’est pas encore disponible.</div>';return;}
+ if(!report){const st=$("strategyLabZStatus");if(st)st.textContent="Les données apparaîtront après la prochaine mise à jour de dashboard_data.json."; $("strategyLabZMetrics").innerHTML=metric("Cycles effectués","—","Rapport indisponible")+metric("Stratégies découvertes","—","Total cumulé")+metric("Stratégies réussies","—","Validation et test réussis");$("strategyLabZList").innerHTML='<div class="empty">Le rapport du Strategy Lab n’est pas encore disponible.</div>';mountStrategyLabTradingView();return;}
  // dashboard_data.json carries only the compact Strategy Lab summary. Display at most the 20 highest-rated successful strategies.
  const successful=(Array.isArray(report.strategies)?report.strategies:[])
    .filter(x=>x&&x.name&&x.explanation)
