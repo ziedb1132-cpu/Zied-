@@ -30,6 +30,20 @@ button:active{transform:translateY(1px)}
 .primary,.active{background:var(--blue);border-color:var(--blue);color:#fff}
 .primary:hover,.active:hover{background:#274f9e;border-color:#274f9e;color:#fff}
 .tabs{overflow:auto;margin:18px 0 20px;padding:5px 2px 9px;gap:8px}
+.strategy-tv-section{padding:18px}
+.strategy-tv-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.strategy-tv-heading h2{margin:0}
+.strategy-tv-heading p{margin:3px 0 0}
+.strategy-tv-symbol{font-size:12px;font-weight:750;color:#315fbd;background:#edf3ff;border:1px solid #dbe7ff;padding:6px 10px;border-radius:999px}
+.strategy-tv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.strategy-tv-panel{min-width:0;border:1px solid var(--line);border-radius:13px;overflow:hidden;background:#fff}
+.strategy-tv-panel:first-child{grid-column:1/-1}
+.strategy-tv-panel-title{font-weight:750;padding:9px 12px;border-bottom:1px solid var(--line);background:#fafbfd}
+.tradingview-chart{height:430px;width:100%}
+.strategy-tv-panel:first-child .tradingview-chart{height:480px}
+.strategy-tv-footnote{margin:12px 0 0}
+@media(max-width:850px){.strategy-tv-grid{grid-template-columns:1fr}.strategy-tv-panel:first-child{grid-column:auto}.tradingview-chart,.strategy-tv-panel:first-child .tradingview-chart{height:390px}}
+
 .tabs button{border-radius:999px;padding:9px 16px;box-shadow:0 2px 7px rgba(20,40,70,.035)}
 .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:17px;min-width:0;box-shadow:var(--shadow)}
@@ -468,6 +482,15 @@ header{padding-left:278px}
 <h2>Strategy Lab Z</h2>
 <p class="muted">Données publiées par le laboratoire indépendant · Actualisation automatique</p>
 <div id="strategyLabZMetrics" class="grid"></div>
+<div class="card section strategy-tv-section">
+ <div class="strategy-tv-heading"><div><h2>TradingView · SOL / USDT</h2><p class="muted">Graphiques de marché en direct · Source TradingView · Marché OKX</p></div><span class="strategy-tv-symbol">OKX:SOLUSDT</span></div>
+ <div id="strategyLabTradingView" class="strategy-tv-grid">
+  <div class="strategy-tv-panel"><div class="strategy-tv-panel-title">15 minutes</div><div id="tvSol15" class="tradingview-chart"></div></div>
+  <div class="strategy-tv-panel"><div class="strategy-tv-panel-title">1 heure</div><div id="tvSol60" class="tradingview-chart"></div></div>
+  <div class="strategy-tv-panel"><div class="strategy-tv-panel-title">4 heures</div><div id="tvSol240" class="tradingview-chart"></div></div>
+ </div>
+ <p class="muted strategy-tv-footnote">Les graphiques sont fournis directement par TradingView. Ils ne modifient pas les signaux papier ni les données de dashboard_data.json.</p>
+</div>
 <div class="card section"><h2>Stratégies ayant réussi tous les tests</h2><div id="strategyLabZList" class="strategy-lab-list"><div class="empty">Chargement du rapport Strategy Lab…</div></div></div>
 <div id="strategyLabZStatus" class="muted" style="margin-top:10px"></div>
 </section>
@@ -732,6 +755,38 @@ function render(){
  const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
 
 }
+let strategyTradingViewMounted=false;
+function mountStrategyLabTradingView(){
+ if(strategyTradingViewMounted)return;
+ const charts=[
+  {id:"tvSol15",interval:"15"},
+  {id:"tvSol60",interval:"60"},
+  {id:"tvSol240",interval:"240"}
+ ];
+ charts.forEach(chart=>{
+  const host=$(chart.id);if(!host)return;
+  const container=document.createElement("div");
+  container.className="tradingview-widget-container";
+  container.style.width="100%";container.style.height="100%";
+  const widget=document.createElement("div");
+  widget.className="tradingview-widget-container__widget";
+  widget.style.width="100%";widget.style.height="100%";
+  container.appendChild(widget);
+  const script=document.createElement("script");
+  script.type="text/javascript";
+  script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+  script.async=true;
+  script.text=JSON.stringify({
+   autosize:true,symbol:"OKX:SOLUSDT",interval:chart.interval,
+   timezone:"Africa/Tunis",theme:"light",style:"1",locale:"fr",
+   allow_symbol_change:false,calendar:false,details:false,
+   hotlist:false,hide_side_toolbar:false,save_image:false,
+   support_host:"https://www.tradingview.com"
+  });
+  container.appendChild(script);host.replaceChildren(container);
+ });
+ strategyTradingViewMounted=true;
+}
 function renderStrategyLabZ(){
  const report=state.strategy_lab||null;
  if(!report){const st=$("strategyLabZStatus");if(st)st.textContent="Les données apparaîtront après la prochaine mise à jour de dashboard_data.json."; $("strategyLabZMetrics").innerHTML=metric("Cycles effectués","—","Rapport indisponible")+metric("Stratégies découvertes","—","Total cumulé")+metric("Stratégies réussies","—","Validation et test réussis");$("strategyLabZList").innerHTML='<div class="empty">Le rapport du Strategy Lab n’est pas encore disponible.</div>';return;}
@@ -790,7 +845,7 @@ async function connect(){
 }
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
-function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","strategyLabZ","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
+function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","strategyLabZ","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
 document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showDashboardPage(b.dataset.tab);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");}});
 document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
 document.getElementById("navScrim")?.addEventListener("click",()=>{document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
