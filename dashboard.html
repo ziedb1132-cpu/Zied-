@@ -816,7 +816,7 @@ function mountStrategyLabTradingView(){
       ' · ATR(14): '+Number(levels.atr).toFixed(4)+' · '+esc(signal.status||"");
    }else{
     info.textContent=(payload.strategy?"Strategy "+payload.strategy.id+" · ":"")+
-      "Aucune entrée BUY récente صالحة لعرض مستويات TP وSL. الحالة: "+String(payload.status||"—");
+      "Aucune entrée BUY récente valide pour afficher les niveaux TP et SL. الحالة: "+String(payload.status||"—");
    }
   }
  };
