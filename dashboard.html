@@ -969,5 +969,5 @@ showDashboardPage(location.hash.slice(1)||"overview",false);
 render();
 setLanguage();
 
-window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000)});
+window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000);setTimeout(loadStrategyMonitor,500);setInterval(loadStrategyMonitor,15000)});
 </script></body></html>
