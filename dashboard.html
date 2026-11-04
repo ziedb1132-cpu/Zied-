@@ -454,6 +454,9 @@ header{padding-left:278px}
 <button type="button" data-tab="backtestValidation"><i>▥</i><span>Backtest & Validation</span></button>
 <button type="button" data-tab="strategyLabZ"><i>✦</i><span>Strategy Lab Z</span></button>
 </div>
+<div class="nav-group"><span class="nav-caption">EXPERIMENTS</span>
+<button type="button" data-tab="strategyMonitor"><i>◷</i><span>Strategy Monitor</span></button>
+</div>
 <div class="nav-group"><span class="nav-caption">SYSTEM</span>
 <button type="button" data-tab="systemLogs"><i>≡</i><span>System Logs</span></button>
 </div>
@@ -490,6 +493,28 @@ header{padding-left:278px}
 </div>
 <div class="card section"><h2>Stratégies ayant réussi tous les tests</h2><div id="strategyLabZList" class="strategy-lab-list"><div class="empty">Chargement du rapport Strategy Lab…</div></div></div>
 <div id="strategyLabZStatus" class="muted" style="margin-top:10px"></div>
+</section>
+<section id="page-strategyMonitor" class="hide section">
+<h2>Strategy Monitor</h2>
+<p class="muted">Suivi indépendant d’une stratégie sélectionnée depuis GitHub Actions · Données lues depuis un seul fichier JSON du dépôt Zied-Strategy-Monitor.</p>
+<div class="card section">
+ <div class="strategy-tv-heading">
+  <div><h2 id="monitorStrategyName">Aucune stratégie sélectionnée</h2><p id="monitorStrategyMeta" class="muted">En attente du démarrage d’une session de suivi.</p></div>
+  <span id="monitorStatus" class="eval-tag wait">En attente</span>
+ </div>
+ <div id="monitorMetrics" class="grid">
+  <div class="card"><div class="label">Buy Now</div><div class="value">—</div><div class="sub">Prix actuel du marché</div></div>
+  <div class="card"><div class="label">Buy At</div><div class="value">—</div><div class="sub">Prix d’entrée de la stratégie</div></div>
+  <div class="card"><div class="label">SL</div><div class="value">—</div><div class="sub">Stop Loss</div></div>
+  <div class="card"><div class="label">TP</div><div class="value">—</div><div class="sub">Take Profit</div></div>
+ </div>
+ <div id="monitorMessage" class="notice">Aucune session de suivi n’a encore été lancée. Lancez une stratégie depuis GitHub Actions → Run workflow.</div>
+ <div class="row"><span class="muted">Début de la session</span><b id="monitorStarted">—</b></div>
+ <div class="row"><span class="muted">Fin prévue (cycle de 5 heures)</span><b id="monitorEnds">—</b></div>
+ <div class="row"><span class="muted">Dernière mise à jour</span><b id="monitorUpdated">—</b></div>
+ <div class="row"><span class="muted">Actualisation de la page</span><b id="monitorRefresh">Toutes les 15 secondes</b></div>
+</div>
+<div class="muted" style="margin-top:10px">Mode observation / paper uniquement. Aucun ordre réel et aucun trailing stop.</div>
 </section>
 <section id="page-systemLogs" class="hide section"><h2>System Logs</h2><div id="systemLogMetrics" class="grid"></div><div class="card section"><h2>État de la connexion et des données</h2><div id="systemLogTable" class="tablewrap"></div></div></section>
 </main>
@@ -845,6 +870,50 @@ function renderStrategyLabZ(){
  $("strategyLabZList").innerHTML=successful.length?successful.map((x,i)=>'<article class="card strategy-lab-item"><div class="row"><h3>#'+(i+1)+' · '+esc(x.name||x.id||"Stratégie sans nom")+'</h3><strong>'+Number(x.rating||0).toFixed(2)+'/100</strong></div><p>'+esc(x.explanation||"Aucune explication disponible dans le rapport.")+'</p><div class="muted">Test : '+(Number(x.test_net_total_return||0)*100).toFixed(2)+'% · Profit Factor : '+Number(x.test_profit_factor||0).toFixed(2)+' · Win Rate : '+(Number(x.test_win_rate||0)*100).toFixed(1)+'% · Trades : '+Number(x.test_trades||0)+'</div></article>').join(""):'<div class="empty">Aucune stratégie n’a encore réussi l’ensemble des tests.</div>';
  mountStrategyLabTradingView();
 }
+const STRATEGY_MONITOR_URL="https://raw.githubusercontent.com/ziedb1132-cpu/Zied-Strategy-Monitor/main/monitor_state.json";
+function monitorTime(value){
+ if(!value)return "—";
+ const d=new Date(value);
+ return Number.isNaN(d.getTime())?String(value):d.toLocaleString("fr-FR",{timeZone:"Africa/Tunis",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+}
+function monitorPrice(value){
+ if(value===null||value===undefined||value==="")return "—";
+ const n=Number(value);
+ return Number.isFinite(n)?n.toLocaleString("en-US",{maximumFractionDigits:10}):String(value);
+}
+function renderStrategyMonitor(data,error){
+ const status=$("monitorStatus"),name=$("monitorStrategyName"),meta=$("monitorStrategyMeta"),message=$("monitorMessage");
+ if(error){
+  status.textContent="Indisponible";status.className="eval-tag wait";
+  name.textContent="Strategy Monitor";meta.textContent="Lecture du fichier indépendant impossible.";
+  message.textContent="Impossible de lire monitor_state.json : "+error;
+  return;
+ }
+ const running=data&&data.running===true;
+ status.textContent=running?"Suivi en cours":(data&&data.status==="stopped"?"Arrêté":"En attente");
+ status.className="eval-tag "+(running?"ready":"wait");
+ name.textContent=(data&&(data.strategy_name||data.strategy_id))||"Aucune stratégie sélectionnée";
+ meta.textContent=[data?.symbol,data?.timeframe].filter(Boolean).join(" · ")||"En attente du démarrage d’une session de suivi.";
+ const items=[
+  ["Buy Now",data?.buy_now,"Prix actuel du marché"],
+  ["Buy At",data?.buy_at,"Prix d’entrée de la stratégie"],
+  ["SL",data?.sl,"Stop Loss"],
+  ["TP",data?.tp,"Take Profit"]
+ ];
+ $("monitorMetrics").innerHTML=items.map(([label,value,sub])=>'<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(monitorPrice(value))+'</div><div class="sub">'+esc(sub)+'</div></div>').join("");
+ message.textContent=(data&&data.note)|| (running?"La stratégie est suivie en mode paper.":"Aucune session de suivi n’est active. Lancez une stratégie depuis GitHub Actions → Run workflow.");
+ $("monitorStarted").textContent=monitorTime(data?.started_at);
+ $("monitorEnds").textContent=monitorTime(data?.ends_at);
+ $("monitorUpdated").textContent=monitorTime(data?.updated_at);
+}
+async function loadStrategyMonitor(){
+ try{
+  const response=await fetch(STRATEGY_MONITOR_URL+"?ts="+Date.now(),{cache:"no-store",headers:{Accept:"application/json"}});
+  if(!response.ok)throw new Error("HTTP "+response.status);
+  const data=await response.json();
+  renderStrategyMonitor(data,null);
+ }catch(error){renderStrategyMonitor(null,error&&error.message?error.message:String(error));}
+}
 async function connect(){
  const {owner,repo,branch}=DASHBOARD_REPOSITORY;
  $("error").style.display="none";$("error").textContent="";
@@ -890,7 +959,7 @@ async function connect(){
 }
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
-function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","strategyLabZ","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
+function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","strategyLabZ","strategyMonitor","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(key==="strategyMonitor")loadStrategyMonitor();if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
 document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showDashboardPage(b.dataset.tab);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");}});
 document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
 document.getElementById("navScrim")?.addEventListener("click",()=>{document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
