@@ -735,10 +735,15 @@ function render(){
 function renderStrategyLabZ(){
  const report=state.strategy_lab||null;
  if(!report){const st=$("strategyLabZStatus");if(st)st.textContent="Les données apparaîtront après la prochaine mise à jour de dashboard_data.json."; $("strategyLabZMetrics").innerHTML=metric("Cycles effectués","—","Rapport indisponible")+metric("Stratégies découvertes","—","Total cumulé")+metric("Stratégies réussies","—","Validation et test réussis");$("strategyLabZList").innerHTML='<div class="empty">Le rapport du Strategy Lab n’est pas encore disponible.</div>';return;}
- const successful=Array.isArray(report.strategies)?report.strategies:[];
- $("strategyLabZMetrics").innerHTML=metric("Cycles effectués",Number(report.cycle||0).toLocaleString("fr-FR"),"Cycles cumulés du laboratoire")+metric("Stratégies découvertes",Number(report.strategies_discovered||0).toLocaleString("fr-FR"),"Nombre total de stratégies uniques")+metric("Stratégies réussies",Number(report.successful_buy_strategies??successful.length).toLocaleString("fr-FR"),"Réussite en validation et en test");
- const st=$("strategyLabZStatus");if(st)st.textContent="آخر تحديث: "+(report.updated_at?new Date(report.updated_at).toLocaleString("fr-FR",{timeZone:"Africa/Tunis"}):"غير متوفر");
- $("strategyLabZList").innerHTML=successful.length?successful.map(x=>'<article class="card strategy-lab-item"><h3>'+esc(x.name||x.id||"Stratégie sans nom")+'</h3><p>'+esc(x.explanation||"Aucune explication disponible dans le rapport.")+'</p></article>').join(""):'<div class="empty">Aucune stratégie n’a encore réussi l’ensemble des tests.</div>';
+ // dashboard_data.json carries only the compact Strategy Lab summary. Display at most the 20 highest-rated successful strategies.
+ const successful=(Array.isArray(report.strategies)?report.strategies:[])
+   .filter(x=>x&&x.name&&x.explanation)
+   .slice()
+   .sort((a,b)=>Number(b.rating||0)-Number(a.rating||0))
+   .slice(0,20);
+ $("strategyLabZMetrics").innerHTML=metric("Cycles effectués",Number(report.cycle||0).toLocaleString("fr-FR"),"Cycles cumulés du laboratoire")+metric("Stratégies découvertes",Number(report.strategies_discovered||0).toLocaleString("fr-FR"),"Nombre total de stratégies uniques")+metric("Stratégies réussies",Number(report.successful_buy_strategies??successful.length).toLocaleString("fr-FR"),"Validation et test réussis");
+ const st=$("strategyLabZStatus");if(st)st.textContent="أفضل 20 استراتيجية حسب التقييم · آخر تحديث: "+(report.updated_at?new Date(report.updated_at).toLocaleString("fr-FR",{timeZone:"Africa/Tunis"}):"غير متوفر");
+ $("strategyLabZList").innerHTML=successful.length?successful.map((x,i)=>'<article class="card strategy-lab-item"><div class="row"><h3>#'+(i+1)+' · '+esc(x.name||x.id||"Stratégie sans nom")+'</h3><strong>'+Number(x.rating||0).toFixed(2)+'/100</strong></div><p>'+esc(x.explanation||"Aucune explication disponible dans le rapport.")+'</p><div class="muted">Test : '+(Number(x.test_net_total_return||0)*100).toFixed(2)+'% · Profit Factor : '+Number(x.test_profit_factor||0).toFixed(2)+' · Win Rate : '+(Number(x.test_win_rate||0)*100).toFixed(1)+'% · Trades : '+Number(x.test_trades||0)+'</div></article>').join(""):'<div class="empty">Aucune stratégie n’a encore réussi l’ensemble des tests.</div>';
 }
 async function connect(){
  const {owner,repo,branch}=DASHBOARD_REPOSITORY;
