@@ -483,7 +483,7 @@ const priceFmt=x=>{if(x===null||x===undefined||x==="")return "—";const n=Numbe
 const timeFmt=x=>{if(x===null||x===undefined||x==="")return "—";let n=Number(x);if(Number.isFinite(n)&&n>1000000000){if(n<100000000000)n*=1000}else{n=Date.parse(String(x));if(!Number.isFinite(n))return String(x)}const d=new Date(n);return Number.isNaN(d.getTime())?String(x):d.toLocaleTimeString("fr-FR",{timeZone:"Africa/Tunis",hour:"2-digit",minute:"2-digit",hour12:false})};
 const DASHBOARD_REPOSITORY={owner:"ziedb1132-cpu",repo:"Zied-",branch:"state-data"};
 let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
-const STRATEGY_LAB_REPORT_URL="https://raw.githubusercontent.com/ziedb1132-cpu/Zied-Strategy-Lab/main/data/strategy_report.json";
+const STRATEGY_LAB_REPORT_URL="https://raw.githubusercontent.com/ziedb1132-cpu/Zied-Strategy-Lab/main/data/dashboard_summary.json";
 let strategyLabZReport=null;
 
 function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table class="'+(cols.length===2?'kv-table':'data-table')+'"><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>{const value=typeof c[1]==="function"?c[1](r):r[c[1]];const retClass=c[0]==="Rendement réalisé"&&r.ret!==null&&r.ret!==undefined&&r.ret!==""?(Number(r.ret)>0?"good":Number(r.ret)<0?"bad":""):"";return '<td'+(retClass?' class="'+retClass+'"':'')+' title="'+esc(value)+'">'+esc(value)+'</td>'}).join("")+'</tr>').join("")+'</tbody></table>'}
@@ -745,7 +745,7 @@ async function loadStrategyLabZ(){
   const response=await fetch(STRATEGY_LAB_REPORT_URL+"?ts="+Date.now(),{cache:"no-store"});
   if(!response.ok)throw new Error("HTTP "+response.status);
   const report=await response.json();
-  if(!report||typeof report!=="object"||!Array.isArray(report.strategies))throw new Error("Format du rapport non reconnu");
+  if(!report||typeof report!=="object"||!Array.isArray(report.strategies))throw new Error("Format du résumé non reconnu");
   strategyLabZReport=report;renderStrategyLabZ();
   if(status)status.textContent="Dernière mise à jour du laboratoire : "+(report.updated_at?new Date(report.updated_at).toLocaleString("fr-FR",{timeZone:"Africa/Tunis"}):"date indisponible");
  }catch(error){
