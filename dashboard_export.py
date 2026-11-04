@@ -24,8 +24,12 @@ def rows(conn, sql, params=()):
 data = {
     "generated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
     "meta": {}, "summary": {}, "signals": [], "tracked": [],
-    "contents": {}
+    "contents": {}, "strategy_lab": None
 }
+
+# Strategy Lab is a compact optional summary; full research files are never copied here.
+if len(sys.argv) > 3:
+    data["strategy_lab"] = safe_json(Path(sys.argv[3])) or None
 if db_path.exists():
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
