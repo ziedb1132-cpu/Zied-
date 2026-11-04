@@ -1840,10 +1840,27 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
             log.warning("%s: %s", inst, e); return inst, None
     with ThreadPoolExecutor(4) as ex:
         res = dict(ex.map(one, uni.index))
-    X = pd.DataFrame({k: v[0] for k, v in res.items() if v is not None}).T.dropna()
-    feature_ts = {k: v[1] for k, v in res.items() if v is not None}
+    valid = {k: v for k, v in res.items() if v is not None}
+    X_raw = pd.DataFrame({k: v[0] for k, v in valid.items()}).T
+    feature_ts = {k: v[1] for k, v in valid.items()}
+    X = X_raw.dropna()
+    failed_frames = len(uni) - len(valid)
+    rows_before_dropna = len(X_raw)
+    rows_after_dropna = len(X)
+    log.info("scan data diagnostics: universe=%d frame_failures=%d frame_success=%d feature_rows=%d "
+             "complete_feature_rows=%d dropped_nan_rows=%d feature_columns=%d",
+             len(uni), failed_frames, len(valid), rows_before_dropna, rows_after_dropna,
+             rows_before_dropna - rows_after_dropna, X_raw.shape[1] if not X_raw.empty else 0)
     if X.empty:
-        log.warning("no data"); return None
+        if not X_raw.empty:
+            nan_counts = X_raw.isna().sum().sort_values(ascending=False)
+            log.warning("no data: all %d feature rows dropped; top_nan_features=%s",
+                        rows_before_dropna,
+                        json.dumps({str(k): int(v) for k, v in nan_counts.head(12).items()}, ensure_ascii=False))
+        else:
+            log.warning("no data: all %d/%d coins failed candle/frame retrieval or feature generation",
+                        failed_frames, len(uni))
+        return None
     if callable(FEATURE_DRIFT_HOOK):
         try:
             drift = FEATURE_DRIFT_HOOK(brain, X)
