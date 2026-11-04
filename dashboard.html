@@ -484,9 +484,9 @@ header{padding-left:278px}
 <p class="muted">Données publiées par le laboratoire indépendant · Actualisation automatique</p>
 <div id="strategyLabZMetrics" class="grid"></div>
 <div class="card section strategy-tv-section">
- <div class="strategy-tv-heading"><div><h2>TradingView · SOL / USDT</h2><p class="muted">Graphique de marché en direct · Source TradingView · Marché OKX</p></div><div class="strategy-tv-actions"><span class="strategy-tv-symbol">OKX:SOLUSDT</span><button type="button" id="tvFullscreenBtn" class="secondary">Plein écran ⛶</button></div></div>
+ <div class="strategy-tv-heading"><div><h2>TradingView · SOL / USDT</h2><p class="muted">Bougies OKX + signaux réels du Strategy Lab · Bibliothèque graphique TradingView</p></div><div class="strategy-tv-actions"><span class="strategy-tv-symbol">OKX:SOLUSDT</span><button type="button" id="tvFullscreenBtn" class="secondary">Plein écran ⛶</button></div></div>
  <div id="strategyLabTradingView" class="strategy-tv-single"><div id="tvSolMain" class="tradingview-chart"></div></div>
- <p class="muted strategy-tv-footnote">Graphique TradingView indépendant des signaux papier et des données de dashboard_data.json.</p>
+ <div id="tvSignalInfo" class="muted strategy-tv-footnote">Chargement des bougies et des niveaux de stratégie…</div>
 </div>
 <div class="card section"><h2>Stratégies ayant réussi tous les tests</h2><div id="strategyLabZList" class="strategy-lab-list"><div class="empty">Chargement du rapport Strategy Lab…</div></div></div>
 <div id="strategyLabZStatus" class="muted" style="margin-top:10px"></div>
@@ -752,31 +752,13 @@ function render(){
  const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
 
 }
-let strategyTradingViewMounted=false;
+let strategyChart=null;
+let strategyCandleSeries=null;
+let strategyChartLoading=null;
 function mountStrategyLabTradingView(){
- if(strategyTradingViewMounted)return;
- const host=$("tvSolMain");if(!host)return;
- const container=document.createElement("div");
- container.className="tradingview-widget-container";
- container.style.width="100%";container.style.height="100%";
- const widget=document.createElement("div");
- widget.className="tradingview-widget-container__widget";
- widget.style.width="100%";widget.style.height="100%";
- container.appendChild(widget);
- const script=document.createElement("script");
- script.type="text/javascript";
- script.src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
- script.async=true;
- script.text=JSON.stringify({
-  autosize:true,symbol:"OKX:SOLUSDT",interval:"60",
-  timezone:"Africa/Tunis",theme:"light",style:"1",locale:"fr",
-  allow_symbol_change:false,calendar:false,details:false,
-  hotlist:false,hide_side_toolbar:false,save_image:false,
-  support_host:"https://www.tradingview.com"
- });
- container.appendChild(script);host.replaceChildren(container);
- const chartBox=$("strategyLabTradingView"),button=$("tvFullscreenBtn");
- if(button&&chartBox&&!button.dataset.bound){
+ const host=$("tvSolMain"),chartBox=$("strategyLabTradingView"),button=$("tvFullscreenBtn");
+ if(!host||!chartBox)return;
+ if(button&&!button.dataset.bound){
   button.dataset.bound="1";
   const updateLabel=()=>{button.textContent=(document.fullscreenElement===chartBox||chartBox.classList.contains("tv-expanded"))?"Quitter le plein écran":"Plein écran ⛶";};
   button.addEventListener("click",async()=>{
@@ -787,11 +769,65 @@ function mountStrategyLabTradingView(){
     else{chartBox.classList.add("tv-expanded");}
    }catch(_){chartBox.classList.toggle("tv-expanded");}
    updateLabel();
+   if(strategyChart)strategyChart.resize(host.clientWidth,host.clientHeight);
   });
-  document.addEventListener("fullscreenchange",updateLabel);
-  updateLabel();
+  document.addEventListener("fullscreenchange",updateLabel);updateLabel();
  }
- strategyTradingViewMounted=true;
+ const draw=()=>{
+  const payload=state.strategy_lab&&state.strategy_lab.chart?state.strategy_lab.chart:null;
+  const candles=payload&&Array.isArray(payload.candles)?payload.candles:[];
+  const info=$("tvSignalInfo");
+  if(!candles.length){
+   if(info)info.textContent="En attente des premières bougies et d’une stratégie validée. Les données seront intégrées au prochain cycle du laboratoire.";
+   return;
+  }
+  if(strategyChart){try{strategyChart.remove();}catch(_){}}
+  host.innerHTML="";
+  strategyChart=LightweightCharts.createChart(host,{
+   width:Math.max(320,host.clientWidth),height:Math.max(360,host.clientHeight),
+   layout:{background:{color:"#ffffff"},textColor:"#526176"},
+   grid:{vertLines:{color:"#eef1f5"},horzLines:{color:"#eef1f5"}},
+   rightPriceScale:{borderColor:"#dce3ed"},
+   timeScale:{borderColor:"#dce3ed",timeVisible:true,secondsVisible:false},
+   crosshair:{mode:0}
+  });
+  strategyCandleSeries=strategyChart.addCandlestickSeries({
+   upColor:"#12805c",downColor:"#d6455d",borderUpColor:"#12805c",
+   borderDownColor:"#d6455d",wickUpColor:"#12805c",wickDownColor:"#d6455d"
+  });
+  strategyCandleSeries.setData(candles);
+  if(Array.isArray(payload.markers)&&payload.markers.length)strategyCandleSeries.setMarkers(payload.markers);
+  const levels=payload.levels;
+  if(levels){
+   strategyCandleSeries.createPriceLine({price:Number(levels.entry),color:"#315fbd",lineWidth:2,lineStyle:0,axisLabelVisible:true,title:"ENTRY"});
+   strategyCandleSeries.createPriceLine({price:Number(levels.tp),color:"#12805c",lineWidth:2,lineStyle:2,axisLabelVisible:true,title:"TP"});
+   strategyCandleSeries.createPriceLine({price:Number(levels.sl),color:"#d6455d",lineWidth:2,lineStyle:2,axisLabelVisible:true,title:"SL"});
+  }
+  strategyChart.timeScale().fitContent();
+  const signal=payload.signal;
+  if(info){
+   if(levels&&signal){
+    info.innerHTML='<b>'+esc(payload.instrument||"SOL-USDT")+'</b> · '+esc(payload.timeframe||"1H")+
+      ' · <span class="good">BUY</span> · Entry: '+Number(levels.entry).toFixed(4)+
+      ' · TP: <span class="good">'+Number(levels.tp).toFixed(4)+'</span>'+
+      ' · SL: <span class="bad">'+Number(levels.sl).toFixed(4)+'</span>'+
+      ' · ATR(14): '+Number(levels.atr).toFixed(4)+' · '+esc(signal.status||"");
+   }else{
+    info.textContent=(payload.strategy?"Strategy "+payload.strategy.id+" · ":"")+
+      "Aucune entrée BUY récente صالحة لعرض مستويات TP وSL. الحالة: "+String(payload.status||"—");
+   }
+  }
+ };
+ if(window.LightweightCharts){draw();return;}
+ if(!strategyChartLoading){
+  strategyChartLoading=new Promise((resolve,reject)=>{
+   const script=document.createElement("script");
+   script.src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js";
+   script.async=true;script.onload=resolve;script.onerror=()=>reject(new Error("Impossible de charger la bibliothèque graphique."));
+   document.head.appendChild(script);
+  });
+ }
+ strategyChartLoading.then(draw).catch(error=>{const info=$("tvSignalInfo");if(info)info.textContent=error.message;});
 }
 function renderStrategyLabZ(){
  const report=state.strategy_lab||null;
@@ -805,6 +841,7 @@ function renderStrategyLabZ(){
  $("strategyLabZMetrics").innerHTML=metric("Cycles effectués",Number(report.cycle||0).toLocaleString("fr-FR"),"Cycles cumulés du laboratoire")+metric("Stratégies découvertes",Number(report.strategies_discovered||0).toLocaleString("fr-FR"),"Nombre total de stratégies uniques")+metric("Stratégies réussies",Number(report.successful_buy_strategies??successful.length).toLocaleString("fr-FR"),"Validation et test réussis");
  const st=$("strategyLabZStatus");if(st)st.textContent="أفضل 20 استراتيجية حسب التقييم · آخر تحديث: "+(report.updated_at?new Date(report.updated_at).toLocaleString("fr-FR",{timeZone:"Africa/Tunis"}):"غير متوفر");
  $("strategyLabZList").innerHTML=successful.length?successful.map((x,i)=>'<article class="card strategy-lab-item"><div class="row"><h3>#'+(i+1)+' · '+esc(x.name||x.id||"Stratégie sans nom")+'</h3><strong>'+Number(x.rating||0).toFixed(2)+'/100</strong></div><p>'+esc(x.explanation||"Aucune explication disponible dans le rapport.")+'</p><div class="muted">Test : '+(Number(x.test_net_total_return||0)*100).toFixed(2)+'% · Profit Factor : '+Number(x.test_profit_factor||0).toFixed(2)+' · Win Rate : '+(Number(x.test_win_rate||0)*100).toFixed(1)+'% · Trades : '+Number(x.test_trades||0)+'</div></article>').join(""):'<div class="empty">Aucune stratégie n’a encore réussi l’ensemble des tests.</div>';
+ mountStrategyLabTradingView();
 }
 async function connect(){
  const {owner,repo,branch}=DASHBOARD_REPOSITORY;
