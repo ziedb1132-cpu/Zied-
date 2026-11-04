@@ -899,15 +899,27 @@ function renderStrategyMonitor(data,error){
  name.textContent=(data&&(data.strategy_name||data.strategy_id))||"Aucune stratégie sélectionnée";
  meta.textContent=[data?.symbol,data?.timeframe].filter(Boolean).join(" · ")||"En attente du démarrage d’une session de suivi.";
  const activeSignal=data?.active_signal===true;
- $("monitorCurrentPrice").textContent=monitorPrice(data?.buy_now);
+ const livePrice=data?.buy_now??data?.current_price??data?.last_price??null;
+ $("monitorCurrentPrice").textContent=monitorPrice(livePrice);
+ const pf=data?.profit_factor;
+ const pfText=pf===null||pf===undefined?"—":pf==="∞"?"∞":Number(pf).toFixed(2);
  const items=[
-  ["Buy Now",activeSignal?data?.buy_now:null,"Affiché uniquement lorsqu’un signal BUY est actif"],
+  ["Buy Now",activeSignal?livePrice:null,"Prix d’entrée du signal BUY actif"],
   ["Buy At",activeSignal?data?.buy_at:null,"Prix d’entrée de la stratégie"],
   ["SL",activeSignal?data?.sl:null,"Stop Loss"],
-  ["TP",activeSignal?data?.tp:null,"Take Profit"]
+  ["TP",activeSignal?data?.tp:null,"Take Profit"],
+  ["Nombre de trades",Number(data?.trade_count||0),"Total des signaux fermés"],
+  ["TP",Number(data?.tp_count||0),"Trades clôturés au Take Profit"],
+  ["SL",Number(data?.sl_count||0),"Trades clôturés au Stop Loss"],
+  ["Time Out",Number(data?.timeout_count||0),"Trades clôturés par durée maximale"],
+  ["Profit Factor",pfText,"Gains nets cumulés ÷ pertes nettes cumulées"],
+  ["Rendement net",Number(data?.realized_net_return_pct||0).toFixed(2)+"%","Cumul après frais estimés (0,20% par trade)"],
+  ["Trades gagnants",Number(data?.winning_trades||0),"Résultat net positif"],
+  ["Trades perdants",Number(data?.losing_trades||0),"Résultat net négatif"]
  ];
- $("monitorMetrics").innerHTML=items.map(([label,value,sub])=>'<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(monitorPrice(value))+'</div><div class="sub">'+esc(sub)+'</div></div>').join("");
+ $("monitorMetrics").innerHTML=items.map(([label,value,sub])=>'<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(value)+'</div><div class="sub">'+esc(sub)+'</div></div>').join("");
  message.textContent=(data&&data.note)|| (running?"La stratégie est suivie en mode paper.":"Aucune session de suivi n’est active. Lancez une stratégie depuis GitHub Actions → Run workflow.");
+ if(!livePrice&&data?.last_error)message.textContent+=" · Prix indisponible : "+data.last_error;
  $("monitorStarted").textContent=monitorTime(data?.started_at);
  $("monitorEnds").textContent=monitorTime(data?.ends_at);
  $("monitorUpdated").textContent=monitorTime(data?.updated_at);
