@@ -1911,18 +1911,29 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     # the AI threshold; duplicates are skipped, never replaced by coin #11.
     eligible_rows = []
     correlation_cache = {}
+    # Explicit rejection counters make a no-entry scan diagnosable from Actions logs.
+    reject = {"stretched": 0, "entry_quality": 0, "ai_probability": 0, "correlation": 0}
+    top10 = R[R["rank"] <= 10]
+    log.info("entry diagnostics: ranked=%d top10=%d model_ready=%s paused=%s prob_min=%.3f",
+             len(R), len(top10), bool(brain.ready), paper._get("paused") == "1", float(prob_min))
     for inst, rr in R.iterrows():
         if int(rr["rank"]) > 10:
             continue
         threshold, regime_stats = regime_entry_threshold(paper, rr["regime"])
-        if bool(rr["stretched"]) or float(rr["entry_score"]) < threshold:
+        if bool(rr["stretched"]):
+            reject["stretched"] += 1
+            continue
+        if float(rr["entry_score"]) < threshold:
+            reject["entry_quality"] += 1
             continue
         if brain.ready and (pd.isna(rr["ai_probability"]) or float(rr["ai_probability"]) < float(prob_min)):
+            reject["ai_probability"] += 1
             continue
         if callable(PORTFOLIO_CORRELATION_HOOK):
             try:
                 correlation = PORTFOLIO_CORRELATION_HOOK(paper, inst, correlation_cache)
                 if not correlation.get("allowed", True):
+                    reject["correlation"] += 1
                     log.info("portfolio diversification: skipped %s; max_abs_corr=%.3f threshold=%.3f",
                              inst, float(correlation.get("max_abs_correlation") or 0.0),
                              float(correlation.get("threshold", CFG["MAX_OPEN_CORR"])))
@@ -1931,6 +1942,10 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                 # Missing market data must not silently change signal eligibility.
                 log.warning("portfolio correlation check failed open for %s: %s", inst, exc)
         eligible_rows.append(inst)
+    log.info("entry rejection summary: top10=%d eligible=%d rejected_stretched=%d "
+             "rejected_entry_quality=%d rejected_ai_probability=%d rejected_correlation=%d",
+             len(top10), len(eligible_rows), reject["stretched"], reject["entry_quality"],
+             reject["ai_probability"], reject["correlation"])
     sort_columns = ["ai_probability", "ranking_score"] if brain.ready else ["ranking_score"]
     eligible = R.loc[eligible_rows].sort_values(sort_columns, ascending=False, na_position="last")
     created = []
