@@ -409,7 +409,8 @@ header{padding-left:278px}
 }
 </style>
 
-<style id="analytics-charts-mobile">@media(max-width:760px){.analytics-charts{grid-template-columns:minmax(0,1fr)!important}.analytics-charts .chartbox{min-width:0;overflow:hidden}.analytics-charts svg{width:100%;height:auto;display:block}}</style>
+<style id="analytics-charts-mobile">@media(max-width:760px){.analytics-charts{grid-template-columns:minmax(0,1fr)!important}.analytics-charts .chartbox{min-width:0;overflow:hidden}.analytics-charts svg{width:100%;height:auto;display:block}}.strategy-lab-list{display:grid;gap:12px}.strategy-lab-item{box-shadow:none;background:#fbfcfe}.strategy-lab-item h3{font-size:14px;margin:0 0 7px;color:#203653}.strategy-lab-item p{margin:0;color:#53647e;line-height:1.75;white-space:normal}
+</style>
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
@@ -436,6 +437,7 @@ header{padding-left:278px}
 <button type="button" data-tab="modelHealth"><i>♡</i><span>Model Health</span></button>
 <button type="button" data-tab="learningHistory"><i>⟳</i><span>Learning History</span></button>
 <button type="button" data-tab="backtestValidation"><i>▥</i><span>Backtest & Validation</span></button>
+<button type="button" data-tab="strategyLabZ"><i>✦</i><span>Strategy Lab Z</span></button>
 </div>
 <div class="nav-group"><span class="nav-caption">SYSTEM</span>
 <button type="button" data-tab="systemLogs"><i>≡</i><span>System Logs</span></button>
@@ -462,6 +464,13 @@ header{padding-left:278px}
 <section id="page-modelHealth" class="hide section"><h2>Model Health</h2><div id="modelHealthMetrics" class="grid"></div><div class="card section"><h2>Contrôles de validation et calibration</h2><div id="modelHealthTable" class="tablewrap"></div></div><div class="notice">AUC, Brier, ECE et drift affichent N/A si absents des données publiées.</div></section>
 <section id="page-learningHistory" class="hide section"><h2>Learning History</h2><div id="learningMetrics" class="grid"></div><div class="card section"><h2>État des laboratoires de recherche</h2><div id="learningTable" class="tablewrap"></div></div><div class="card section"><h2>Autonomous Strategy Discovery</h2><p class="muted">Dix nouvelles règles symboliques sont générées et testées à chaque cycle. Recherche uniquement : aucune stratégie ne modifie les signaux actifs.</p><div id="autonomousStrategyMetrics" class="grid"></div><div id="autonomousStrategyTable" class="tablewrap"></div></div><div class="card section"><h2>Meta-Selector par régime — Shadow Paper</h2><p class="muted">Le sélecteur apprend les meilleures stratégies par régime à partir de trades simulés indépendants. Il faut au moins 30 trades clôturés, une espérance nette positive, un Profit Factor ≥ 1,20 et un drawdown ≤ 20 %. Aucune stratégie n'est connectée au trading actif.</p><div id="metaSelectorMetrics" class="grid"></div><h3>Sélection proposée par régime</h3><div id="metaSelectorTable" class="tablewrap"></div><h3>Historique de performance par stratégie et régime</h3><div id="metaSelectorProfiles" class="tablewrap"></div></div></section>
 <section id="page-backtestValidation" class="hide section"><h2>Backtest &amp; Validation</h2><div id="backtestMetrics" class="grid"></div><div class="card section"><h2>Résultats du Backtest complet — cycle d’analyse</h2><div id="backtestTable" class="tablewrap"></div><p class="notice">Recherche isolée : les résultats du Backtest ne modifient pas les signaux actifs, le portefeuille ni le modèle de production.</p></div></section>
+<section id="page-strategyLabZ" class="hide section">
+<h2>Strategy Lab Z</h2>
+<p class="muted">Données publiées par le laboratoire indépendant · Actualisation automatique</p>
+<div id="strategyLabZMetrics" class="grid"></div>
+<div class="card section"><h2>Stratégies ayant réussi tous les tests</h2><div id="strategyLabZList" class="strategy-lab-list"><div class="empty">Chargement du rapport Strategy Lab…</div></div></div>
+<div id="strategyLabZStatus" class="muted" style="margin-top:10px"></div>
+</section>
 <section id="page-systemLogs" class="hide section"><h2>System Logs</h2><div id="systemLogMetrics" class="grid"></div><div class="card section"><h2>État de la connexion et des données</h2><div id="systemLogTable" class="tablewrap"></div></div></section>
 </main>
 
@@ -474,6 +483,9 @@ const priceFmt=x=>{if(x===null||x===undefined||x==="")return "—";const n=Numbe
 const timeFmt=x=>{if(x===null||x===undefined||x==="")return "—";let n=Number(x);if(Number.isFinite(n)&&n>1000000000){if(n<100000000000)n*=1000}else{n=Date.parse(String(x));if(!Number.isFinite(n))return String(x)}const d=new Date(n);return Number.isNaN(d.getTime())?String(x):d.toLocaleTimeString("fr-FR",{timeZone:"Africa/Tunis",hour:"2-digit",minute:"2-digit",hour12:false})};
 const DASHBOARD_REPOSITORY={owner:"ziedb1132-cpu",repo:"Zied-",branch:"state-data"};
 let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
+const STRATEGY_LAB_REPORT_URL="https://raw.githubusercontent.com/ziedb1132-cpu/Zied-Strategy-Lab/main/data/strategy_report.json";
+let strategyLabZReport=null;
+
 function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table class="'+(cols.length===2?'kv-table':'data-table')+'"><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>{const value=typeof c[1]==="function"?c[1](r):r[c[1]];const retClass=c[0]==="Rendement réalisé"&&r.ret!==null&&r.ret!==undefined&&r.ret!==""?(Number(r.ret)>0?"good":Number(r.ret)<0?"bad":""):"";return '<td'+(retClass?' class="'+retClass+'"':'')+' title="'+esc(value)+'">'+esc(value)+'</td>'}).join("")+'</tr>').join("")+'</tbody></table>'}
 function metric(label,value,sub){return '<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(value)+'</div><div class="sub">'+esc(sub||"")+'</div></div>'}
 function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="row"><span class="muted">'+esc(k)+'</span><b>'+esc(typeof v==="string"?v:JSON.stringify(v))+'</b></div>').join("")||'<div class="empty">Aucune donnée meta disponible.</div>'}
@@ -720,6 +732,27 @@ function render(){
  const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
 
 }
+function renderStrategyLabZ(){
+ const report=strategyLabZReport;
+ if(!report){$("strategyLabZMetrics").innerHTML=metric("Cycles effectués","—","Rapport indisponible")+metric("Stratégies découvertes","—","Total cumulé")+metric("Stratégies réussies","—","Validation et test réussis");$("strategyLabZList").innerHTML='<div class="empty">Le rapport du Strategy Lab n’est pas encore disponible.</div>';return;}
+ const successful=Array.isArray(report.strategies)?report.strategies.filter(x=>x&&x.successful===true):[];
+ $("strategyLabZMetrics").innerHTML=metric("Cycles effectués",Number(report.cycle||0).toLocaleString("fr-FR"),"Cycles cumulés du laboratoire")+metric("Stratégies découvertes",Number(report.strategies_discovered||0).toLocaleString("fr-FR"),"Nombre total de stratégies uniques")+metric("Stratégies réussies",Number(report.successful_buy_strategies??successful.length).toLocaleString("fr-FR"),"Réussite en validation et en test");
+ $("strategyLabZList").innerHTML=successful.length?successful.map(x=>'<article class="card strategy-lab-item"><h3>'+esc(x.name||x.id||"Stratégie sans nom")+'</h3><p>'+esc(x.explanation||"Aucune explication disponible dans le rapport.")+'</p></article>').join(""):'<div class="empty">Aucune stratégie n’a encore réussi l’ensemble des tests.</div>';
+}
+async function loadStrategyLabZ(){
+ const status=$("strategyLabZStatus");if(status)status.textContent="Mise à jour du rapport…";
+ try{
+  const response=await fetch(STRATEGY_LAB_REPORT_URL+"?ts="+Date.now(),{cache:"no-store"});
+  if(!response.ok)throw new Error("HTTP "+response.status);
+  const report=await response.json();
+  if(!report||typeof report!=="object"||!Array.isArray(report.strategies))throw new Error("Format du rapport non reconnu");
+  strategyLabZReport=report;renderStrategyLabZ();
+  if(status)status.textContent="Dernière mise à jour du laboratoire : "+(report.updated_at?new Date(report.updated_at).toLocaleString("fr-FR",{timeZone:"Africa/Tunis"}):"date indisponible");
+ }catch(error){
+  if(status)status.textContent="Impossible de charger le rapport Strategy Lab : "+error.message;
+  if(!strategyLabZReport)renderStrategyLabZ();
+ }
+}
 async function connect(){
  const {owner,repo,branch}=DASHBOARD_REPOSITORY;
  $("error").style.display="none";$("error").textContent="";
@@ -764,7 +797,7 @@ async function connect(){
 }
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
-function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
+function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","strategyLabZ","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
 document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showDashboardPage(b.dataset.tab);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");}});
 document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
 document.getElementById("navScrim")?.addEventListener("click",()=>{document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
@@ -774,5 +807,5 @@ showDashboardPage(location.hash.slice(1)||"overview",false);
 render();
 setLanguage();
 
-window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000)});
+window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000);setTimeout(loadStrategyLabZ,500);setInterval(loadStrategyLabZ,60*1000)});
 </script></body></html>
