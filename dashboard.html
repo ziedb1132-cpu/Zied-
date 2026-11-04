@@ -734,7 +734,7 @@ function render(){
 }
 function renderStrategyLabZ(){
  const report=state.strategy_lab||null;
- if(!report){const st=$("strategyLabZStatus");if(st)st.textContent="Les données ستظهر بعد تحديث dashboard_data.json."; $("strategyLabZMetrics").innerHTML=metric("Cycles effectués","—","Rapport indisponible")+metric("Stratégies découvertes","—","Total cumulé")+metric("Stratégies réussies","—","Validation et test réussis");$("strategyLabZList").innerHTML='<div class="empty">Le rapport du Strategy Lab n’est pas encore disponible.</div>';return;}
+ if(!report){const st=$("strategyLabZStatus");if(st)st.textContent="Les données apparaîtront après la prochaine mise à jour de dashboard_data.json."; $("strategyLabZMetrics").innerHTML=metric("Cycles effectués","—","Rapport indisponible")+metric("Stratégies découvertes","—","Total cumulé")+metric("Stratégies réussies","—","Validation et test réussis");$("strategyLabZList").innerHTML='<div class="empty">Le rapport du Strategy Lab n’est pas encore disponible.</div>';return;}
  const successful=Array.isArray(report.strategies)?report.strategies:[];
  $("strategyLabZMetrics").innerHTML=metric("Cycles effectués",Number(report.cycle||0).toLocaleString("fr-FR"),"Cycles cumulés du laboratoire")+metric("Stratégies découvertes",Number(report.strategies_discovered||0).toLocaleString("fr-FR"),"Nombre total de stratégies uniques")+metric("Stratégies réussies",Number(report.successful_buy_strategies??successful.length).toLocaleString("fr-FR"),"Réussite en validation et en test");
  const st=$("strategyLabZStatus");if(st)st.textContent="آخر تحديث: "+(report.updated_at?new Date(report.updated_at).toLocaleString("fr-FR",{timeZone:"Africa/Tunis"}):"غير متوفر");
