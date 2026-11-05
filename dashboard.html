@@ -457,6 +457,7 @@ header{padding-left:278px}
 <div class="nav-group"><span class="nav-caption">EXPERIMENTS</span>
 <button type="button" data-tab="strategyMonitor"><i>◷</i><span>Strategy Monitor</span></button>
 </div>
+<div class="nav-group"><span class="nav-caption">SOLANA</span><button type="button" data-tab="solana"><i>◎</i><span>Solana</span></button></div>
 <div class="nav-group"><span class="nav-caption">SYSTEM</span>
 <button type="button" data-tab="systemLogs"><i>≡</i><span>System Logs</span></button>
 </div>
@@ -520,6 +521,7 @@ header{padding-left:278px}
 </div>
 <div class="muted" style="margin-top:10px">Mode observation / paper uniquement. Aucun ordre réel et aucun trailing stop.</div>
 </section>
+<section id="page-solana" class="hide section"><h2>Solana · SOL/USDT</h2><p class="muted">Résumé léger du moteur Solana · paper trading uniquement.</p><div class="grid"><div class="card"><div class="label">Prix actuel SOL</div><div class="value" id="solanaPrice">—</div></div><div class="card"><div class="label">Total des signaux</div><div class="value" id="solanaTotal">—</div></div><div class="card"><div class="label">TP</div><div class="value good" id="solanaTP">—</div></div><div class="card"><div class="label">SL</div><div class="value bad" id="solanaSL">—</div></div></div><div class="card section"><div class="row"><span class="muted">Signal ouvert</span><b id="solanaOpen">—</b></div><div class="row"><span class="muted">Cycle</span><b id="solanaCycle">—</b></div><div class="row"><span class="muted">Dernière mise à jour</span><b id="solanaUpdated">—</b></div><div id="solanaStatus" class="muted">En attente du fichier résumé.</div></div></section>
 <section id="page-systemLogs" class="hide section"><h2>System Logs</h2><div id="systemLogMetrics" class="grid"></div><div class="card section"><h2>État de la connexion et des données</h2><div id="systemLogTable" class="tablewrap"></div></div></section>
 </main>
 
@@ -932,6 +934,8 @@ async function loadStrategyMonitor(){
   renderStrategyMonitor(data,null);
  }catch(error){renderStrategyMonitor(null,error&&error.message?error.message:String(error));}
 }
+const SOLANA_SUMMARY_URL="https://raw.githubusercontent.com/ziedb1132-cpu/Solana-/main/solana_summary.json";
+async function loadSolanaSummary(){try{const r=await fetch(SOLANA_SUMMARY_URL+"?ts="+Date.now(),{cache:"no-store"});if(!r.ok)throw Error("HTTP "+r.status);const d=await r.json();$("solanaPrice").textContent=priceFmt(d.current_price);$("solanaTotal").textContent=fmt(d.total_signals??0);$("solanaTP").textContent=fmt(d.tp_count??0);$("solanaSL").textContent=fmt(d.sl_count??0);$("solanaOpen").textContent=d.open_signal?JSON.stringify(d.open_signal):"Aucun signal ouvert";$("solanaCycle").textContent=fmt(d.cycle??0);$("solanaUpdated").textContent=d.updated_at?timeFmt(d.updated_at):"—";$("solanaStatus").textContent="Résumé compact lu."; }catch(e){$("solanaStatus").textContent="Résumé Solana indisponible : "+e.message;}}
 async function connect(){
  const {owner,repo,branch}=DASHBOARD_REPOSITORY;
  $("error").style.display="none";$("error").textContent="";
@@ -977,7 +981,7 @@ async function connect(){
 }
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
-function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","strategyLabZ","strategyMonitor","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(key==="strategyMonitor")loadStrategyMonitor();if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
+function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","backtestValidation","strategyLabZ","strategyMonitor","solana","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(key==="strategyMonitor")loadStrategyMonitor();if(key==="solana")loadSolanaSummary();if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
 document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showDashboardPage(b.dataset.tab);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");}});
 document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
 document.getElementById("navScrim")?.addEventListener("click",()=>{document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
@@ -987,5 +991,5 @@ showDashboardPage(location.hash.slice(1)||"overview",false);
 render();
 setLanguage();
 
-window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000);setTimeout(loadStrategyMonitor,500);setInterval(loadStrategyMonitor,15000)});
+window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000);setTimeout(loadStrategyMonitor,500);setInterval(loadStrategyMonitor,15000);setTimeout(loadSolanaSummary,650);setInterval(loadSolanaSummary,60000)});
 </script></body></html>
