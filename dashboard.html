@@ -1014,7 +1014,7 @@ async function loadSolanaSummary(){
   $("solanaStatus").textContent="Résumé Solana actualisé · données compactes.";
  }catch(e){$("solanaStatus").textContent="Résumé Solana indisponible : "+e.message;$("solanaPriceSource").textContent="Prix indisponible";$("solanaDataQuality").textContent="Erreur de chargement";}
 }
-const XRP_SUMMARY_URL="https://raw.githubusercontent.com/ziedb1132-cpu/XRP-/main/xrp_summary.json";
+const XRP_SUMMARY_URL="https://raw.githubusercontent.com/ziedb1132-cpu/Xrp/main/xrp_summary.json";
 async function loadXrpSummary(){
  try{
   const r=await fetch(XRP_SUMMARY_URL+"?ts="+Date.now(),{cache:"no-store"});
