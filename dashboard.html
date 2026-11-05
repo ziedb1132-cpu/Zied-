@@ -1016,7 +1016,7 @@ async function loadSolanaSummary(){
   $("solanaStatus").textContent="Résumé Solana actualisé · données compactes.";
  }catch(e){$("solanaStatus").textContent="Résumé Solana indisponible : "+e.message;$("solanaPriceSource").textContent="Prix indisponible";$("solanaDataQuality").textContent="Erreur de chargement";}
 }
-const OKB_SUMMARY_URL="https://raw.githubusercontent.com/ziedb1132-cpu/OKB-/main/okb_summary.json";
+const OKB_SUMMARY_URL="https://raw.githubusercontent.com/ziedb1132-cpu/OKB/main/okb_summary.json";
 async function loadOkbSummary(){
  try{
   const r=await fetch(OKB_SUMMARY_URL+"?ts="+Date.now(),{cache:"no-store"});
