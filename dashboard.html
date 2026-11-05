@@ -958,7 +958,13 @@ async function loadSolanaSummary(){
   $("solanaSL").textContent=fmt(d.sl_count??0);
   $("solanaOpen").textContent=o?(o.id||o.signal_id||"Signal ouvert"):"Aucun signal ouvert";
   $("solanaSignalStatus").textContent=o?(o.status||"OPEN"):"—";
-  $("solanaStrategy").textContent=o?(o.strategy_name||"—"):"—";\n  $("solanaEntryMethod").textContent=o?(o.entry_method||"—"):"—";\n  $("solanaPendingStatus").textContent=p?"En attente du déclencheur":"Aucune entrée en attente";\n  $("solanaPendingMethod").textContent=p?(p.entry_method||"—"):"—";\n  $("solanaPendingTrigger").textContent=p?priceFmt(p.entry_trigger_price):"—";\n  $("solanaPendingStage").textContent=p?(p.entry_stage||"—"):"—";\n  $("solanaPendingStrategy").textContent=p?(p.strategy_name||"—"):"—";
+  $("solanaStrategy").textContent=o?(o.strategy_name||"—"):"—";
+  $("solanaEntryMethod").textContent=o?(o.entry_method||"—"):"—";
+  $("solanaPendingStatus").textContent=p?"En attente du déclencheur":"Aucune entrée en attente";
+  $("solanaPendingMethod").textContent=p?(p.entry_method||"—"):"—";
+  $("solanaPendingTrigger").textContent=p?priceFmt(p.entry_trigger_price):"—";
+  $("solanaPendingStage").textContent=p?(p.entry_stage||"—"):"—";
+  $("solanaPendingStrategy").textContent=p?(p.strategy_name||"—"):"—";
   $("solanaScore").textContent=o?fmt(o.strategy_score):"—";
   $("solanaEntry").textContent=o?priceFmt(o.entry):"—";
   const change=o&&Number(o.entry)>0&&Number.isFinite(price)?(price/Number(o.entry)-1)*100:null;
