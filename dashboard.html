@@ -625,7 +625,7 @@ function renderVirtualPortfolio(gateWins,gateLosses,modelReady){
   // Reconcile existing open virtual positions against the exact source signal id.
   virtualPortfolio.positions.filter(p=>p.status==="OPEN").forEach(p=>{
    const t=bySignal.get(String(p.signalId));
-   if(t&&String(t.status).toUpperCase()==="CLOSED"&&Number.isFinite(Number(t.ret))){
+   if(t&&String(t.status).toUpperCase()==="CLOSED"&&t.ret!==null&&t.ret!==undefined&&Number.isFinite(Number(t.ret))){
     p.status="CLOSED";p.closedAt=Number(t.closed_ts)||null;p.exitPrice=Number(t.exit_price)||null;
     p.ret=Number(t.ret);p.closeReason=t.close_reason||t.outcome||"—";
     p.realizedPnl=Number(p.allocation)*p.ret;
@@ -654,7 +654,7 @@ function renderVirtualPortfolio(gateWins,gateLosses,modelReady){
     allocation,quantity:allocation/entry,prob:Number(t.prob),openedAt:Number(t.opened_ts),
     status:"OPEN",lastPrice:entry,riskPct,rewardPct:Number(t.reward_pct)||0,
     riskReward:Number(t.risk_reward)||0};
-   if(String(t.status).toUpperCase()==="CLOSED"&&Number.isFinite(Number(t.ret))){
+   if(String(t.status).toUpperCase()==="CLOSED"&&t.ret!==null&&t.ret!==undefined&&Number.isFinite(Number(t.ret))){
     p.status="CLOSED";p.closedAt=Number(t.closed_ts)||null;p.exitPrice=Number(t.exit_price)||null;
     p.ret=Number(t.ret);p.closeReason=t.close_reason||t.outcome||"—";
     p.realizedPnl=allocation*p.ret;p.historyRecorded=true;virtualPortfolio.history.push({...p});
