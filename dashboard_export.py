@@ -52,7 +52,10 @@ if db_path.exists():
     # Preserve the entry-time market regime in the dashboard snapshot. The regime is
     # stored on tracked_signals when each signal is created; omitting it here made
     # every historical dashboard row appear as "Non renseigné".
-    tracked_cols = "id,inst,status,entry,exit_price,sl,tp,prob,opened_ts,ret,closed_ts,outcome,close_reason,hold,regime,entry_score"
+    tracked_cols = ("id,signal_id,inst,status,entry,exit_price,sl,tp,prob,prob_source,opened_ts,ret,"
+      "closed_ts,outcome,close_reason,hold,regime,entry_score,atr_pct,peak_price,trailing_sl,"
+      "trail_active,trail_activation_atr,trail_distance_atr,max_hold_bars,exit_policy,"
+      "risk_pct,reward_pct,risk_reward")
     open_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='OPEN' ORDER BY opened_ts DESC")
     closed_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='CLOSED' ORDER BY closed_ts DESC, id DESC")
     data["tracked"] = closed_tracked + open_tracked
