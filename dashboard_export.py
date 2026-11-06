@@ -63,7 +63,9 @@ if db_path.exists():
 
 # Publish one canonical research report. Its layers contain the strategy,
 # discovery-lab, regime-selector, exit-policy and model walk-forward results.
-for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json"):
+for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json",
+             "feature_quality.json", "feature_importance.json", "feature_drift.json",
+             "model_calibration.json", "regime_performance.json"):
     value = safe_json(root / name)
     if value is not None:
         if name == "candle_patterns.json" and isinstance(value, dict):
