@@ -100,6 +100,21 @@ class AdvancedIntelligenceTests(unittest.TestCase):
             finally:
                 zq.CFG["DIR"] = old_dir
 
+    def test_heavy_backtest_guard_allows_only_one_run_per_24_hours(self):
+        class MetaPaper:
+            def __init__(self):
+                self.meta = {}
+            def _get(self, key):
+                return self.meta.get(key)
+            def _set(self, key, value):
+                self.meta[key] = str(value)
+
+        paper = MetaPaper()
+        self.assertTrue(zq.daily_backtest_due(paper, now=1000))
+        zq.mark_daily_backtest_attempt(paper, now=1000)
+        self.assertFalse(zq.daily_backtest_due(paper, now=1000 + 86399))
+        self.assertTrue(zq.daily_backtest_due(paper, now=1000 + 86400))
+
     def test_correlation_filter_blocks_strong_positive_or_negative_overlap(self):
         class Paper:
             def open_tracked_signals(self):
