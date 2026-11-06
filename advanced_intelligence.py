@@ -142,6 +142,39 @@ def feature_quality_report(zq, fit_snapshot, max_rows=1024):
     }
 
 
+def feature_quality_report_from_db(zq, paper, max_rows=1024):
+    """Audit recent, matured feature snapshots even before the 500/500 AI gate opens."""
+    try:
+        with paper.lock:
+            rows = paper.db.execute(
+                "SELECT feats,label FROM signals WHERE labeled=1 AND label IN (0,1) "
+                "AND feature_count=? AND feature_schema_version=? "
+                "ORDER BY ts DESC LIMIT ?",
+                (int(zq.N_FEATURES), int(zq.DATA_VER), int(max_rows))
+            ).fetchall()
+    except Exception as exc:
+        return {"status": "database_feature_read_failed", "error": str(exc),
+                "feature_count": int(zq.N_FEATURES)}
+    vectors, labels = [], []
+    for row in rows:
+        try:
+            vector = np.asarray(json.loads(row["feats"]), dtype=np.float64).reshape(-1)
+            if vector.size != zq.N_FEATURES:
+                continue
+            vectors.append(vector)
+            labels.append(float(row["label"]))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+    if len(labels) < 30:
+        return {"status": "insufficient_mature_feature_snapshots",
+                "sample_rows": len(labels), "feature_count": int(zq.N_FEATURES)}
+    report = feature_quality_report(
+        zq, {"X_gate": np.vstack(vectors), "gate_y": np.asarray(labels)}, max_rows=max_rows)
+    report["source"] = "recent_matured_signal_feature_snapshots"
+    report["schema_version"] = int(zq.DATA_VER)
+    return report
+
+
 def post_fit_diagnostics(zq, brain, info):
     snapshot = getattr(brain, "last_fit", {}) or {}
     directory = zq.CFG["DIR"]
