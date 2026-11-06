@@ -119,6 +119,31 @@ def feature_quality_report(zq, fit_snapshot, max_rows=1024):
                      "label_correlation": corr})
     correlated = [r for r in rows if r["label_correlation"] is not None]
     correlated.sort(key=lambda r: abs(r["label_correlation"]), reverse=True)
+    # Sample feature pairs rather than allocating a full 3,030 x 3,030 matrix.
+    rng = np.random.RandomState(1729)
+    pair_total = min(10000, max(0, X.shape[1] * (X.shape[1] - 1) // 2))
+    sampled_pairs, high_pairs, seen_pairs = 0, [], set()
+    for left, right in rng.randint(0, X.shape[1], size=(pair_total * 2, 2)):
+        if left == right:
+            continue
+        i, j = (int(left), int(right)) if left < right else (int(right), int(left))
+        if (i, j) in seen_pairs:
+            continue
+        seen_pairs.add((i, j))
+        a, b = X[:, i], X[:, j]
+        valid = np.isfinite(a) & np.isfinite(b)
+        if int(valid.sum()) < 30:
+            continue
+        a, b = a[valid], b[valid]
+        if np.std(a) <= 1e-12 or np.std(b) <= 1e-12:
+            continue
+        corr = float(np.corrcoef(a, b)[0, 1])
+        sampled_pairs += 1
+        if np.isfinite(corr) and abs(corr) >= 0.995:
+            high_pairs.append({"feature": str(zq.FEATURE_COLS[i]),
+                               "correlated_with": str(zq.FEATURE_COLS[j]),
+                               "correlation": corr})
+    high_pairs.sort(key=lambda item: abs(item["correlation"]), reverse=True)
     n_features, n_rows = int(X.shape[1]), int(len(y))
     flags = []
     if len(constant):
@@ -127,6 +152,8 @@ def feature_quality_report(zq, fit_snapshot, max_rows=1024):
         flags.append("features_with_more_than_5pct_missing_values")
     if duplicate:
         flags.append("duplicate_feature_columns")
+    if high_pairs:
+        flags.append("highly_correlated_feature_pairs_sampled")
     if n_features > n_rows:
         flags.append("feature_count_exceeds_gate_sample_count")
     if correlated and abs(correlated[0]["label_correlation"]) >= 0.25:
@@ -134,6 +161,9 @@ def feature_quality_report(zq, fit_snapshot, max_rows=1024):
     return {
         "status": "ok", "updated_at": time.time(), "sample_rows": n_rows,
         "feature_count": n_features, "features_per_sample": float(n_features / n_rows),
+        "sampled_feature_pairs": sampled_pairs,
+        "high_correlation_pair_count": len(high_pairs),
+        "high_correlation_pairs": high_pairs[:50],
         "constant_feature_count": len(constant), "constant_features": constant[:100],
         "high_missing_feature_count": len(high_missing), "high_missing_features": high_missing[:100],
         "duplicate_feature_count": len(duplicate), "duplicate_features": duplicate[:100],
