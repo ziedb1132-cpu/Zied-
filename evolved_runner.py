@@ -76,6 +76,17 @@ def run_comprehensive_backtest(universe=None, paper=None):
     if universe is None or universe.empty:
         raise RuntimeError("Comprehensive backtest: OKX returned an empty universe")
 
+    # This audit uses recent matured signal snapshots and is independent of the
+    # 500-win + 500-loss model activation gate.
+    try:
+        quality_paper = paper if paper is not None else zied_quant.Paper()
+        quality = advanced_intelligence.feature_quality_report_from_db(
+            zied_quant, quality_paper)
+        advanced_intelligence._write_json(state_dir, "feature_quality.json", quality)
+        report["feature_quality_audit"] = quality
+    except Exception as exc:
+        report["feature_quality_audit"] = {"status": "error", "error": str(exc)}
+
     # 150 explainable candidates spanning trend, breakout, reversal, momentum,
     # range-breakout and volume-breakout families; chronological validation/holdout.
     try:
