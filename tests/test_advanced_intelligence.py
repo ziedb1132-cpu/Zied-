@@ -33,6 +33,7 @@ class AdvancedIntelligenceTests(unittest.TestCase):
         signal = y + np.linspace(0.0, 0.01, len(y))
         X = np.column_stack([signal, signal.copy(), np.ones(len(y))])
         X[:10, 0] = np.nan
+        X[:10, 1] = np.nan
         report = ai.feature_quality_report(
             SmallZiedQuant(), {"X_gate": X, "gate_y": y}
         )
