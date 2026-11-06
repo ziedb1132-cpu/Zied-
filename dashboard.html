@@ -611,46 +611,72 @@ function renderVirtualPortfolio(gateWins,gateLosses,modelReady){
  if(gateReady&&virtualPortfolio.capital!==null&&!virtualPortfolio.activatedAt){virtualPortfolio.activatedAt=Date.now()/1000;saveVirtualPortfolio();}
  const unlocked=gateReady&&virtualPortfolio.capital!==null&&!!virtualPortfolio.activatedAt;
  status.textContent=unlocked?"Actif":"Verrouillé";
- openCount.textContent=String(virtualPortfolio.positions.filter(p=>p.status==="OPEN").length);
  notice.textContent=!gateReady
   ?"Verrouillé : il faut 500 signaux gagnants, 500 signaux perdants et un modèle enregistré dans les données du tableau de bord."
   :virtualPortfolio.capital===null
    ?"Conditions d’apprentissage remplies. Saisissez le capital initial pour activer la simulation."
-   :"Conditions remplies. La simulation est active ; seules les nouvelles signaux validées par le modèle sont éligibles.";
+   :"Simulation active : allocation plafonnée à 5% du capital et risque théorique plafonné à 1% par signal.";
  notice.style.background=unlocked?"#eaf7f0":"#fff5e6";notice.style.borderColor=unlocked?"#c9ead8":"#f1dfbd";notice.style.color=unlocked?"#176b4c":"#8b5b14";
  if(unlocked){
+  const tracked=Array.isArray(state.tracked)?state.tracked:[];
+  const bySignal=new Map(tracked.filter(t=>t&&t.signal_id!==undefined&&t.signal_id!==null).map(t=>[String(t.signal_id),t]));
   const latestByInst={};
-  state.signals.forEach(s=>{if(s&&s.inst&&Number.isFinite(Number(s.price))){if(!latestByInst[s.inst]||Number(s.ts)>Number(latestByInst[s.inst].ts))latestByInst[s.inst]=s;}});
-  const eligible=state.signals.filter(s=>s&&s.prob_source==="validated_ai"&&s.prob!==null&&s.prob!==undefined&&Number.isFinite(Number(s.prob))&&Number(s.ts)>=virtualPortfolio.activatedAt&&s.id!==undefined);
-  eligible.sort((a,b)=>Number(a.ts)-Number(b.ts));
-  eligible.forEach(s=>{
-   const id=String(s.id);if(virtualPortfolio.processed.includes(id))return;
-   virtualPortfolio.processed.push(id);
-   if(virtualPortfolio.positions.some(p=>p.inst===s.inst&&p.status==="OPEN"))return;
-   const allocation=virtualPortfolio.capital*0.05;
-   const entry=Number(s.price);
-   if(!(entry>0&&allocation>0))return;
-   virtualPortfolio.positions.push({signalId:id,inst:s.inst,entry,allocation,quantity:allocation/entry,prob:Number(s.prob),openedAt:Number(s.ts),status:"OPEN",lastPrice:entry});
-  });
+  (state.signals||[]).forEach(s=>{if(s&&s.inst&&Number.isFinite(Number(s.price))&&(!latestByInst[s.inst]||Number(s.ts)>Number(latestByInst[s.inst].ts)))latestByInst[s.inst]=s;});
+  // Reconcile existing open virtual positions against the exact source signal id.
   virtualPortfolio.positions.filter(p=>p.status==="OPEN").forEach(p=>{
-   const latest=latestByInst[p.inst];if(latest&&Number(latest.ts)>=p.openedAt&&Number(latest.price)>0)p.lastPrice=Number(latest.price);
-   const matching=state.tracked.filter(t=>String(t.inst)===String(p.inst)&&String(t.status).toUpperCase()==="CLOSED"&&Number(t.opened_ts)>=p.openedAt-900&&Number(t.opened_ts)<=p.openedAt+900&&Number.isFinite(Number(t.ret)));
-   if(matching.length){matching.sort((a,b)=>Math.abs(Number(a.opened_ts)-p.openedAt)-Math.abs(Number(b.opened_ts)-p.openedAt));const close=matching[0];p.status="CLOSED";p.closedAt=Number(close.closed_ts)||null;p.exitPrice=Number(close.exit_price)||null;p.ret=Number(close.ret);p.closeReason=close.close_reason||close.outcome||"—";p.realizedPnl=p.allocation*p.ret;virtualPortfolio.history.push({...p});}
+   const t=bySignal.get(String(p.signalId));
+   if(t&&String(t.status).toUpperCase()==="CLOSED"&&Number.isFinite(Number(t.ret))){
+    p.status="CLOSED";p.closedAt=Number(t.closed_ts)||null;p.exitPrice=Number(t.exit_price)||null;
+    p.ret=Number(t.ret);p.closeReason=t.close_reason||t.outcome||"—";
+    p.realizedPnl=Number(p.allocation)*p.ret;
+    if(!p.historyRecorded){virtualPortfolio.history.push({...p,historyRecorded:true});p.historyRecorded=true;}
+   }else{
+    const latest=latestByInst[p.inst];
+    if(latest&&Number(latest.ts)>=p.openedAt&&Number(latest.price)>0)p.lastPrice=Number(latest.price);
+   }
+  });
+  const eligible=tracked.filter(t=>t&&t.prob_source==="validated_ai"&&t.prob!==null&&t.prob!==undefined
+   &&Number.isFinite(Number(t.prob))&&Number(t.opened_ts)>=virtualPortfolio.activatedAt
+   &&t.signal_id!==undefined&&t.signal_id!==null);
+  eligible.sort((a,b)=>Number(a.opened_ts)-Number(b.opened_ts));
+  eligible.forEach(t=>{
+   const id=String(t.signal_id);
+   if(virtualPortfolio.processed.includes(id))return;
+   virtualPortfolio.processed.push(id);
+   if(virtualPortfolio.positions.some(p=>p.signalId===id))return;
+   const entry=Number(t.entry),stop=Number(t.sl);
+   const riskPct=entry>0&&stop>0?Math.max(0,(entry-stop)/entry):0;
+   const riskBudget=virtualPortfolio.capital*0.01;
+   const maxAllocation=virtualPortfolio.capital*0.05;
+   const allocation=riskPct>0?Math.min(maxAllocation,riskBudget/riskPct):maxAllocation;
+   if(!(entry>0&&allocation>0&&Number.isFinite(allocation)))return;
+   const p={signalId:id,inst:t.inst,entry,stopLoss:stop,takeProfit:Number(t.tp)||null,
+    allocation,quantity:allocation/entry,prob:Number(t.prob),openedAt:Number(t.opened_ts),
+    status:"OPEN",lastPrice:entry,riskPct,rewardPct:Number(t.reward_pct)||0,
+    riskReward:Number(t.risk_reward)||0};
+   if(String(t.status).toUpperCase()==="CLOSED"&&Number.isFinite(Number(t.ret))){
+    p.status="CLOSED";p.closedAt=Number(t.closed_ts)||null;p.exitPrice=Number(t.exit_price)||null;
+    p.ret=Number(t.ret);p.closeReason=t.close_reason||t.outcome||"—";
+    p.realizedPnl=allocation*p.ret;p.historyRecorded=true;virtualPortfolio.history.push({...p});
+   }else{
+    const latest=latestByInst[p.inst];if(latest&&Number(latest.ts)>=p.openedAt&&Number(latest.price)>0)p.lastPrice=Number(latest.price);
+   }
+   virtualPortfolio.positions.push(p);
   });
   saveVirtualPortfolio();
  }
  const positions=virtualPortfolio.positions.filter(p=>p.status==="OPEN");
  const realized=virtualPortfolio.history.reduce((sum,p)=>sum+Number(p.realizedPnl||0),0);
- const unrealized=positions.reduce((sum,p)=>sum+(Number(p.lastPrice)-Number(p.entry))*Number(p.quantity),0);
+ const unrealized=positions.reduce((sum,p)=>sum+(Number(p.lastPrice)/Number(p.entry)-1)*Number(p.allocation),0);
  const allocated=positions.reduce((sum,p)=>sum+Number(p.allocation||0),0);
  const available=virtualPortfolio.capital===null?null:virtualPortfolio.capital-allocated+realized;
- $("vpMetrics").innerHTML=metric("Capital initial",virtualPortfolio.capital===null?"—":virtualPortfolio.capital.toFixed(2)+" USDT","Capital configuré localement")+metric("Capital engagé",allocated.toFixed(2)+" USDT","Positions actuellement ouvertes")+metric("Résultat réalisé",realized.toFixed(2)+" USDT","Basé sur le rendement des signaux clôturés")+metric("Résultat latent estimé",unrealized.toFixed(2)+" USDT","Estimé avec le dernier prix disponible dans les signaux")+metric("Capital disponible estimé",available===null?"—":available.toFixed(2)+" USDT","Estimation locale, hors frais additionnels non fournis")+metric("Transactions simulées",String(virtualPortfolio.positions.length),"Depuis le déverrouillage");
- const posCols=[["Actif","inst"],["Statut","status"],["Entrée",p=>priceFmt(p.entry)],["Dernier prix",p=>priceFmt(p.lastPrice)],["Allocation",p=>Number(p.allocation).toFixed(2)+" USDT"],["Quantité",p=>Number(p.quantity).toFixed(6)],["P&L latent",p=>((Number(p.lastPrice)-Number(p.entry))*Number(p.quantity)).toFixed(4)+" USDT"],["Probabilité IA",p=>(Number(p.prob)*100).toFixed(2)+"%"],["Ouverture",p=>timeFmt(p.openedAt)]];
- const histCols=[["Actif","inst"],["Entrée",p=>priceFmt(p.entry)],["Sortie",p=>priceFmt(p.exitPrice)],["Motif","closeReason"],["Rendement",p=>(Number(p.ret)*100).toFixed(3)+"%"],["P&L réalisé",p=>Number(p.realizedPnl).toFixed(4)+" USDT"],["Clôture",p=>timeFmt(p.closedAt)]];
+ const equity=virtualPortfolio.capital===null?null:virtualPortfolio.capital+realized+unrealized;
+ $("vpMetrics").innerHTML=metric("Capital initial",virtualPortfolio.capital===null?"—":virtualPortfolio.capital.toFixed(2)+" USDT","Capital configuré localement")+metric("Capital engagé",allocated.toFixed(2)+" USDT","Positions actuellement ouvertes")+metric("Résultat réalisé",realized.toFixed(2)+" USDT","Rendement net enregistré après coûts")+metric("Résultat latent estimé",unrealized.toFixed(2)+" USDT","Estimé avec le dernier prix disponible")+metric("Capital disponible estimé",available===null?"—":available.toFixed(2)+" USDT","Capital initial - allocations ouvertes + résultat réalisé")+metric("Valeur totale estimée",equity===null?"—":equity.toFixed(2)+" USDT","Capital + P&L réalisé + P&L latent")+metric("Transactions simulées",String(virtualPortfolio.positions.length),"Depuis le déverrouillage");
+ const posCols=[["Actif","inst"],["Statut","status"],["Entrée",p=>priceFmt(p.entry)],["Stop",p=>priceFmt(p.stopLoss)],["Dernier prix",p=>priceFmt(p.lastPrice)],["Allocation",p=>Number(p.allocation).toFixed(2)+" USDT"],["Quantité",p=>Number(p.quantity).toFixed(6)],["Risque/Reward",p=>Number(p.riskReward||0).toFixed(2)],["P&L latent",p=>((Number(p.lastPrice)/Number(p.entry)-1)*Number(p.allocation)).toFixed(4)+" USDT"],["Probabilité IA",p=>(Number(p.prob)*100).toFixed(2)+"%"],["Ouverture",p=>timeFmt(p.openedAt)]];
+ const histCols=[["Actif","inst"],["Entrée",p=>priceFmt(p.entry)],["Sortie",p=>priceFmt(p.exitPrice)],["Motif","closeReason"],["Rendement net",p=>(Number(p.ret)*100).toFixed(3)+"%"],["P&L réalisé",p=>Number(p.realizedPnl).toFixed(4)+" USDT"],["Clôture",p=>timeFmt(p.closedAt)]];
  $("vpPositions").innerHTML=table(positions,posCols);
  $("vpHistory").innerHTML=table(virtualPortfolio.history.slice().reverse(),histCols);
 }
-
 
 function renderIndependentPages(){
  const closed=state.tracked.filter(r=>String(r.status).toUpperCase()==="CLOSED"),byReason={};
