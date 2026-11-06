@@ -24,6 +24,25 @@ class AdvancedIntelligenceTests(unittest.TestCase):
         report = ai.calibration_metrics([0, 1, 0], [0.2, 0.8, 0.3])
         self.assertEqual(report["status"], "insufficient_gate_samples")
 
+    def test_feature_quality_audit_finds_duplicates_constants_and_missingness(self):
+        class SmallZiedQuant:
+            N_FEATURES = 3
+            FEATURE_COLS = ["signal", "duplicate", "constant"]
+
+        y = np.array([0.0, 1.0] * 50)
+        signal = y + np.linspace(0.0, 0.01, len(y))
+        X = np.column_stack([signal, signal.copy(), np.ones(len(y))])
+        X[:10, 0] = np.nan
+        report = ai.feature_quality_report(
+            SmallZiedQuant(), {"X_gate": X, "gate_y": y}
+        )
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["feature_count"], 3)
+        self.assertEqual(report["constant_feature_count"], 1)
+        self.assertGreaterEqual(report["duplicate_feature_count"], 1)
+        self.assertGreater(report["high_missing_feature_count"], 0)
+        self.assertIn("constant_or_near_constant_features", report["risk_flags"])
+
     def test_feature_drift_monitor_does_not_change_features(self):
         class Brain:
             ready = True
