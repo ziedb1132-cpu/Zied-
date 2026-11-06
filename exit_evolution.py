@@ -108,8 +108,8 @@ def trailing_stop_update(entry, atr, peak, previous_stop, active,
     step_pct = float(np.clip(0.05 * float(distance_atr) / 1.8, 0.01, 0.10))
     milestones = max(0, int(np.floor(
         (peak - activation_price) / max(entry * step_pct, 1e-12) + 1e-12)))
-    ratchet = entry * (0.01 + step_pct * milestones)
-    return max(previous_stop, entry * 1.01, entry * (1.0 + ratchet)), True
+    ratchet_pct = 0.01 + step_pct * milestones
+    return max(previous_stop, entry * 1.01, entry * (1.0 + ratchet_pct)), True
 
 
 def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
