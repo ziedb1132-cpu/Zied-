@@ -52,7 +52,10 @@ if db_path.exists():
     # Preserve the entry-time market regime in the dashboard snapshot. The regime is
     # stored on tracked_signals when each signal is created; omitting it here made
     # every historical dashboard row appear as "Non renseigné".
-    tracked_cols = "id,inst,status,entry,exit_price,sl,tp,prob,opened_ts,ret,closed_ts,outcome,close_reason,hold,regime,entry_score"
+    tracked_cols = ("id,signal_id,inst,status,entry,exit_price,sl,tp,prob,prob_source,opened_ts,ret,"
+      "closed_ts,outcome,close_reason,hold,regime,entry_score,atr_pct,peak_price,trailing_sl,"
+      "trail_active,trail_activation_atr,trail_distance_atr,max_hold_bars,exit_policy,"
+      "risk_pct,reward_pct,risk_reward")
     open_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='OPEN' ORDER BY opened_ts DESC")
     closed_tracked = rows(conn, f"SELECT {tracked_cols} FROM tracked_signals WHERE status='CLOSED' ORDER BY closed_ts DESC, id DESC")
     data["tracked"] = closed_tracked + open_tracked
@@ -60,7 +63,9 @@ if db_path.exists():
 
 # Publish one canonical research report. Its layers contain the strategy,
 # discovery-lab, regime-selector, exit-policy and model walk-forward results.
-for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json"):
+for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json",
+             "feature_quality.json", "feature_importance.json", "feature_drift.json",
+             "model_calibration.json", "regime_performance.json"):
     value = safe_json(root / name)
     if value is not None:
         if name == "candle_patterns.json" and isinstance(value, dict):

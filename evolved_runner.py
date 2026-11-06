@@ -76,6 +76,17 @@ def run_comprehensive_backtest(universe=None, paper=None):
     if universe is None or universe.empty:
         raise RuntimeError("Comprehensive backtest: OKX returned an empty universe")
 
+    # This audit uses recent matured signal snapshots and is independent of the
+    # 500-win + 500-loss model activation gate.
+    try:
+        quality_paper = paper if paper is not None else zied_quant.Paper()
+        quality = advanced_intelligence.feature_quality_report_from_db(
+            zied_quant, quality_paper)
+        advanced_intelligence._write_json(state_dir, "feature_quality.json", quality)
+        report["feature_quality_audit"] = quality
+    except Exception as exc:
+        report["feature_quality_audit"] = {"status": "error", "error": str(exc)}
+
     # 150 explainable candidates spanning trend, breakout, reversal, momentum,
     # range-breakout and volume-breakout families; chronological validation/holdout.
     try:
@@ -169,7 +180,16 @@ def run_comprehensive_backtest(universe=None, paper=None):
 _original_cycle_backtest = zied_quant.run_cycle_backtest
 
 def _cycle_backtest_with_comprehensive_research(universe, paper=None, folds=5):
+    # The workflow can chain many short runs. Heavy model + strategy research is
+    # therefore limited to once per rolling 24 hours using the durable Paper DB.
+    if paper is not None and not zied_quant.daily_backtest_due(paper):
+        zied_quant.log.info("heavy walk-forward/comprehensive research skipped: daily guard is active")
+        return {"status": "skipped_daily_guard"}
     core_result = _original_cycle_backtest(universe, paper, folds)
+    if core_result is None:
+        return None
+    if paper is not None:
+        zied_quant.mark_daily_backtest_attempt(paper)
     try:
         run_comprehensive_backtest(universe=universe, paper=paper)
     except Exception as exc:

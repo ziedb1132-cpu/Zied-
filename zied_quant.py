@@ -1379,18 +1379,20 @@ def monitor_tracked_signals(paper):
                     old_peak = float(s.get("peak_price") or s["entry"])
                     peak = max(old_peak, high)
                     entry_price = float(s["entry"])
-                    tp_distance = float(s["tp"]) - entry_price
-                    # Arm when price reaches 15% of the entry-to-TP distance.
-                    # Thereafter keep the stop 10% of that distance below the peak.
-                    activation = entry_price + 0.15 * tp_distance
-                    trail_gap = 0.10 * tp_distance
-                    active = bool(s.get("trail_active")) or peak >= activation
-                    if active:
-                        stepped_stop = peak - trail_gap
-                        trail = max(float(s.get("trailing_sl") or s["sl"]),
-                                    float(s["sl"]), stepped_stop)
-                    else:
-                        trail = float(s["sl"])
+                    atr_pct = float(s.get("atr_pct") or 0.0)
+                    if atr_pct <= 0:
+                        atr_pct = max(1e-6, (float(s["tp"]) - entry_price) /
+                                      (entry_price * max(float(s.get("exit_tp_mult") or 3.0), 1e-6)))
+                    tp_atr = max(1e-6, (float(s["tp"]) - entry_price) / (entry_price * atr_pct))
+                    activation_atr = float(s.get("trail_activation_atr") or (0.30 * tp_atr))
+                    distance_atr = float(s.get("trail_distance_atr") or 1.8)
+                    trail, active = exit_evolution.trailing_stop_update(
+                        entry_price, atr_pct, peak,
+                        float(s.get("trailing_sl") or s["sl"]),
+                        bool(s.get("trail_active")), activation_atr, distance_atr)
+                    # Live monitoring and shadow backtests use the same AI-selected
+                    # activation and ratchet parameters; the stop is monotonic.
+                    trail = max(float(s["sl"]), float(s.get("trailing_sl") or s["sl"]), trail)
                     paper.update_trailing(s["id"], peak, trail, active)
                     s["peak_price"], s["trailing_sl"], s["trail_active"] = peak, trail, int(active)
                 if reason:
@@ -1597,12 +1599,15 @@ def stats_msg(paper, prices=None):
     gross_profit = float(realized[realized > 0].sum()) if len(realized) else 0.0
     gross_loss = float(-realized[realized < 0].sum()) if len(realized) else 0.0
     pf_realized = gross_profit / gross_loss if gross_loss > 0 else (float("inf") if gross_profit > 0 else 0.0)
-    equity = peak = 1.0
-    max_dd = 0.0
-    for value in realized:
-        equity *= 1.0 + value
-        peak = max(peak, equity)
-        max_dd = max(max_dd, 1.0 - equity / peak)
+    # Signals may overlap and have no common position size in the core ledger.
+    # Use equal-notional additive returns for diagnostics; do not pretend every
+    # signal compounds the full account as if trades were strictly sequential.
+    equity_path = 1.0 + np.concatenate(([0.0], np.cumsum(realized))) if len(realized) else np.array([1.0])
+    peaks = np.maximum.accumulate(equity_path)
+    drawdowns = np.divide(peaks - equity_path, peaks,
+                          out=np.zeros_like(peaks), where=peaks > 1e-12)
+    max_dd = float(np.max(drawdowns)) if len(drawdowns) else 0.0
+    cumulative_signal_return = float(np.sum(realized)) if len(realized) else 0.0
     realized_avg = float(realized.mean() * 100) if len(realized) else 0.0
     regime_lines = []
     for regime in ("BULL", "BEAR", "RANGE", "TREND", "HIGH_VOL", "UNKNOWN"):
@@ -1646,7 +1651,7 @@ def stats_msg(paper, prices=None):
             f"\n📈 الأداء المحقق للإشارات المغلقة (صافي تقديري بعد التكلفة):\n"
             f"عدد الصفقات: {len(realized)} | نسبة النجاح: {(np.mean(realized>0)*100 if len(realized) else 0):.1f}%\n"
             f"متوسط الصفقة: {realized_avg:+.2f}% | Profit Factor: {pf_realized:.2f}\n"
-            f"العائد المركب النظري: {(equity-1)*100:+.2f}% | أقصى تراجع: {max_dd*100:.2f}%\n"
+            f"تراكم عوائد الإشارات غير الموزونة: {cumulative_signal_return*100:+.2f}% | أقصى تراجع نسبي: {max_dd*100:.2f}%\n"
             f"الأداء حسب حالة السوق: " + (" | ".join(regime_lines) if regime_lines else "لا توجد نتائج كافية بعد") +
             f"\n\n🔎 تشخيص الخسائر حسب سبب الإغلاق: " + (" | ".join(reason_lines) if reason_lines else "لا توجد بيانات") +
             f"\nحسب ترتيب العملة وجودة الدخول: " + (" | ".join(segment_lines) if segment_lines else "لا توجد بيانات") +

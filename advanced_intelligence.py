@@ -75,12 +75,146 @@ def _permutation_importance(zq, brain, fit_snapshot, max_rows=256):
             "warning": "Associational diagnostic only; not causal proof and not used to alter the model."}
 
 
+def feature_quality_report(zq, fit_snapshot, max_rows=1024):
+    """Audit all model inputs for missingness, constants, duplicates and label association."""
+    X = np.asarray((fit_snapshot or {}).get("X_gate", []), dtype=np.float64)
+    y = np.asarray((fit_snapshot or {}).get("gate_y", []), dtype=np.float64).reshape(-1)
+    if X.ndim != 2 or X.shape[1] != zq.N_FEATURES or len(X) != len(y) or len(y) < 30:
+        return {"status": "insufficient_or_missing_gate_features",
+                "feature_count": int(zq.N_FEATURES)}
+    if len(y) > max_rows:
+        take = np.linspace(0, len(y) - 1, max_rows).astype(int)
+        X, y = X[take], y[take]
+    valid_y = np.isfinite(y) & np.isin(y, [0.0, 1.0])
+    X, y = X[valid_y], y[valid_y]
+    if len(y) < 30:
+        return {"status": "insufficient_valid_rows", "feature_count": int(X.shape[1]),
+                "sample_rows": int(len(y))}
+    rows, hashes = [], {}
+    constant, high_missing, duplicate = [], [], []
+    for j, name in enumerate(zq.FEATURE_COLS):
+        col = X[:, j]
+        finite = np.isfinite(col)
+        missing = 1.0 - float(finite.mean())
+        values = col[finite]
+        std = float(np.std(values)) if len(values) else 0.0
+        unique_fraction = float(len(np.unique(values)) / len(values)) if len(values) else 0.0
+        corr = None
+        if len(values) >= 30 and np.std(y[finite]) > 1e-12 and std > 1e-12:
+            corr = float(np.corrcoef(values, y[finite])[0, 1])
+            if not np.isfinite(corr):
+                corr = None
+        if std <= 1e-10 or unique_fraction <= 1.0 / max(1, len(values)):
+            constant.append(str(name))
+        if missing > 0.05:
+            high_missing.append(str(name))
+        fingerprint = np.nan_to_num(col, nan=9.87654321e99,
+                                     posinf=8.7654321e99, neginf=-8.7654321e99).tobytes()
+        if fingerprint in hashes:
+            duplicate.append({"feature": str(name), "duplicate_of": hashes[fingerprint]})
+        else:
+            hashes[fingerprint] = str(name)
+        rows.append({"feature": str(name), "missing_fraction": missing,
+                     "std": std, "unique_fraction": unique_fraction,
+                     "label_correlation": corr})
+    correlated = [r for r in rows if r["label_correlation"] is not None]
+    correlated.sort(key=lambda r: abs(r["label_correlation"]), reverse=True)
+    # Sample feature pairs rather than allocating a full 3,030 x 3,030 matrix.
+    rng = np.random.RandomState(1729)
+    pair_total = min(10000, max(0, X.shape[1] * (X.shape[1] - 1) // 2))
+    sampled_pairs, high_pairs, seen_pairs = 0, [], set()
+    for left, right in rng.randint(0, X.shape[1], size=(pair_total * 2, 2)):
+        if left == right:
+            continue
+        i, j = (int(left), int(right)) if left < right else (int(right), int(left))
+        if (i, j) in seen_pairs:
+            continue
+        seen_pairs.add((i, j))
+        a, b = X[:, i], X[:, j]
+        valid = np.isfinite(a) & np.isfinite(b)
+        if int(valid.sum()) < 30:
+            continue
+        a, b = a[valid], b[valid]
+        if np.std(a) <= 1e-12 or np.std(b) <= 1e-12:
+            continue
+        corr = float(np.corrcoef(a, b)[0, 1])
+        sampled_pairs += 1
+        if np.isfinite(corr) and abs(corr) >= 0.995:
+            high_pairs.append({"feature": str(zq.FEATURE_COLS[i]),
+                               "correlated_with": str(zq.FEATURE_COLS[j]),
+                               "correlation": corr})
+    high_pairs.sort(key=lambda item: abs(item["correlation"]), reverse=True)
+    n_features, n_rows = int(X.shape[1]), int(len(y))
+    flags = []
+    if len(constant):
+        flags.append("constant_or_near_constant_features")
+    if len(high_missing):
+        flags.append("features_with_more_than_5pct_missing_values")
+    if duplicate:
+        flags.append("duplicate_feature_columns")
+    if high_pairs:
+        flags.append("highly_correlated_feature_pairs_sampled")
+    if n_features > n_rows:
+        flags.append("feature_count_exceeds_gate_sample_count")
+    if correlated and abs(correlated[0]["label_correlation"]) >= 0.25:
+        flags.append("strong_univariate_label_association_requires_leakage_review")
+    return {
+        "status": "ok", "updated_at": time.time(), "sample_rows": n_rows,
+        "feature_count": n_features, "features_per_sample": float(n_features / n_rows),
+        "sampled_feature_pairs": sampled_pairs,
+        "high_correlation_pair_count": len(high_pairs),
+        "high_correlation_pairs": high_pairs[:50],
+        "constant_feature_count": len(constant), "constant_features": constant[:100],
+        "high_missing_feature_count": len(high_missing), "high_missing_features": high_missing[:100],
+        "duplicate_feature_count": len(duplicate), "duplicate_features": duplicate[:100],
+        "top_label_associations": correlated[:30], "risk_flags": flags,
+        "warning": "Sample-based diagnostic only. Correlation is not proof of leakage; no feature is removed and no model threshold is changed."
+    }
+
+
+def feature_quality_report_from_db(zq, paper, max_rows=1024):
+    """Audit recent, matured feature snapshots even before the 500/500 AI gate opens."""
+    try:
+        with paper.lock:
+            rows = paper.db.execute(
+                "SELECT feats,label FROM signals WHERE labeled=1 AND label IN (0,1) "
+                "AND feature_count=? AND feature_schema_version=? "
+                "ORDER BY ts DESC LIMIT ?",
+                (int(zq.N_FEATURES), int(zq.DATA_VER), int(max_rows))
+            ).fetchall()
+    except Exception as exc:
+        return {"status": "database_feature_read_failed", "error": str(exc),
+                "feature_count": int(zq.N_FEATURES)}
+    vectors, labels = [], []
+    for row in rows:
+        try:
+            vector = np.asarray(json.loads(row["feats"]), dtype=np.float64).reshape(-1)
+            if vector.size != zq.N_FEATURES:
+                continue
+            vectors.append(vector)
+            labels.append(float(row["label"]))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+    if len(labels) < 30:
+        return {"status": "insufficient_mature_feature_snapshots",
+                "sample_rows": len(labels), "feature_count": int(zq.N_FEATURES)}
+    report = feature_quality_report(
+        zq, {"X_gate": np.vstack(vectors), "gate_y": np.asarray(labels)}, max_rows=max_rows)
+    report["source"] = "recent_matured_signal_feature_snapshots"
+    report["schema_version"] = int(zq.DATA_VER)
+    return report
+
+
 def post_fit_diagnostics(zq, brain, info):
     snapshot = getattr(brain, "last_fit", {}) or {}
     directory = zq.CFG["DIR"]
     calibration = calibration_metrics(snapshot.get("gate_y", []), snapshot.get("gate_p", []))
     calibration.update({"updated_at": time.time(), "candidate_accepted": bool(info.get("accepted"))})
     _write_json(directory, "model_calibration.json", calibration)
+
+    quality = feature_quality_report(zq, snapshot)
+    quality.update({"candidate_accepted": bool(info.get("accepted"))})
+    _write_json(directory, "feature_quality.json", quality)
 
     importance = {"status": "skipped_candidate_not_promoted"}
     if info.get("accepted") and brain.ready:
@@ -94,10 +228,16 @@ def post_fit_diagnostics(zq, brain, info):
     zq.log.info("model calibration diagnostics: %s", {
         k: calibration.get(k) for k in ("status", "n", "brier", "log_loss", "expected_calibration_error")
     })
+    zq.log.info("feature quality audit: status=%s count=%d constants=%d missing=%d duplicates=%d flags=%s",
+                quality.get("status"), quality.get("feature_count", 0),
+                quality.get("constant_feature_count", 0),
+                quality.get("high_missing_feature_count", 0),
+                quality.get("duplicate_feature_count", 0), quality.get("risk_flags", []))
     zq.log.info("feature importance diagnostics: status=%s features=%d",
                 importance.get("status"), len(importance.get("top_features", [])))
     zq.log.info("closed-signal regime diagnostics: %s", regimes)
-    return {"calibration": calibration, "feature_importance": importance, "regimes": regimes}
+    return {"calibration": calibration, "feature_quality": quality,
+            "feature_importance": importance, "regimes": regimes}
 
 
 def feature_drift_report(zq, brain, feature_frame):
