@@ -15,14 +15,16 @@ BASELINE_NAME = "current"
 # (name, SL multiplier adjustment, TP ATR, trailing activation ATR,
 #  trailing distance ATR, maximum holding in 5m bars)
 POLICIES = (
-    ("current",       0.00, 3.0, 1.5, 1.8, 288),
-    ("tight_target",  0.00, 2.5, 1.2, 1.6, 144),
-    ("wide_target",   0.00, 4.0, 2.0, 2.0, 288),
-    ("early_trail",   0.00, 3.5, 1.2, 1.5, 288),
-    ("wide_trail",    0.00, 4.0, 1.8, 2.2, 288),
-    ("faster_time",   0.00, 3.0, 1.5, 1.8, 144),
-    ("sl_tighter",   -0.20, 3.0, 1.5, 1.8, 288),
-    ("sl_wider",      0.20, 3.0, 1.5, 1.8, 288),
+    # activation_atr is 30% of each policy's TP distance for the baseline grid.
+    # distance_atr scales the user's 5% peak-step / 5% stop-ratchet rule (1.8 = 5%).
+    ("current",       0.00, 3.0, 0.90, 1.8, 288),
+    ("tight_target",  0.00, 2.5, 0.75, 1.6, 144),
+    ("wide_target",   0.00, 4.0, 1.20, 2.0, 288),
+    ("early_trail",   0.00, 3.5, 0.75, 1.5, 288),
+    ("wide_trail",    0.00, 4.0, 1.20, 2.2, 288),
+    ("faster_time",   0.00, 3.0, 0.90, 1.8, 144),
+    ("sl_tighter",   -0.20, 3.0, 0.90, 1.8, 288),
+    ("sl_wider",      0.20, 3.0, 0.90, 1.8, 288),
 )
 
 
@@ -67,6 +69,12 @@ def _ensure(paper):
             "PRAGMA table_info(tracked_signals)").fetchall()}
         if tracked_columns and "exit_policy" not in tracked_columns:
             paper.db.execute("ALTER TABLE tracked_signals ADD COLUMN exit_policy TEXT")
+        for name, declaration in (
+            ("risk_pct", "REAL"), ("reward_pct", "REAL"), ("risk_reward", "REAL"),
+        ):
+            if tracked_columns and name not in tracked_columns:
+                paper.db.execute(
+                    f"ALTER TABLE tracked_signals ADD COLUMN {name} {declaration}")
         if tracked_columns:
             paper.db.execute(
                 "UPDATE tracked_signals SET exit_policy='legacy_unknown' WHERE exit_policy IS NULL")
@@ -84,6 +92,26 @@ def _canonical_reason(reason):
     return aliases.get(value, value or "UNKNOWN")
 
 
+def trailing_stop_update(entry, atr, peak, previous_stop, active,
+                         activation_atr, distance_atr):
+    """Shared live/shadow trailing rule; the stop can only ratchet upward.
+
+    At the AI-selected activation threshold, protect +1%. Each further
+    policy-sized peak step raises the stop by the same percentage.
+    distance_atr=1.8 preserves the requested 5%/5% step rule.
+    """
+    entry, atr, peak = float(entry), float(atr), float(peak)
+    previous_stop = float(previous_stop)
+    activation_price = entry + max(0.0, float(activation_atr)) * entry * atr
+    if not bool(active) and peak < activation_price:
+        return previous_stop, False
+    step_pct = float(np.clip(0.05 * float(distance_atr) / 1.8, 0.01, 0.10))
+    milestones = max(0, int(np.floor(
+        (peak - activation_price) / max(entry * step_pct, 1e-12) + 1e-12)))
+    ratchet = entry * (0.01 + step_pct * milestones)
+    return max(previous_stop, entry * 1.01, entry * (1.0 + ratchet)), True
+
+
 def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
               activation_atr, distance_atr, max_bars):
     sl = entry * (1.0 - sl_mult * atr)
@@ -91,12 +119,10 @@ def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
     peak = entry
     trail = sl
     active = False
-    activation_price = entry + 0.30 * (tp - entry)
     last = min(len(closes), int(max_bars))
     for i in range(last):
         hi, lo = float(highs[i]), float(lows[i])
-        # Check the stop from the prior completed candle first. Same-candle
-        # ambiguity is resolved conservatively in favour of the stop.
+        # Use the stop that was active before this candle; never backdate a trail.
         active_sl = max(sl, trail)
         if lo <= active_sl:
             px, reason = active_sl, ("TRAIL" if active_sl > sl + 1e-12 else "SL")
@@ -106,15 +132,8 @@ def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
             px, reason, hold = tp, "TP", i + 1
             break
         peak = max(peak, hi)
-        if not active and peak >= activation_price:
-            active = True
-            trail = max(trail, entry * 1.01)
-        if active:
-            # After the +1% protection is armed, each further +5% of
-            # peak price over entry ratchets the stop by another +5%.
-            milestones = max(0, int(((peak - activation_price) / (entry * 0.05) + 1e-12) // 1))
-            stepped_stop = entry * (1.01 + 0.05 * milestones)
-            trail = max(trail, entry * 1.01, stepped_stop)
+        trail, active = trailing_stop_update(
+            entry, atr, peak, trail, active, activation_atr, distance_atr)
     else:
         if last <= 0:
             return None
@@ -393,19 +412,26 @@ def install(zq):
         atr = float(np.clip(float(row["atr"]), 0.004, 0.06))
         name, sl_delta, tp, activation, distance, max_bars = _selected(self, atr)
         sl_mult = min(2.4, max(1.4, _base_sl(atr) + sl_delta))
+        # Keep gross reward at least 1.5x initial price risk after policy selection.
+        sl_mult = min(sl_mult, tp / 1.5)
         entry = float(signal["entry"])
         sl = entry * (1.0 - sl_mult * atr)
         target = entry * (1.0 + tp * atr)
+        risk_pct = max(0.0, (entry - sl) / entry)
+        reward_pct = max(0.0, (target - entry) / entry)
+        risk_reward = reward_pct / risk_pct if risk_pct > 0 else 0.0
         with self.lock:
             self.db.execute(
                 "UPDATE tracked_signals SET sl=?,tp=?,exit_sl_mult=?,exit_tp_mult=?,"
-                "trail_activation_atr=?,trail_distance_atr=?,max_hold_bars=?,exit_policy=? "
-                "WHERE id=? AND status='OPEN'",
-                (sl, target, sl_mult, tp, activation, distance, max_bars, name, signal["id"]))
+                "trail_activation_atr=?,trail_distance_atr=?,max_hold_bars=?,exit_policy=?,"
+                "risk_pct=?,reward_pct=?,risk_reward=? WHERE id=? AND status='OPEN'",
+                (sl, target, sl_mult, tp, activation, distance, max_bars, name,
+                 risk_pct, reward_pct, risk_reward, signal["id"]))
             self.db.commit()
         signal.update(sl=sl, tp=target, exit_policy=name, sl_mult=sl_mult,
                       tp_mult=tp, trail_activation_atr=activation,
-                      trail_distance_atr=distance, max_hold_bars=max_bars)
+                      trail_distance_atr=distance, max_hold_bars=max_bars,
+                      risk_pct=risk_pct, reward_pct=reward_pct, risk_reward=risk_reward)
         zq.log.info("paper exit policy=%s regime=%s SL=%.2f ATR TP=%.2f ATR trail=%.2f/%.2f ATR time=%dh",
                     name, _regime(atr), sl_mult, tp, activation, distance,
                     max_bars * 5 // 60)
