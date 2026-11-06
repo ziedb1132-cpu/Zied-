@@ -1,5 +1,8 @@
+import json
 import os
+import sqlite3
 import tempfile
+import threading
 import unittest
 
 import numpy as np
@@ -43,6 +46,36 @@ class AdvancedIntelligenceTests(unittest.TestCase):
         self.assertGreaterEqual(report["duplicate_feature_count"], 1)
         self.assertGreater(report["high_missing_feature_count"], 0)
         self.assertIn("constant_or_near_constant_features", report["risk_flags"])
+
+    def test_feature_audit_runs_from_matured_db_rows_before_model_gate(self):
+        class SmallZiedQuant:
+            N_FEATURES = 3
+            DATA_VER = 1
+            FEATURE_COLS = ["signal", "duplicate", "constant"]
+
+        class Paper:
+            def __init__(self):
+                self.lock = threading.RLock()
+                self.db = sqlite3.connect(":memory:")
+                self.db.row_factory = sqlite3.Row
+
+        paper = Paper()
+        paper.db.execute(
+            "CREATE TABLE signals(feats TEXT,label INTEGER,labeled INTEGER,"
+            "feature_count INTEGER,feature_schema_version INTEGER,ts REAL)"
+        )
+        for i in range(100):
+            value = float(i % 2)
+            vector = [value, value, 1.0]
+            paper.db.execute(
+                "INSERT INTO signals VALUES(?, ?, 1, 3, 1, ?)",
+                (json.dumps(vector), int(value), float(i))
+            )
+        paper.db.commit()
+        report = ai.feature_quality_report_from_db(SmallZiedQuant(), paper)
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["sample_rows"], 100)
+        self.assertEqual(report["source"], "recent_matured_signal_feature_snapshots")
 
     def test_feature_drift_monitor_does_not_change_features(self):
         class Brain:
