@@ -1379,18 +1379,20 @@ def monitor_tracked_signals(paper):
                     old_peak = float(s.get("peak_price") or s["entry"])
                     peak = max(old_peak, high)
                     entry_price = float(s["entry"])
-                    tp_distance = float(s["tp"]) - entry_price
-                    # Arm when price reaches 15% of the entry-to-TP distance.
-                    # Thereafter keep the stop 10% of that distance below the peak.
-                    activation = entry_price + 0.15 * tp_distance
-                    trail_gap = 0.10 * tp_distance
-                    active = bool(s.get("trail_active")) or peak >= activation
-                    if active:
-                        stepped_stop = peak - trail_gap
-                        trail = max(float(s.get("trailing_sl") or s["sl"]),
-                                    float(s["sl"]), stepped_stop)
-                    else:
-                        trail = float(s["sl"])
+                    atr_pct = float(s.get("atr_pct") or 0.0)
+                    if atr_pct <= 0:
+                        atr_pct = max(1e-6, (float(s["tp"]) - entry_price) /
+                                      (entry_price * max(float(s.get("exit_tp_mult") or 3.0), 1e-6)))
+                    tp_atr = max(1e-6, (float(s["tp"]) - entry_price) / (entry_price * atr_pct))
+                    activation_atr = float(s.get("trail_activation_atr") or (0.30 * tp_atr))
+                    distance_atr = float(s.get("trail_distance_atr") or 1.8)
+                    trail, active = exit_evolution.trailing_stop_update(
+                        entry_price, atr_pct, peak,
+                        float(s.get("trailing_sl") or s["sl"]),
+                        bool(s.get("trail_active")), activation_atr, distance_atr)
+                    # Live monitoring and shadow backtests use the same AI-selected
+                    # activation and ratchet parameters; the stop is monotonic.
+                    trail = max(float(s["sl"]), float(s.get("trailing_sl") or s["sl"]), trail)
                     paper.update_trailing(s["id"], peak, trail, active)
                     s["peak_price"], s["trailing_sl"], s["trail_active"] = peak, trail, int(active)
                 if reason:
