@@ -169,7 +169,16 @@ def run_comprehensive_backtest(universe=None, paper=None):
 _original_cycle_backtest = zied_quant.run_cycle_backtest
 
 def _cycle_backtest_with_comprehensive_research(universe, paper=None, folds=5):
+    # The workflow can chain many short runs. Heavy model + strategy research is
+    # therefore limited to once per rolling 24 hours using the durable Paper DB.
+    if paper is not None and not zied_quant.daily_backtest_due(paper):
+        zied_quant.log.info("heavy walk-forward/comprehensive research skipped: daily guard is active")
+        return {"status": "skipped_daily_guard"}
     core_result = _original_cycle_backtest(universe, paper, folds)
+    if core_result is None:
+        return None
+    if paper is not None:
+        zied_quant.mark_daily_backtest_attempt(paper)
     try:
         run_comprehensive_backtest(universe=universe, paper=paper)
     except Exception as exc:
