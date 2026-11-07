@@ -1511,23 +1511,33 @@ async function connect(){
  $("status").textContent="Connexion à GitHub…";$("dot").style.background="var(--gold)";
  state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[],evolution:null};
  try{
-  const rawUrl="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/dashboard_data.json?ts="+Date.now();
-  let data=null,source="raw.githubusercontent.com",rawError="";
-  const rawResponse=await fetch(rawUrl,{cache:"no-store",headers:{Accept:"application/json"}});
-  if(rawResponse.ok){
-   data=await rawResponse.json();
-  }else{
-   rawError="Raw GitHub HTTP "+rawResponse.status;
-   const headers={Accept:"application/vnd.github+json"};
-   const apiUrl="https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/contents/dashboard_data.json?ref="+encodeURIComponent(branch);
-   const response=await fetch(apiUrl,{headers,cache:"no-store"});
-   if(!response.ok)throw new Error(rawError+" ; GitHub API HTTP "+response.status+" — vérifiez le dépôt, la branche et les autorisations.");
-   const file=await response.json();
-   if(!file.content)throw new Error("GitHub API : le fichier dashboard_data.json est vide ou illisible.");
-   const binary=atob(file.content.replace(/\\s/g,""));
-   const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
-   data=JSON.parse(new TextDecoder().decode(bytes));
-   source="api.github.com";
+  let data=null,source="",lastError="";
+  const encodedOwner=encodeURIComponent(owner),encodedRepo=encodeURIComponent(repo),encodedBranch=encodeURIComponent(branch);
+  const sources=[
+   {name:"raw.githubusercontent.com",url:"https://raw.githubusercontent.com/"+encodedOwner+"/"+encodedRepo+"/"+encodedBranch+"/dashboard_data.json?ts="+Date.now()},
+   {name:"jsDelivr CDN",url:"https://cdn.jsdelivr.net/gh/"+owner+"/"+repo+"@"+branch+"/dashboard_data.json?ts="+Date.now()}
+  ];
+  for(const candidate of sources){
+   try{
+    const response=await fetch(candidate.url,{cache:"no-store",headers:{Accept:"application/json"}});
+    if(!response.ok)throw new Error(candidate.name+" HTTP "+response.status);
+    data=await response.json();source=candidate.name;break;
+   }catch(fetchError){lastError=fetchError&&fetchError.message?fetchError.message:String(fetchError);}
+  }
+  if(!data){
+   try{
+    const apiUrl="https://api.github.com/repos/"+encodedOwner+"/"+encodedRepo+"/contents/dashboard_data.json?ref="+encodedBranch;
+    const response=await fetch(apiUrl,{headers:{Accept:"application/vnd.github+json"},cache:"no-store"});
+    if(!response.ok)throw new Error("GitHub API HTTP "+response.status);
+    const file=await response.json();
+    if(!file.content)throw new Error("GitHub API : fichier vide ou illisible.");
+    const binary=atob(file.content.replace(/\\s/g,""));
+    const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
+    data=JSON.parse(new TextDecoder().decode(bytes));source="api.github.com";
+   }catch(apiError){
+    const apiMessage=apiError&&apiError.message?apiError.message:String(apiError);
+    throw new Error((lastError||"Sources CDN indisponibles")+" ; "+apiMessage);
+   }
   }
   if(!data||typeof data!=="object"||!data.summary||!Array.isArray(data.signals))throw new Error("Le fichier dashboard_data.json ne contient pas le format attendu.");
   state.meta=data.meta||{};state.summary={...state.summary,...(data.summary||{})};
