@@ -768,7 +768,8 @@ function renderEvolutionPanel(){
   {k:"Champion de recherche",v:govChampion?(govChampion.id||govChampion.source||"Enregistré"):"Aucun pour le moment"},
   {k:"Challenger",v:govChallenger?(govChallenger.id||govChallenger.source||"Candidat"):"Aucun candidat admissible"},
   {k:"Décision",v:gov.decision||"En attente"},
-  {k:"Validation indépendante",v:hold.passed===true?"Réussie":hold.passed===false?"Refusée":"Données insuffisantes"},
+  {k:"Holdout diagnostique (hors الاختيار)",v:hold.passed===true?"إشارة إيجابية":hold.passed===false?"إشارة سلبية":"بيانات غير كافية"},
+  {k:"استخدام Holdout",v:gov.holdout_usage||"تشخيص فقط، لا يدخل في ترتيب أو ترقية النماذج"},
   {k:"Trades holdout / PF",v:(hold.trades??"—")+" / "+(hold.profit_factor==null?"—":Number(hold.profit_factor).toFixed(2))},
   {k:"Écart validation / holdout",v:fmtPct(hold.generalization_gap)},
   {k:"Mutation prochaine génération",v:gov.mutation_rate_next_generation==null?"—":(Number(gov.mutation_rate_next_generation)*100).toFixed(0)+"% · "+(gov.mutation_reason||"")},
@@ -781,7 +782,7 @@ function renderEvolutionPanel(){
   {k:"Promotion production",v:gov.production_promotion?.enabled===false?"Verrouillée · 500 gagnants + 500 perdants + holdout":"Non autorisée par ce module"}
  ];
  $("evolutionGovernance").innerHTML=table(govRows,[["Contrôle","k"],["Résultat","v"]]);
- $("evolutionNote").textContent=(report.note||"Mutation + crossover + sélection élitiste.")+" · Gouvernance de recherche uniquement. Le modèle de production reste protégé par les 500 gagnants + 500 perdants et le holdout indépendant.";
+ $("evolutionNote").textContent=(report.note||"Mutation + crossover + sélection élitiste.")+" · Holdout diagnostique uniquement, exclu du classement et de la promotion du champion. Le modèle de production reste protégé par les 500 gagnants + 500 perdants et un test final indépendant.";
 }
 
 function renderIndependentPages(){
