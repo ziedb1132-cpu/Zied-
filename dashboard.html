@@ -1567,10 +1567,22 @@ document.querySelector("main").addEventListener("click",e=>{const shortcut=e.tar
 document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
 document.getElementById("navScrim")?.addEventListener("click",()=>{document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
 window.addEventListener("popstate",()=>{showDashboardPage(location.hash.slice(1)||"overview",false);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
-currentLang="fr"
+currentLang="fr";
+let dashboardBooted=false;
+function bootDashboard(){
+ if(dashboardBooted)return;
+ dashboardBooted=true;
+ connect();
+ setInterval(connect,10*60*1000);
+ setTimeout(loadStrategyMonitor,500);setInterval(loadStrategyMonitor,15000);
+ setTimeout(loadSolanaSummary,650);setInterval(loadSolanaSummary,15000);
+ setTimeout(loadXrpSummary,800);setInterval(loadXrpSummary,15000);
+ setTimeout(loadOkbSummary,950);setInterval(loadOkbSummary,15000);
+ setTimeout(loadBnbSummary,1100);setInterval(loadBnbSummary,15000);
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bootDashboard,{once:true});
+else bootDashboard();
 showDashboardPage(location.hash.slice(1)||"overview",false);
-render();
+try{render();}catch(initialRenderError){console.error("Initial dashboard render failed:",initialRenderError);}
 setLanguage();
-
-window.addEventListener("load",()=>{setTimeout(connect,300);setInterval(connect,10*60*1000);setTimeout(loadStrategyMonitor,500);setInterval(loadStrategyMonitor,15000);setTimeout(loadSolanaSummary,650);setInterval(loadSolanaSummary,15000);setTimeout(loadXrpSummary,800);setInterval(loadXrpSummary,15000);setTimeout(loadOkbSummary,950);setInterval(loadOkbSummary,15000);setTimeout(loadBnbSummary,1100);setInterval(loadBnbSummary,15000)});
 </script></body></html>
