@@ -1389,9 +1389,10 @@ def monitor_tracked_signals(paper):
                     trail, active = exit_evolution.trailing_stop_update(
                         entry_price, atr_pct, peak,
                         float(s.get("trailing_sl") or s["sl"]),
-                        bool(s.get("trail_active")), activation_atr, distance_atr)
-                    # Live monitoring and shadow backtests use the same AI-selected
-                    # activation and ratchet parameters; the stop is monotonic.
+                        bool(s.get("trail_active")), activation_atr, distance_atr,
+                        tp_distance=float(s["tp"]) - entry_price)
+                    # Live monitoring and shadow backtests use the same TP-relative
+                    # 30% activation / 5% ratchet rule; the stop is monotonic.
                     trail = max(float(s["sl"]), float(s.get("trailing_sl") or s["sl"]), trail)
                     paper.update_trailing(s["id"], peak, trail, active)
                     s["peak_price"], s["trailing_sl"], s["trail_active"] = peak, trail, int(active)
