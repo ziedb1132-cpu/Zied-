@@ -15,8 +15,8 @@ BASELINE_NAME = "current"
 # (name, SL multiplier adjustment, TP ATR, trailing activation ATR,
 #  trailing distance ATR, maximum holding in 5m bars)
 POLICIES = (
-    # activation_atr is 30% of each policy's TP distance for the baseline grid.
-    # distance_atr scales the user's 5% peak-step / 5% stop-ratchet rule (1.8 = 5%).
+    # Legacy policy parameters retained for compatibility; trailing milestones
+    # are now consistently measured as 30% activation / 5% steps of TP distance.
     ("current",       0.00, 3.0, 0.90, 1.8, 288),
     ("tight_target",  0.00, 2.5, 0.75, 1.6, 144),
     ("wide_target",   0.00, 4.0, 1.20, 2.0, 288),
@@ -93,26 +93,26 @@ def _canonical_reason(reason):
 
 
 def trailing_stop_update(entry, atr, peak, previous_stop, active,
-                         activation_atr, distance_atr):
-    """Shared live/shadow trailing rule; the stop can only ratchet upward.
+                         activation_atr, distance_atr, tp_distance=None):
+    """Trail from TP distance: activate at 30%, then ratchet in 5% TP steps.
 
-    At the AI-selected activation threshold, protect +1%. Each further
-    policy-sized peak step raises the stop by the same percentage.
-    distance_atr=1.8 preserves the requested 5%/5% step rule.
+    The first active stop protects +1% over entry. Each additional 5% of
+    the entry-to-TP distance reached by the peak raises the stop by 5% of
+    that same distance. Stops are capped at the observed peak and never fall.
     """
     entry, atr, peak = float(entry), float(atr), float(peak)
     previous_stop = float(previous_stop)
-    activation_price = max(
-        entry * 1.01,
-        entry + max(0.0, float(activation_atr)) * entry * atr)
+    # Older callers can infer the TP distance from the legacy activation ATR.
+    if tp_distance is None:
+        tp_distance = entry * atr * max(0.0, float(activation_atr)) / 0.30
+    tp_distance = max(0.0, float(tp_distance))
+    activation_price = max(entry * 1.01, entry + 0.30 * tp_distance)
     if not bool(active) and peak < activation_price:
         return previous_stop, False
-    step_pct = float(np.clip(0.05 * float(distance_atr) / 1.8, 0.01, 0.10))
+    step = max(tp_distance * 0.05, 1e-12)
     milestones = max(0, int(np.floor(
-        (peak - activation_price) / max(entry * step_pct, 1e-12) + 1e-12)))
-    ratchet_pct = 0.01 + step_pct * milestones
-    # A stop must never be placed above the observed peak.
-    ratchet_stop = min(peak, entry * (1.0 + ratchet_pct))
+        (peak - activation_price) / step + 1e-12)))
+    ratchet_stop = min(peak, entry * 1.01 + step * milestones)
     return max(previous_stop, min(peak, entry * 1.01), ratchet_stop), True
 
 
@@ -137,7 +137,8 @@ def _simulate(entry, atr, highs, lows, closes, cost, sl_mult, tp_mult,
             break
         peak = max(peak, hi)
         trail, active = trailing_stop_update(
-            entry, atr, peak, trail, active, activation_atr, distance_atr)
+            entry, atr, peak, trail, active, activation_atr, distance_atr,
+            tp_distance=tp - entry)
     else:
         if last <= 0:
             return None
