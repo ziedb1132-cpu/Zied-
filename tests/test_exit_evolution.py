@@ -48,17 +48,31 @@ class ExitEvolutionTests(unittest.TestCase):
         self.assertEqual(timed[2], 1)
         self.assertAlmostEqual(timed[0], 0.02 - self.COST)
 
-    def test_live_and_shadow_trailing_policy_uses_activation_and_ratchet(self):
-        stop, active = trailing_stop_update(100, 0.01, 100.5, 95, False, 0.9, 1.8)
+    def test_trailing_activation_and_steps_are_relative_to_tp_distance(self):
+        # TP is 10 above entry: activation at +3, first stop at +1,
+        # then each additional +0.5 in peak advances the stop by +0.5.
+        stop, active = trailing_stop_update(
+            100, 0.01, 102.9, 95, False, 0.9, 1.8, tp_distance=10)
         self.assertFalse(active)
         self.assertAlmostEqual(stop, 95)
-        stop, active = trailing_stop_update(100, 0.01, 101.0, stop, active, 0.9, 1.8)
+        stop, active = trailing_stop_update(
+            100, 0.01, 103.0, stop, active, 0.9, 1.8, tp_distance=10)
         self.assertTrue(active)
         self.assertAlmostEqual(stop, 101.0)
-        stop, active = trailing_stop_update(100, 0.01, 106.1, stop, active, 0.9, 1.8)
+        stop, active = trailing_stop_update(
+            100, 0.01, 105.5, stop, active, 0.9, 1.8, tp_distance=10)
         self.assertTrue(active)
-        self.assertAlmostEqual(stop, 106.0)
-        self.assertLessEqual(stop, 106.1)
+        self.assertAlmostEqual(stop, 103.5)
+        stop, active = trailing_stop_update(
+            100, 0.01, 106.0, stop, active, 0.9, 1.8, tp_distance=10)
+        self.assertGreaterEqual(stop, 103.5)
+        self.assertLessEqual(stop, 106.0)
+
+    def test_trailing_stop_never_moves_down(self):
+        stop, active = trailing_stop_update(
+            100, 0.01, 106.0, 103.5, True, 0.9, 1.8, tp_distance=10)
+        self.assertTrue(active)
+        self.assertGreaterEqual(stop, 103.5)
 
     def test_trailing_stop_is_at_least_one_percent_above_entry(self):
         result = _simulate(100, 0.01,
