@@ -762,6 +762,7 @@ function renderEvolutionPanel(){
  const govChampion=gov.research_champion||null,govChallenger=gov.challenger||null;
  const hold=gov.overfit_audit||((govChallenger||{}).holdout)||{};
  const perf=gov.performance_monitor||{},feat=gov.feature_evaluation||{},opp=gov.opportunity_quality||{};
+ const closedPerf=perf.closed_signal_performance||{},recentPerf=closedPerf.recent||{},previousPerf=closedPerf.previous||{};
  const fmtPct=v=>v==null||!Number.isFinite(Number(v))?"—":(Number(v)*100).toFixed(2)+"%";
  const govRows=[
   {k:"Champion de recherche",v:govChampion?(govChampion.id||govChampion.source||"Enregistré"):"Aucun pour le moment"},
@@ -774,7 +775,9 @@ function renderEvolutionPanel(){
   {k:"Qualité des features",v:(feat.status||"N/A")+" · "+(feat.feature_count??"—")+" features"},
   {k:"Features principales",v:(feat.top_features||[]).slice(0,5).map(x=>x.feature).filter(Boolean).join(", ")||"—"},
   {k:"Surveillance performance",v:(perf.status||"N/A")+" · drift "+fmtPct(perf.drift_fraction)},
-  {k:"Opportunités validées",v:opp.validated_candidates??"—"},
+  {k:"Rendement signaux récents / précédents",v:fmtPct(recentPerf.avg_net)+" / "+fmtPct(previousPerf.avg_net)},
+  {k:"Échantillon performance",v:(recentPerf.trades??"—")+" / "+(previousPerf.trades??"—")+" clôtures"},
+  {k:"Opportunités validées / régimes",v:(opp.validated_candidates??"—")+" / "+(opp.regime_recommendations??"—")},
   {k:"Promotion production",v:gov.production_promotion?.enabled===false?"Verrouillée · 500 gagnants + 500 perdants + holdout":"Non autorisée par ce module"}
  ];
  $("evolutionGovernance").innerHTML=table(govRows,[["Contrôle","k"],["Résultat","v"]]);
