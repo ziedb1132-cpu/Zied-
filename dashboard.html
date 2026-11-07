@@ -513,6 +513,7 @@ header{padding-left:278px}
   <div class="card"><h2>Gènes modifiés</h2><div id="evolutionGenome" class="tablewrap"></div></div>
   <div class="card"><h2>Champion et sélection</h2><div id="evolutionChampion"></div></div>
  </div>
+  <div class="card section"><h2>Champion / Challenger · Robustesse et surveillance</h2><div id="evolutionGovernance" class="tablewrap"><div class="empty">En attente du rapport de gouvernance.</div></div></div>
  <div id="evolutionNote" class="notice">Les informations seront affichées après publication du rapport d’évolution dans dashboard_data.json.</div>
 </section>
 <section id="page-backtestValidation" class="hide section"><h2>Backtest &amp; Validation</h2><div id="backtestMetrics" class="grid"></div><div class="card section"><h2>Résultats du Backtest complet — cycle d’analyse</h2><div id="backtestTable" class="tablewrap"></div><p class="notice">Recherche isolée : les résultats du Backtest ne modifient pas les signaux actifs, le portefeuille ni le modèle de production.</p></div></section>
@@ -757,7 +758,27 @@ function renderEvolutionPanel(){
   "Win rate":champion.validation?.win_rate==null?"—":(Number(champion.validation.win_rate)*100).toFixed(1)+"%",
   "Profit Factor":champion.validation?.profit_factor==null?"—":Number(champion.validation.profit_factor).toFixed(2)
  }):'<div class="empty">Aucun individu n’a encore passé la validation. Aucun champion ne sera inventé.</div>';
- $("evolutionNote").textContent=(report.note||"Mutation + crossover + sélection élitiste.")+" · Le rapport est lu depuis dashboard_data.json ; la promotion du modèle de production reste indépendante et verrouillée par les 500 gagnants + 500 perdants et le holdout.";
+ const gov=state.evolution_governance||((state.contents["comprehensive_backtest.json"]||{}).layers||{}).evolution_governance||{};
+ const govChampion=gov.research_champion||null,govChallenger=gov.challenger||null;
+ const hold=gov.overfit_audit||((govChallenger||{}).holdout)||{};
+ const perf=gov.performance_monitor||{},feat=gov.feature_evaluation||{},opp=gov.opportunity_quality||{};
+ const fmtPct=v=>v==null||!Number.isFinite(Number(v))?"—":(Number(v)*100).toFixed(2)+"%";
+ const govRows=[
+  {k:"Champion de recherche",v:govChampion?(govChampion.id||govChampion.source||"Enregistré"):"Aucun pour le moment"},
+  {k:"Challenger",v:govChallenger?(govChallenger.id||govChallenger.source||"Candidat"):"Aucun candidat admissible"},
+  {k:"Décision",v:gov.decision||"En attente"},
+  {k:"Validation indépendante",v:hold.passed===true?"Réussie":hold.passed===false?"Refusée":"Données insuffisantes"},
+  {k:"Trades holdout / PF",v:(hold.trades??"—")+" / "+(hold.profit_factor==null?"—":Number(hold.profit_factor).toFixed(2))},
+  {k:"Écart validation / holdout",v:fmtPct(hold.generalization_gap)},
+  {k:"Mutation prochaine génération",v:gov.mutation_rate_next_generation==null?"—":(Number(gov.mutation_rate_next_generation)*100).toFixed(0)+"% · "+(gov.mutation_reason||"")},
+  {k:"Qualité des features",v:(feat.status||"N/A")+" · "+(feat.feature_count??"—")+" features"},
+  {k:"Features principales",v:(feat.top_features||[]).slice(0,5).map(x=>x.feature).filter(Boolean).join(", ")||"—"},
+  {k:"Surveillance performance",v:(perf.status||"N/A")+" · drift "+fmtPct(perf.drift_fraction)},
+  {k:"Opportunités validées",v:opp.validated_candidates??"—"},
+  {k:"Promotion production",v:gov.production_promotion?.enabled===false?"Verrouillée · 500 gagnants + 500 perdants + holdout":"Non autorisée par ce module"}
+ ];
+ $("evolutionGovernance").innerHTML=table(govRows,[["Contrôle","k"],["Résultat","v"]]);
+ $("evolutionNote").textContent=(report.note||"Mutation + crossover + sélection élitiste.")+" · Gouvernance de recherche uniquement. Le modèle de production reste protégé par les 500 gagnants + 500 perdants et le holdout indépendant.";
 }
 
 function renderIndependentPages(){
