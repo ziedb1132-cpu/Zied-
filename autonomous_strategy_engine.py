@@ -411,6 +411,11 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
         results.append(row)
     archive.extend(results)
     archive=archive[-MAX_ARCHIVE:]
+    # Elitist breeding pool persists across workflow restarts.
+    population=sorted(
+        [x for x in archive if x.get("status")=="validation_pass"],
+        key=lambda x:float(x.get("score",-100)),reverse=True
+    )[:20]
     valid=[x for x in archive if x.get("status")=="validation_pass"]
     champion=max(valid,key=lambda x:float(x.get("score",-100))) if valid else memory.get("champion")
     result={"status":"ok","generation":generation,"generated":len(candidates),
@@ -420,8 +425,8 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
             "feature_library_version":FEATURE_LIBRARY_VERSION,
             "latest_experiments":results,
             "note":"Genetic evolution uses mutation + two-parent crossover + elitist breeding over selected 561-feature input genes, thresholds/operators and exit genes. Chronological train/tune; holdout is observational and never used for ranking/breeding. Production promotion remains behind the 500-win/500-loss gate and independent holdout."}
-    memory.update({"schema":1,"generation":generation,"seed":int(memory.get("seed",1729)),
-                   "last_run":time.time(),"archive":archive,"champion":champion,
+    memory.update({"schema":2,"generation":generation,"seed":int(memory.get("seed",1729)),
+                   "last_run":time.time(),"archive":archive,"population":population,"champion":champion,
                    "last_result":{k:v for k,v in result.items() if k!="latest_experiments"}})
     _atomic_write(path,memory)
     # Publish a compact dashboard report; the full experiment archive stays in
