@@ -5,6 +5,7 @@ Tracks a research Champion/Challenger, adaptive mutation pressure, holdout
 robustness, feature diagnostics, opportunity quality and performance drift.
 It never edits production model weights, signals, orders, portfolio or risk gates.
 """
+import hashlib
 import json
 import math
 import os
@@ -113,7 +114,7 @@ def _candidate_from_strategy(strategy):
     if not holdout["passed"]:
         holdout["reasons"] = ["independent_holdout_gate_failed"]
     return {
-        "id": "strategy-" + str(hash(json.dumps(champion.get("spec", {}), sort_keys=True))),
+        "id": "strategy-" + hashlib.sha256(json.dumps(champion.get("spec", {}), sort_keys=True).encode()).hexdigest()[:12],
         "generation": strategy.get("last_run"), "score": _number((champion.get("tune") or {}).get("avg_net"), -100.0),
         "spec": champion.get("spec"), "genome": None,
         "validation": champion.get("tune") or {}, "holdout": holdout,
@@ -123,7 +124,7 @@ def _candidate_from_strategy(strategy):
 
 def update_governance(state_dir, discovery=None, strategy=None,
                       feature_quality=None, feature_importance=None,
-                      feature_drift=None, regime_report=None):
+                      feature_drift=None, regime_report=None, closed_performance=None):
     """Update durable research governance and return a compact dashboard report."""
     path = os.path.join(state_dir, "evolution_governance.json")
     memory = _read(path)
@@ -190,6 +191,7 @@ def update_governance(state_dir, discovery=None, strategy=None,
     importance = feature_importance if isinstance(feature_importance, dict) else {}
     drift = feature_drift if isinstance(feature_drift, dict) else {}
     regime = regime_report if isinstance(regime_report, dict) else {}
+    closed_perf = closed_performance if isinstance(closed_performance, dict) else {}
     top_features = importance.get("top_features") or quality.get("top_label_associations") or []
     feature_rows = [
         {"feature": x.get("feature"), "importance": _number(
@@ -203,7 +205,8 @@ def update_governance(state_dir, discovery=None, strategy=None,
         (drift_fraction is not None and drift_fraction >= 0.20)
         or (len(recent_perf) >= 2 and recent_perf[-1] < recent_perf[0] * 0.70)
     )
-    health = "warning" if degradation else (
+    realized_degradation = bool(closed_perf.get("degraded"))
+    health = "warning" if (degradation or realized_degradation) else (
         "monitoring" if drift.get("status") not in (None, "ok") else "stable"
     )
     regime_rows = regime.get("recommendations") or regime.get("profiles") or []
@@ -244,7 +247,7 @@ def update_governance(state_dir, discovery=None, strategy=None,
             "status": health, "drift_fraction": drift_fraction,
             "drifted_feature_count": drift.get("drifted_feature_count"),
             "unstable_scale_feature_count": drift.get("unstable_scale_feature_count"),
-            "history_points": len(history),
+            "history_points": len(history), "closed_signal_performance": closed_perf,
             "note": "Monitoring warning only; it does not pause or alter production trading.",
         },
         "opportunity_quality": opportunities,
