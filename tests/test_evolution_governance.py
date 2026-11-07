@@ -25,17 +25,18 @@ class EvolutionGovernanceTests(unittest.TestCase):
         self.assertFalse(audit["passed"])
         self.assertIn("holdout_expectancy_not_positive", audit["reasons"])
 
-    def test_initial_research_champion_requires_holdout(self):
+    def test_initial_research_champion_uses_validation_only(self):
         with tempfile.TemporaryDirectory() as td:
             report = update_governance(td, discovery={
                 "generation": 1, "validation_passed": 1,
                 "latest_experiments": [self._candidate()],
             })
             self.assertTrue(report["challenger_promoted"])
-            self.assertEqual(report["decision"], "initial_research_champion")
+            self.assertEqual(report["decision"], "initial_research_champion_validation_only")
+            self.assertIn("diagnostic_only", report["holdout_usage"])
             self.assertFalse(report["production_promotion"]["enabled"])
 
-    def test_failed_challenger_does_not_replace_champion(self):
+    def test_challenger_selection_is_not_changed_by_reused_holdout(self):
         with tempfile.TemporaryDirectory() as td:
             first = update_governance(td, discovery={
                 "generation": 1, "latest_experiments": [self._candidate()],
@@ -48,6 +49,17 @@ class EvolutionGovernanceTests(unittest.TestCase):
             })
             self.assertEqual(second["research_champion"]["id"], original)
             self.assertFalse(second["challenger_promoted"])
+            # Identical validation score: negative holdout must not change selection
+            # or cause the candidate to be rejected by a reused holdout.
+            better_validation = self._candidate(score=31.0, holdout_avg=-0.02)
+            better_validation["id"] = "candidate-b"
+            better_validation["validation"]["avg_net"] = 0.02
+            third = update_governance(td, discovery={
+                "generation": 3, "latest_experiments": [better_validation],
+            })
+            self.assertEqual(third["research_champion"]["id"], "candidate-b")
+            self.assertTrue(third["challenger_promoted"])
+            self.assertFalse(third["research_champion"]["holdout"]["passed"])
 
     def test_plateau_increases_next_generation_mutation(self):
         with tempfile.TemporaryDirectory() as td:
