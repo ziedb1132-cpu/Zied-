@@ -1531,7 +1531,7 @@ async function connect(){
     if(!response.ok)throw new Error("GitHub API HTTP "+response.status);
     const file=await response.json();
     if(!file.content)throw new Error("GitHub API : fichier vide ou illisible.");
-    const binary=atob(file.content.replace(/\\s/g,""));
+    const binary=atob(file.content.replace(/\s/g,""));
     const bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));
     data=JSON.parse(new TextDecoder().decode(bytes));source="api.github.com";
    }catch(apiError){
