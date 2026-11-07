@@ -105,22 +105,37 @@ def tg(msg):
 _thr_lock, _last_call = threading.Lock(), [0.0]
 
 def okx_get(path, params=None, tries=4, gap=0.07):
-    for i in range(tries):
-        with _thr_lock:                               # global throttle
+    """Rate-limited OKX request with HTTP/JSON validation and bounded retry backoff."""
+    for i in range(max(1, int(tries))):
+        with _thr_lock:
             dt = time.time() - _last_call[0]
             if dt < gap:
                 time.sleep(gap - dt)
             _last_call[0] = time.time()
         try:
-            j = requests.get(CFG["OKX"] + path, params=params, timeout=15).json()
-            if j.get("code") == "0":
+            response = requests.get(CFG["OKX"] + path, params=params, timeout=(5, 15))
+            response.raise_for_status()
+            j = response.json()
+            if not isinstance(j, dict):
+                raise ValueError("OKX response is not a JSON object")
+            if str(j.get("code")) == "0" and isinstance(j.get("data"), list):
                 return j["data"]
-            if j.get("code") == "50011":              # rate limit
-                time.sleep(1.5 * (i + 1)); continue
-            log.warning("OKX %s -> %s %s", path, j.get("code"), j.get("msg"))
+            if str(j.get("code")) == "50011":
+                retry_after = response.headers.get("Retry-After")
+                try:
+                    delay = max(float(retry_after), 1.0) if retry_after else 1.5 * (i + 1)
+                except (TypeError, ValueError):
+                    delay = 1.5 * (i + 1)
+                time.sleep(min(12.0, delay))
+                continue
+            log.warning("OKX %s -> code=%s msg=%s", path, j.get("code"), j.get("msg"))
             return []
-        except Exception:
-            time.sleep(1 + i)
+        except (requests.RequestException, ValueError) as exc:
+            delay = min(8.0, 0.5 * (2 ** i))
+            log.warning("OKX request failed (%s, attempt %d/%d): %s; retry in %.1fs",
+                        path, i + 1, max(1, int(tries)), exc, delay)
+            if i + 1 < max(1, int(tries)):
+                time.sleep(delay)
     return []
 
 STABLE_EXTRA = {"DAI", "EURT", "EURC", "EURI", "AEUR", "XSGD", "GYEN", "BRZ", "USDT"}
@@ -148,12 +163,12 @@ def get_universe():
             continue
         if not all(np.isfinite(v) for v in (vol, last, ask, bid)):
             continue
-        if vol < CFG["MIN_VOL_USDT"] or last <= 0 or ask <= 0 or bid < 0:
+        if vol < CFG["MIN_VOL_USDT"] or last <= 0 or ask <= 0 or bid <= 0 or ask < bid:
             continue
-        spread = (ask - bid) / last if bid > 0 else 0.002
-        if not np.isfinite(spread) or spread < 0:
+        spread = (ask - bid) / last
+        if not np.isfinite(spread) or spread < 0 or spread > 0.10:
             continue
-        rows.append(dict(inst=inst, vol=vol, last=last, ask=ask, spread=spread))
+        rows.append(dict(inst=inst, vol=vol, last=last, ask=ask, bid=bid, spread=spread))
     if not rows:
         return pd.DataFrame(columns=["vol", "last", "ask", "spread"])
     return pd.DataFrame(rows).set_index("inst").sort_values("vol", ascending=False)
@@ -193,8 +208,23 @@ def _normalize_candles(rows, bar, depth):
     df["ts"] = pd.to_numeric(df["ts"], errors="coerce")
     df = df.dropna(subset=["ts", "o", "h", "l", "c", "vol"])
     df["ts"] = df["ts"].astype("int64")
+    numeric = df[["o", "h", "l", "c", "vol"]].to_numpy(dtype=np.float64)
+    valid = np.isfinite(numeric).all(axis=1)
+    valid &= (df[["o", "h", "l", "c"]].to_numpy(dtype=np.float64) > 0).all(axis=1)
+    valid &= (df["vol"].to_numpy(dtype=np.float64) >= 0)
+    valid &= (df["h"].to_numpy(dtype=np.float64) >=
+              df[["o", "c", "l"]].max(axis=1).to_numpy(dtype=np.float64))
+    valid &= (df["l"].to_numpy(dtype=np.float64) <=
+              df[["o", "c", "h"]].min(axis=1).to_numpy(dtype=np.float64))
+    now_ms = int(time.time() * 1000)
+    tf_ms = CFG["TF_SEC"][bar] * 1000
+    valid &= (df["ts"].to_numpy(dtype=np.int64) > 0)
+    valid &= (df["ts"].to_numpy(dtype=np.int64) <= now_ms + tf_ms)
+    df = df.loc[valid].copy()
+    if df.empty:
+        return None
     df = df.drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
-    df["avail"] = pd.to_datetime(df["ts"] + CFG["TF_SEC"][bar] * 1000, unit="ms")
+    df["avail"] = pd.to_datetime(df["ts"] + tf_ms, unit="ms")
     return df.iloc[-depth:].reset_index(drop=True)
 
 def get_candles(inst, bar, depth):
@@ -1976,8 +2006,14 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     eligible = R.loc[eligible_rows].sort_values(sort_columns, ascending=False, na_position="last")
     created = []
     for inst, rr in eligible.iterrows():
+        # A paper long is priced at the executable ask, not the ticker's last trade.
+        # BT_COST remains the conservative all-in round-trip fee/slippage assumption.
+        entry_quote = float(uni.loc[inst, "ask"])
+        if not np.isfinite(entry_quote) or entry_quote <= 0:
+            log.warning("paper entry skipped for %s: invalid ask quote", inst)
+            continue
         sig = paper.create_tracked_signal(dict(
-            inst=inst, price=float(uni.loc[inst, "last"]), atr=float(X.loc[inst, "1H_atr_pct"]),
+            inst=inst, price=entry_quote, atr=float(X.loc[inst, "1H_atr_pct"]),
             feats=X.loc[inst, FEATURE_COLS].values,
             prob=(float(rr["ai_probability"]) if brain.ready else None),
             prob_source=("validated_ai" if brain.ready else "ranking_exploration"), rank=int(rr["rank"]),
