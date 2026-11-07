@@ -6,6 +6,7 @@ into live entries or allowed to modify the existing AI model/portfolio controls.
 """
 import hashlib
 import json
+import math
 import os
 import random
 import time
@@ -136,17 +137,18 @@ def _spec_id(spec):
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
-def _new_spec(rng, generation, parent=None):
+def _new_spec(rng, generation, parent=None, mutation_rate=0.40):
+    mutation_rate = min(0.80, max(0.15, float(mutation_rate)))
     count = rng.randint(2, 7)
     conditions = []
     used = set()
-    if parent and rng.random() < 0.65:
+    if parent and rng.random() < 0.75:
         parent_spec = parent.get("spec", parent)
         conditions = [dict(x) for x in parent_spec.get("conditions", [])]
         # Mutate, remove, or add conditions; no fixed strategy-complexity ceiling.
-        if conditions and rng.random() < 0.35:
+        if conditions and rng.random() < mutation_rate * 0.75:
             conditions.pop(rng.randrange(len(conditions)))
-        if conditions and rng.random() < 0.55:
+        if conditions and rng.random() < mutation_rate:
             item = conditions[rng.randrange(len(conditions))]
             feature = item["feature"]
             item["threshold"] = rng.choice(THRESHOLDS[feature])
@@ -173,8 +175,9 @@ def _new_spec(rng, generation, parent=None):
 
 
 
-def _crossover_specs(rng, parent_a, parent_b, generation):
-    """Combine two parent genomes: selected model inputs, rule genes and exit genes."""
+def _crossover_specs(rng, parent_a, parent_b, generation, mutation_rate=0.40):
+    """Combine two parent genomes and adapt mutation pressure to recent progress."""
+    mutation_rate = min(0.80, max(0.15, float(mutation_rate)))
     a = parent_a.get("spec", parent_a)
     b = parent_b.get("spec", parent_b)
     left = [dict(x) for x in a.get("conditions", [])]
@@ -197,22 +200,22 @@ def _crossover_specs(rng, parent_a, parent_b, generation):
         "crossover": True,
     }
     # Mutate input-feature genes and trading-policy genes after crossover.
-    if rng.random() < 0.45:
+    if rng.random() < mutation_rate:
         i = rng.randrange(len(child["conditions"]))
         feature = rng.choice(FEATURES)
         child["conditions"][i] = {"feature": feature, "op": rng.choice(["gt", "lt"]),
                                   "threshold": rng.choice(THRESHOLDS[feature])}
-    if rng.random() < 0.25 and len(child["conditions"]) < 12:
+    if rng.random() < mutation_rate * 0.65 and len(child["conditions"]) < 12:
         feature = rng.choice(FEATURES)
         child["conditions"].append({"feature": feature, "op": rng.choice(["gt", "lt"]),
                                     "threshold": rng.choice(THRESHOLDS[feature])})
-    if rng.random() < 0.20 and len(child["conditions"]) > 2:
+    if rng.random() < mutation_rate * 0.50 and len(child["conditions"]) > 2:
         child["conditions"].pop(rng.randrange(len(child["conditions"])))
-    if rng.random() < 0.35:
+    if rng.random() < mutation_rate:
         child["sl_atr"] = rng.choice([1.0, 1.25, 1.5, 1.75, 2.0, 2.5])
-    if rng.random() < 0.35:
+    if rng.random() < mutation_rate:
         child["tp_atr"] = rng.choice([1.25, 1.5, 2.0, 2.5, 3.0, 4.0])
-    if rng.random() < 0.35:
+    if rng.random() < mutation_rate:
         child["max_hold"] = rng.choice([6, 12, 18, 24, 36, 48])
     child["id"] = _spec_id({k: v for k, v in child.items()
                             if k not in ("generation", "parent_id", "id", "crossover")})
@@ -346,6 +349,9 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
     path=os.path.join(state_dir,"autonomous_strategy_memory.json")
     memory=_load(path)
     generation=int(memory.get("generation",0))+1
+    governance = _load(os.path.join(state_dir, "evolution_governance.json"))
+    mutation_rate = float(governance.get("mutation_rate", memory.get("mutation_rate", 0.40)))
+    mutation_rate = min(0.80, max(0.15, mutation_rate))
     rng=random.Random(int(memory.get("seed",1729))+generation*7919)
     frames=[]; symbols=[]
     for inst in list(universe.index[:max_coins]):
@@ -374,10 +380,10 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
         attempts+=1
         if len(parents) >= 2 and rng.random() < 0.60:
             p1, p2 = rng.sample(parents, 2)
-            spec = _crossover_specs(rng, p1, p2, generation)
+            spec = _crossover_specs(rng, p1, p2, generation, mutation_rate)
         else:
             parent = rng.choice(parents) if parents and rng.random() < 0.75 else None
-            spec = _new_spec(rng, generation, parent)
+            spec = _new_spec(rng, generation, parent, mutation_rate)
             spec["input_features"] = sorted({x["feature"] for x in spec["conditions"]})
         if spec["id"] not in known and all(x["id"] != spec["id"] for x in candidates):
             candidates.append(spec)
@@ -412,11 +418,12 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
     archive.extend(results)
     archive=archive[-MAX_ARCHIVE:]
     # Elitist breeding pool persists across workflow restarts.
-    population=sorted(
+    valid=sorted(
         [x for x in archive if x.get("status")=="validation_pass"],
         key=lambda x:float(x.get("score",-100)),reverse=True
-    )[:20]
-    valid=[x for x in archive if x.get("status")=="validation_pass"]
+    )
+    elite_count=max(2, min(20, int(math.ceil(len(valid)*0.10)))) if valid else 0
+    population=valid[:elite_count]
     champion=max(valid,key=lambda x:float(x.get("score",-100))) if valid else memory.get("champion")
     result={"status":"ok","generation":generation,"generated":len(candidates),
             "tested":len(results),"validation_passed":sum(x["status"]=="validation_pass" for x in results),
@@ -427,8 +434,18 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
             "feature_library_version":FEATURE_LIBRARY_VERSION,
             "latest_experiments":results,
             "note":"Genetic evolution uses mutation + two-parent crossover + elitist breeding over selected 561-feature input genes, thresholds/operators and exit genes. Chronological train/tune; holdout is observational and never used for ranking/breeding. Production promotion remains behind the 500-win/500-loss gate and independent holdout."}
-    memory.update({"schema":2,"generation":generation,"seed":int(memory.get("seed",1729)),
+    generation_history=list(memory.get("generation_history") or [])
+    generation_best=max([float(x.get("score",-100)) for x in results] or [-100.0])
+    generation_history.append({"generation":generation,"best_score":generation_best,
+                               "validation_passed":int(result["validation_passed"])})
+    generation_history=generation_history[-100:]
+    result["mutation_rate_used"]=mutation_rate
+    result["elite_fraction"]=0.10
+    result["elite_count"]=elite_count
+    result["generation_history_size"]=len(generation_history)
+    memory.update({"schema":3,"generation":generation,"seed":int(memory.get("seed",1729)),
                    "last_run":time.time(),"archive":archive,"population":population,"champion":champion,
+                   "mutation_rate":mutation_rate,"generation_history":generation_history,
                    "last_result":{k:v for k,v in result.items() if k!="latest_experiments"}})
     _atomic_write(path,memory)
     # Publish a compact dashboard report; the full experiment archive stays in
