@@ -710,7 +710,7 @@ function renderVirtualPortfolio(gateWins,gateLosses,modelReady){
 
 function renderEvolutionPanel(){
  const legacy=((state.contents["comprehensive_backtest.json"]||{}).layers||{}).autonomous_feature_discovery||null;
- const report=state.evolution||(legacy&&legacy.crossover_candidates!==undefined&&String(legacy.genome_scope||"").includes("561")?legacy:null);
+ const report=state.evolution||legacy;
  const status=$("evolutionStatus"),metrics=$("evolutionMetrics"),candidateHost=$("evolutionCandidates");
  if(!report||typeof report!=="object"){
   if(status){status.textContent="Rapport indisponible";status.className="eval-tag wait";}
