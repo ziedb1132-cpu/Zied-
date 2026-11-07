@@ -24,7 +24,7 @@ def rows(conn, sql, params=()):
 data = {
     "generated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
     "meta": {}, "summary": {}, "signals": [], "tracked": [],
-    "contents": {}, "strategy_lab": None, "evolution": None
+    "contents": {}, "strategy_lab": None, "evolution": None, "evolution_governance": None
 }
 
 # Strategy Lab is a compact optional summary; full research files are never copied here.
@@ -88,6 +88,8 @@ comprehensive = data["contents"].get("comprehensive_backtest.json", {})
 layers = comprehensive.get("layers", {}) if isinstance(comprehensive, dict) else {}
 evolution = layers.get("autonomous_feature_discovery") if isinstance(layers, dict) else None
 data["evolution"] = evolution if isinstance(evolution, dict) else None
+governance = layers.get("evolution_governance") if isinstance(layers, dict) else None
+data["evolution_governance"] = governance if isinstance(governance, dict) else None
 
 out.parent.mkdir(parents=True, exist_ok=True)
 tmp = out.with_suffix(".tmp")
