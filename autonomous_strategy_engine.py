@@ -172,6 +172,66 @@ def _new_spec(rng, generation, parent=None):
     return spec
 
 
+
+def _crossover_specs(rng, parent_a, parent_b, generation):
+    """Combine two parent genomes: selected model inputs, rule genes and exit genes."""
+    a = parent_a.get("spec", parent_a)
+    b = parent_b.get("spec", parent_b)
+    left = [dict(x) for x in a.get("conditions", [])]
+    right = [dict(x) for x in b.get("conditions", [])]
+    pool = []
+    for cond in left + right:
+        if cond not in pool and rng.random() < 0.5:
+            pool.append(cond)
+    if len(pool) < 2:
+        pool = (left[:1] + right[:1]) or left or right
+    rng.shuffle(pool)
+    conditions = pool[:12]
+    child = {
+        "version": 1, "kind": "symbolic_rule", "conditions": conditions,
+        "sl_atr": rng.choice([a.get("sl_atr", 1.5), b.get("sl_atr", 1.5)]),
+        "tp_atr": rng.choice([a.get("tp_atr", 2.0), b.get("tp_atr", 2.0)]),
+        "max_hold": rng.choice([a.get("max_hold", 24), b.get("max_hold", 24)]),
+        "generation": int(generation),
+        "parent_id": [parent_a.get("id"), parent_b.get("id")],
+        "crossover": True,
+    }
+    # Mutate input-feature genes and trading-policy genes after crossover.
+    if rng.random() < 0.45:
+        i = rng.randrange(len(child["conditions"]))
+        feature = rng.choice(FEATURES)
+        child["conditions"][i] = {"feature": feature, "op": rng.choice(["gt", "lt"]),
+                                  "threshold": rng.choice(THRESHOLDS[feature])}
+    if rng.random() < 0.25 and len(child["conditions"]) < 12:
+        feature = rng.choice(FEATURES)
+        child["conditions"].append({"feature": feature, "op": rng.choice(["gt", "lt"]),
+                                    "threshold": rng.choice(THRESHOLDS[feature])})
+    if rng.random() < 0.20 and len(child["conditions"]) > 2:
+        child["conditions"].pop(rng.randrange(len(child["conditions"])))
+    if rng.random() < 0.35:
+        child["sl_atr"] = rng.choice([1.0, 1.25, 1.5, 1.75, 2.0, 2.5])
+    if rng.random() < 0.35:
+        child["tp_atr"] = rng.choice([1.25, 1.5, 2.0, 2.5, 3.0, 4.0])
+    if rng.random() < 0.35:
+        child["max_hold"] = rng.choice([6, 12, 18, 24, 36, 48])
+    child["id"] = _spec_id({k: v for k, v in child.items()
+                            if k not in ("generation", "parent_id", "id", "crossover")})
+    child["input_features"] = sorted({x["feature"] for x in child["conditions"]})
+    return child
+
+
+def _genome_summary(spec):
+    conditions = spec.get("conditions", [])
+    return {
+        "input_feature_count": len({x.get("feature") for x in conditions}),
+        "input_features": sorted({x.get("feature") for x in conditions}),
+        "condition_count": len(conditions),
+        "sl_atr": spec.get("sl_atr"), "tp_atr": spec.get("tp_atr"),
+        "max_hold": spec.get("max_hold"),
+        "crossover": bool(spec.get("crossover", False)),
+        "parent_id": spec.get("parent_id"),
+    }
+
 def _signals(features, spec):
     mask = np.ones(len(features), dtype=bool)
     for cond in spec["conditions"]:
@@ -310,11 +370,16 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
     known={x.get("id") for x in archive}
     candidates=[]
     attempts=0
-    while len(candidates)<int(batch_size) and attempts<int(batch_size)*30:
+    while len(candidates)<int(batch_size) and attempts<int(batch_size)*40:
         attempts+=1
-        parent=rng.choice(parents) if parents and rng.random()<0.65 else None
-        spec=_new_spec(rng,generation,parent)
-        if spec["id"] not in known and all(x["id"]!=spec["id"] for x in candidates):
+        if len(parents) >= 2 and rng.random() < 0.60:
+            p1, p2 = rng.sample(parents, 2)
+            spec = _crossover_specs(rng, p1, p2, generation)
+        else:
+            parent = rng.choice(parents) if parents and rng.random() < 0.75 else None
+            spec = _new_spec(rng, generation, parent)
+            spec["input_features"] = sorted({x["feature"] for x in spec["conditions"]})
+        if spec["id"] not in known and all(x["id"] != spec["id"] for x in candidates):
             candidates.append(spec)
     results=[]
     for spec in candidates:
@@ -339,7 +404,7 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
                 and tune["avg_net"] is not None and tune["avg_net"]>0
                 and tune["profit_factor"]>1.05 and score>25):
             status="validation_pass"
-        row={"id":spec["id"],"spec":spec,"generation":generation,"status":status,
+        row={"id":spec["id"],"spec":spec,"genome":_genome_summary(spec),"generation":generation,"status":status,
              "score":score,"score_details":penalties,"train":train,"validation":tune,
              "holdout_observation":hold,"per_symbol":per_symbol,
              "symbols":symbols,"cost_round_trip":COST,"created_at":time.time()}
@@ -350,11 +415,11 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
     champion=max(valid,key=lambda x:float(x.get("score",-100))) if valid else memory.get("champion")
     result={"status":"ok","generation":generation,"generated":len(candidates),
             "tested":len(results),"validation_passed":sum(x["status"]=="validation_pass" for x in results),
-            "archive_size":len(archive),"symbols":symbols,"champion":champion,
+            "archive_size":len(archive),"symbols":symbols,"champion":champion,\n            "breeding_pool_size":len(population),"crossover_candidates":sum(bool(x.get("spec",{}).get("crossover")) for x in results),\n            "genome_scope":"561 causal input features + thresholds/operators + SL/TP ATR + max-hold genes",
             "feature_count":len(_LIBRARY_FEATURES),"total_feature_columns":len(FEATURES),
             "feature_library_version":FEATURE_LIBRARY_VERSION,
             "latest_experiments":results,
-            "note":"Research-only. Validation uses chronological train/tune blocks; holdout is observational and never used for ranking or breeding. No live strategy/model changes."}
+            "note":"Genetic evolution uses mutation + two-parent crossover + elitist breeding over selected 561-feature input genes, thresholds/operators and exit genes. Chronological train/tune; holdout is observational and never used for ranking/breeding. Production promotion remains behind the 500-win/500-loss gate and independent holdout."}
     memory.update({"schema":1,"generation":generation,"seed":int(memory.get("seed",1729)),
                    "last_run":time.time(),"archive":archive,"champion":champion,
                    "last_result":{k:v for k,v in result.items() if k!="latest_experiments"}})
