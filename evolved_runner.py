@@ -16,6 +16,7 @@ import strategy_discovery_lab
 import autonomous_strategy_engine
 import strategy_meta_selector
 import advanced_intelligence
+import evolution_governance
 
 # Install the same guarded intelligence stack used by the scheduled scanner.
 deep_learning_evolution.install(zied_quant)
@@ -138,6 +139,34 @@ def run_comprehensive_backtest(universe=None, paper=None):
         }
     except Exception as exc:
         report["layers"]["exit_policy_evolution"] = {"status": "error", "error": str(exc)}
+
+    # Persist the research Champion/Challenger decision, adaptive mutation pressure,
+    # feature diagnostics, overfit audit and performance-drift monitoring.
+    try:
+        def _read_optional_report(filename):
+            try:
+                with open(os.path.join(state_dir, filename), encoding="utf-8") as handle:
+                    value = json.load(handle)
+                return value if isinstance(value, dict) else {}
+            except (OSError, ValueError):
+                return {}
+        governance = evolution_governance.update_governance(
+            state_dir,
+            discovery=discovery,
+            strategy=report["layers"].get("six_strategy_families"),
+            feature_quality=report.get("feature_quality_audit"),
+            feature_importance=_read_optional_report("feature_importance.json"),
+            feature_drift=_read_optional_report("feature_drift.json"),
+            regime_report=report["layers"].get("regime_shadow_portfolio"),
+        )
+        report["layers"]["evolution_governance"] = governance
+    except Exception as exc:
+        zied_quant.log.exception("evolution governance skipped: %s", exc)
+        report["layers"]["evolution_governance"] = {
+            "status": "error", "error": str(exc),
+            "production_promotion": {"enabled": False,
+                "gate": "500 closed winners + 500 closed losers + independent model holdout"},
+        }
 
     # Include the core model walk-forward result produced by zied_quant.py backtest.
     core_path = os.path.join(state_dir, "backtest.json")
