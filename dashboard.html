@@ -117,6 +117,30 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fc;border:1px so
 #xrpExtraMetrics{border-style:dashed}
 @media(max-width:900px){#page-xrp>.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:560px){#page-xrp>.card.section{padding:13px;margin-top:10px}#page-xrp .card.section .card{padding:10px}#page-xrp .row{gap:8px}#page-xrp .row b{max-width:58%;font-size:12px}.xrp-group-title{margin-top:21px}}
+
+/* Executive overview: compact navigation cards with progressive disclosure */
+.overview-launcher{margin-top:16px;padding:19px;background:#fff;border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow)}
+.overview-launcher-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.overview-launcher-head h2{margin:0;font-size:14px;color:#203654}
+.overview-launcher-head p{margin:3px 0 0;color:var(--mut);font-size:11px}
+.overview-launcher-head>span{font-size:9px;font-weight:800;letter-spacing:1px;color:#7184a0;background:#f2f5fa;border:1px solid #e5ebf3;padding:6px 9px;border-radius:7px}
+.overview-shortcuts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.overview-shortcut{display:flex;align-items:center;gap:10px;min-width:0;min-height:72px;padding:12px;text-align:left;white-space:normal;background:#fbfcfe;border:1px solid #e8edf4;border-radius:12px}
+.overview-shortcut:hover{background:#f2f6fd;border-color:#cbd9ee;transform:translateY(-1px)}
+.shortcut-icon{display:grid;place-items:center;flex:0 0 34px;height:34px;border-radius:10px;background:#edf3ff;color:#315fbd;font-size:16px;font-weight:800}
+.overview-shortcut>span:nth-child(2){display:grid;gap:3px;min-width:0}
+.overview-shortcut b{font-size:11px;color:#243957}
+.overview-shortcut small{font-size:10px;color:#7a879a;line-height:1.3}
+.shortcut-arrow{margin-left:auto;color:#8192aa;font-size:21px}
+.overview-details{margin-top:13px;border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+.overview-details summary{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;list-style:none;font-size:12px;font-weight:750;color:#334966}
+.overview-details summary::-webkit-details-marker{display:none}
+.overview-details summary:after{content:"＋";color:#5276b5;font-size:16px}
+.overview-details[open] summary:after{content:"−"}
+.overview-details summary span{margin-left:auto;color:#8390a3;font-size:10px;font-weight:500}
+.overview-details[open]>.chartgrid,.overview-details[open]>.cols,.overview-details[open]>.card{margin:12px}
+@media(max-width:1050px){.overview-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.overview-launcher{padding:13px}.overview-shortcuts{grid-template-columns:1fr 1fr;gap:7px}.overview-shortcut{min-height:66px;padding:9px;gap:7px}.shortcut-icon{flex-basis:29px;height:29px}.overview-shortcut b{font-size:10px}.overview-shortcut small{font-size:9px}.overview-details summary{padding:12px;font-size:11px}}
 </style><style id="professional-theme">
 :root{
  --bg:#f3f6fb;--panel:#fff;--line:#e4eaf3;--txt:#17243a;--mut:#748198;
@@ -492,7 +516,27 @@ header{padding-left:278px}
  <div class="hero-copy"><div class="eyebrow"><span class="pulse"></span> QUANTITATIVE MONITORING</div><h2>Vue stratégique du portefeuille</h2><p>Surveillance des signaux, suivi des clôtures et progression de l’apprentissage IA.</p>
  <div class="hero-actions"><span class="hero-chip">SPOT · USDT</span><span class="hero-chip">PAPER TRADING</span><button type="button" class="refresh-btn" onclick="connect()">↻ Actualiser les données</button></div></div>
  <div class="hero-side"><div class="hero-cycle"><span>Cycle actif</span><strong id="heroCycle">—</strong></div><div class="hero-mini"><div><span>Signaux suivis</span><b id="heroTracked">—</b></div><div><span>Signaux évalués</span><b id="heroEvaluated">—</b></div><div><span>Dernière mise à jour</span><b id="heroUpdated">—</b></div></div></div>
-</div><div id="metrics" class="grid"></div><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2><span id="chartReturnMeta" class="muted">En attente de données</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats des signaux</h2><span class="muted">Parmi les signaux suivis et clôturés</span></div><div id="outcomeChart" class="chartbox"></div></div></div><div class="chartgrid analytics-charts"><div class="card"><div class="charthead"><h2>Progression de validation IA</h2><span class="muted">Démarrage après 10 signaux clôturés</span></div><div id="learningProgressChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Performance par motif de clôture</h2><span class="muted">Rendement moyen observé</span></div><div id="exitPerformanceChart" class="chartbox"></div></div></div><div class="cols"><div class="card"><h2>État du système</h2><div id="system"></div></div><div class="card"><h2>Résultats de l’évaluation des signaux</h2><div id="labelSummary"></div></div></div><div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div></section>
+</div>
+<div class="overview-launcher">
+ <div class="overview-launcher-head"><div><h2>Accès rapide</h2><p>Choisissez un domaine pour ouvrir ses informations détaillées.</p></div><span>WORKSPACE</span></div>
+ <div class="overview-shortcuts">
+  <button type="button" class="overview-shortcut" data-open-page="signals"><span class="shortcut-icon">↗</span><span><b>Signaux</b><small>Ouverts et récents</small></span><span class="shortcut-arrow">›</span></button>
+  <button type="button" class="overview-shortcut" data-open-page="closedTrades"><span class="shortcut-icon">▤</span><span><b>Performance</b><small>Clôtures et rendement</small></span><span class="shortcut-arrow">›</span></button>
+  <button type="button" class="overview-shortcut" data-open-page="aiIntelligence"><span class="shortcut-icon">✧</span><span><b>Intelligence IA</b><small>Mesures et mémoire</small></span><span class="shortcut-arrow">›</span></button>
+  <button type="button" class="overview-shortcut" data-open-page="evolutionLab"><span class="shortcut-icon">🧬</span><span><b>AI Evolution</b><small>Mutations et générations</small></span><span class="shortcut-arrow">›</span></button>
+  <button type="button" class="overview-shortcut" data-open-page="modelHealth"><span class="shortcut-icon">♡</span><span><b>Santé du modèle</b><small>Validation et robustesse</small></span><span class="shortcut-arrow">›</span></button>
+  <button type="button" class="overview-shortcut" data-open-page="backtestValidation"><span class="shortcut-icon">▥</span><span><b>Backtest</b><small>Tests et résultats</small></span><span class="shortcut-arrow">›</span></button>
+  <button type="button" class="overview-shortcut" data-open-page="featureAnalysis"><span class="shortcut-icon">⌘</span><span><b>Features</b><small>Qualité et analyse</small></span><span class="shortcut-arrow">›</span></button>
+  <button type="button" class="overview-shortcut" data-open-page="systemLogs"><span class="shortcut-icon">≡</span><span><b>Système</b><small>Logs et diagnostic</small></span><span class="shortcut-arrow">›</span></button>
+ </div>
+</div>
+<details class="overview-details">
+ <summary>Graphiques et informations complémentaires <span>Ouvrir les détails</span></summary>
+ <div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2><span id="chartReturnMeta" class="muted">En attente de données</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats des signaux</h2><span class="muted">Parmi les signaux suivis et clôturés</span></div><div id="outcomeChart" class="chartbox"></div></div></div>
+ <div class="chartgrid analytics-charts"><div class="card"><div class="charthead"><h2>Progression de validation IA</h2><span class="muted">Démarrage après 10 signaux clôturés</span></div><div id="learningProgressChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Performance par motif de clôture</h2><span class="muted">Rendement moyen observé</span></div><div id="exitPerformanceChart" class="chartbox"></div></div></div>
+ <div class="cols"><div class="card"><h2>État du système</h2><div id="system"></div></div><div class="card"><h2>Résultats de l’évaluation des signaux</h2><div id="labelSummary"></div></div></div>
+ <div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div>
+</details></section>
 
 <section id="page-closedTrades" class="hide section"><h2>Closed Trades</h2><p class="muted">Historique des signaux suivis et clôturés. Les sorties TRAIL sont comptabilisées dans SL.</p><div id="closedKpis" class="grid closed-kpis"></div><div class="chartgrid closed-charts"><div class="card"><div class="charthead"><h2>Répartition des clôtures</h2><span class="muted">100 dernières clôtures</span></div><div id="closedReasonChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Rendement cumulé réalisé</h2><span class="muted">Ordre chronologique</span></div><div id="closedReturnChart" class="chartbox"></div></div></div><div id="trackedClosed" class="tablewrap"></div></section>
 
@@ -1509,6 +1553,7 @@ async function connect(){
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
 function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","evolutionLab","backtestValidation","strategyLabZ","strategyMonitor","solana","xrp","okb","bnb","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main section").forEach(x=>x.classList.toggle("hide",x.id!=="page-"+key));if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(key==="strategyMonitor")loadStrategyMonitor();if(key==="solana")loadSolanaSummary();if(key==="xrp")loadXrpSummary();if(key==="okb")loadOkbSummary();if(key==="bnb")loadBnbSummary();if(updateHash&&location.hash!=="#"+key)history.replaceState(null,"","#"+key);}
 document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showDashboardPage(b.dataset.tab);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");}});
+document.querySelector("main").addEventListener("click",e=>{const shortcut=e.target.closest("[data-open-page]");if(shortcut){showDashboardPage(shortcut.dataset.openPage);window.scrollTo({top:0,behavior:"smooth"});}});
 document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
 document.getElementById("navScrim")?.addEventListener("click",()=>{document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
 window.addEventListener("hashchange",()=>showDashboardPage(location.hash.slice(1),false));
