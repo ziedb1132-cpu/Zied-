@@ -150,6 +150,49 @@ def run_comprehensive_backtest(universe=None, paper=None):
                 return value if isinstance(value, dict) else {}
             except (OSError, ValueError):
                 return {}
+        def _closed_signal_performance(paper_obj, window=30):
+            if paper_obj is None:
+                return {"status": "paper_database_unavailable"}
+            try:
+                with paper_obj.lock:
+                    rows = paper_obj.db.execute(
+                        "SELECT ret FROM tracked_signals WHERE status='CLOSED' "
+                        "AND ret IS NOT NULL ORDER BY closed_ts DESC LIMIT ?",
+                        (window * 2,),
+                    ).fetchall()
+                values = []
+                for row in rows:
+                    try:
+                        value = float(row["ret"])
+                        if __import__("math").isfinite(value):
+                            values.append(value)
+                    except (TypeError, ValueError, KeyError):
+                        continue
+                recent, previous = values[:window], values[window:window * 2]
+                def _stats(sample):
+                    if not sample:
+                        return {"trades": 0, "avg_net": None, "profit_factor": None}
+                    gains = sum(x for x in sample if x > 0)
+                    losses = -sum(x for x in sample if x < 0)
+                    return {"trades": len(sample), "avg_net": sum(sample) / len(sample),
+                            "profit_factor": gains / losses if losses > 0 else (999.0 if gains > 0 else 0.0)}
+                recent_stats, previous_stats = _stats(recent), _stats(previous)
+                degraded = False
+                if len(recent) >= 20 and len(previous) >= 20:
+                    degraded = (
+                        (previous_stats["avg_net"] is not None
+                         and previous_stats["avg_net"] > 0
+                         and recent_stats["avg_net"] < previous_stats["avg_net"] * 0.70)
+                        or (previous_stats["profit_factor"] > 1.05
+                            and recent_stats["profit_factor"] < previous_stats["profit_factor"] * 0.70)
+                    )
+                return {"status": "ok" if len(values) >= 20 else "insufficient_history",
+                        "recent": recent_stats, "previous": previous_stats,
+                        "degraded": bool(degraded), "window_size": window,
+                        "note": "Descriptive monitoring only; it never pauses or changes trading."}
+            except Exception as exc:
+                return {"status": "error", "error": str(exc), "degraded": False}
+
         governance = evolution_governance.update_governance(
             state_dir,
             discovery=discovery,
@@ -158,6 +201,7 @@ def run_comprehensive_backtest(universe=None, paper=None):
             feature_importance=_read_optional_report("feature_importance.json"),
             feature_drift=_read_optional_report("feature_drift.json"),
             regime_report=report["layers"].get("regime_shadow_portfolio"),
+            closed_performance=_closed_signal_performance(paper),
         )
         report["layers"]["evolution_governance"] = governance
     except Exception as exc:
