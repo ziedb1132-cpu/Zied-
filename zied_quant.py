@@ -1452,7 +1452,7 @@ def monitor_tracked_signals(paper):
 # =====================================================================
 # RANKING (best -> worst)
 # =====================================================================
-def rank_universe(X, vol24, paper=None, regimes=None):
+def rank_universe(X, vol24, paper=None, regimes=None, spread24=None):
     """Cross-sectional ranking with conservative regime-specific learned factor weights."""
     z = lambda s: ((s - s.median()) / (s.std() + 1e-9)).clip(-3, 3)
     trend = sum(X[f"{tf}_ema_dist21"] for tf in TFS) / len(TFS)
@@ -1464,10 +1464,11 @@ def rank_universe(X, vol24, paper=None, regimes=None):
         "adx": z(X["1H_adx14"]), "obv": z(X["1H_obv_slope"]),
         "liquidity": z(np.log(vol24.reindex(X.index))),
         "atr_penalty": z(X["1H_atr_pct"]), "overbought_penalty": z(overbought),
+        "spread_penalty": z((spread24.reindex(X.index) if spread24 is not None else pd.Series(0.0, index=X.index))),
     }
     base = {"ret1h":.20,"ret4h":.20,"ret1d":.15,"ret15m":.10,"trend":.10,
             "volume_ratio":.08,"adx":.05,"obv":.05,"liquidity":.05,
-            "atr_penalty":-.10,"overbought_penalty":-.10}
+            "atr_penalty":-.10,"overbought_penalty":-.10,"spread_penalty":-.08}
     score = pd.Series(0.0, index=X.index)
     diagnostics = {}
     regime_series = regimes.reindex(X.index) if regimes is not None else pd.Series("UNKNOWN", index=X.index)
@@ -1910,7 +1911,8 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         except Exception as exc:
             log.warning("feature drift monitoring skipped: %s", exc)
     current_regimes = pd.Series({i: classify_market_regime(X.loc[i]) for i in X.index})
-    score = rank_universe(X, uni["vol"], paper=paper, regimes=current_regimes)
+    score = rank_universe(X, uni["vol"], paper=paper, regimes=current_regimes,
+                           spread24=uni["spread"] if "spread" in uni.columns else None)
     for regime, info in score.attrs.get("adaptive_diagnostics", {}).items():
         log.info("adaptive ranking regime=%s samples=%d mode=%s weights=%s", regime,
                  info["samples"], "LEARNED" if info["adaptive"] else "BASELINE",
