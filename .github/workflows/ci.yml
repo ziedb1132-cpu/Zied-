@@ -14,5 +14,5 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install numpy pandas requests scikit-learn pytest
-      - run: python -m py_compile evolved_runner.py strategy_evolver.py autonomous_strategy_engine.py strategy_meta_selector.py exit_evolution.py
+      - run: python -m py_compile evolved_runner.py strategy_evolver.py autonomous_strategy_engine.py evolution_governance.py strategy_meta_selector.py exit_evolution.py
       - run: python -m pytest -q
