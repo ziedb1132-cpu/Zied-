@@ -95,6 +95,24 @@ def test_barrier_sl_first_on_tie_and_single():
     r, lab, hold = zq.barrier_single(100.0, 0.01, hi2, lo2, cl)
     assert lab == 1 and hold == 5
 
+
+
+def test_normalize_candles_rejects_invalid_ohlcv_rows():
+    step = zq.CFG["TF_SEC"]["1H"] * 1000
+    now_ms = int(time.time() * 1000)
+    rows = [
+        [now_ms - 3 * step, "100", "102", "99", "101", "10", "0", "0", "1"],
+        [now_ms - 2 * step, "100", "98", "97", "99", "10", "0", "0", "1"],
+        [now_ms - step, "100", "103", "99", "102", "-1", "0", "0", "1"],
+        [now_ms + 10 * step, "100", "103", "99", "102", "10", "0", "0", "1"],
+        [now_ms, "100", "103", "99", "102", "10", "0", "0", "0"],
+    ]
+    result = zq._normalize_candles(rows, "1H", 20)
+    assert result is not None
+    assert len(result) == 1
+    assert float(result.iloc[0]["o"]) == 100.0
+    assert float(result.iloc[0]["c"]) == 101.0
+
 # ---------------------------------------------------------------- universe
 def test_stable_filter():
     for s in ("USDC", "DAI", "FDUSD", "TUSD", "PYUSD", "RLUSD", "USDG", "EURT"):
