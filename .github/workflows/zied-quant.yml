@@ -99,6 +99,12 @@ jobs:
             fi
           done
 
+      - name: Check restored SQLite state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python state_integrity.py zied_data
+
       - name: Run one complete quant cycle and save state
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
