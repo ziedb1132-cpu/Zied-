@@ -87,9 +87,13 @@ def _candidate_from_discovery(discovery):
             "validation": validation, "holdout": quality,
             "source": "autonomous_feature_discovery",
         })
+    # Select by tune/validation only. The same chronological holdout is
+    # reused across generations, so it must never rank candidates or promote
+    # a research champion; doing so would turn it into a repeatedly queried
+    # validation set and leak information into model selection.
     candidates.sort(key=lambda x: (
-        bool(x["holdout"]["passed"]),
-        _number(x["holdout"].get("avg_net"), -999.0),
+        _number((x.get("validation") or {}).get("avg_net"), -999.0),
+        _number((x.get("validation") or {}).get("profit_factor"), 0.0),
         x["score"]), reverse=True)
     return candidates[0] if candidates else None
 
@@ -136,9 +140,10 @@ def update_governance(state_dir, discovery=None, strategy=None,
             _candidate_from_strategy(strategy),
         ) if item is not None
     ]
+    # Validation-only ordering: holdout metrics are deliberately excluded.
     candidates.sort(key=lambda x: (
-        bool((x.get("holdout") or {}).get("passed")),
-        _number((x.get("holdout") or {}).get("avg_net"), -999.0),
+        _number((x.get("validation") or {}).get("avg_net"), -999.0),
+        _number((x.get("validation") or {}).get("profit_factor"), 0.0),
         _number(x.get("score"), -100.0)), reverse=True)
     challenger = candidates[0] if candidates else None
     promoted = False
@@ -146,29 +151,27 @@ def update_governance(state_dir, discovery=None, strategy=None,
     champion = previous_champion
 
     if challenger:
-        if not challenger["holdout"]["passed"]:
-            decision = "challenger_rejected_by_independent_holdout"
-        elif not champion:
+        # Research champion selection uses tune/validation only. The holdout
+        # remains a one-way diagnostic and is not consulted for promotion.
+        new_val = challenger.get("validation") or {}
+        if not champion:
             champion = challenger
             promoted = True
-            decision = "initial_research_champion"
+            decision = "initial_research_champion_validation_only"
         else:
-            old_hold = champion.get("holdout") or {}
-            new_hold = challenger.get("holdout") or {}
-            old_avg = _number(old_hold.get("avg_net"), -999.0)
-            new_avg = _number(new_hold.get("avg_net"), -999.0)
-            old_pf = _number(old_hold.get("profit_factor"), 0.0)
-            new_pf = _number(new_hold.get("profit_factor"), 0.0)
-            # A research-only replacement requires a measurable net improvement
-            # and no material PF regression. Production remains separately gated.
+            old_val = champion.get("validation") or {}
+            old_avg = _number(old_val.get("avg_net"), -999.0)
+            new_avg = _number(new_val.get("avg_net"), -999.0)
+            old_pf = _number(old_val.get("profit_factor"), 0.0)
+            new_pf = _number(new_val.get("profit_factor"), 0.0)
             if (challenger.get("id") != champion.get("id")
                     and new_avg >= old_avg + 0.0005
                     and new_pf >= max(1.05, old_pf * 0.95)):
                 champion = challenger
                 promoted = True
-                decision = "challenger_promoted_research_only"
+                decision = "challenger_promoted_validation_only"
             else:
-                decision = "champion_retained"
+                decision = "champion_retained_validation_only"
 
     gen = int((discovery or {}).get("generation") or 0)
     best_score = max(
@@ -236,6 +239,7 @@ def update_governance(state_dir, discovery=None, strategy=None,
         "mutation_rate_next_generation": mutation_rate,
         "mutation_reason": mutation_reason,
         "overfit_audit": (challenger or {}).get("holdout"),
+        "holdout_usage": "diagnostic_only_never_used_for_candidate_ranking_or_research_champion_promotion",
         "feature_evaluation": {
             "status": quality.get("status", "not_available"),
             "feature_count": quality.get("feature_count"),
@@ -255,5 +259,5 @@ def update_governance(state_dir, discovery=None, strategy=None,
             "enabled": False,
             "gate": "500 closed winners + 500 closed losers + independent model holdout",
         },
-        "note": "Research Champion/Challenger only. No production weights, live signals, orders, portfolio or risk settings are changed.",
+        "note": "Research Champion/Challenger selection uses tune/validation only. Reused chronological holdout is diagnostic only and never affects ranking or promotion. No production weights, live signals, orders, portfolio or risk settings are changed.",
     }
