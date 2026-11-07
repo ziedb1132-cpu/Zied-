@@ -31,7 +31,6 @@ data = {
 if len(sys.argv) > 3:
     data["strategy_lab"] = safe_json(Path(sys.argv[3])) or None
 # Latest compact genetic-evolution report; the full archive remains in durable state.
-data["evolution"] = safe_json(root / "autonomous_strategy_report.json") or None
 if db_path.exists():
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
@@ -82,6 +81,14 @@ for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json",
                     )
                 }
         data["contents"][name] = value
+
+# Expose the latest autonomous genetic-evolution report in the one-file dashboard.
+# The canonical source is the discovery layer inside comprehensive_backtest.json.
+comprehensive = data["contents"].get("comprehensive_backtest.json", {})
+layers = comprehensive.get("layers", {}) if isinstance(comprehensive, dict) else {}
+evolution = layers.get("autonomous_feature_discovery") if isinstance(layers, dict) else None
+data["evolution"] = evolution if isinstance(evolution, dict) else None
+
 out.parent.mkdir(parents=True, exist_ok=True)
 tmp = out.with_suffix(".tmp")
 tmp.write_text(json.dumps(data, ensure_ascii=False, separators=(",",":"), default=str), encoding="utf-8")
