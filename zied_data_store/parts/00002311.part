@@ -1,0 +1,444 @@
+{
+  "updated_at": 1794063873.2347305,
+  "feeds": [
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://cointelegraph.com/rss",
+    "https://decrypt.co/feed",
+    "https://cryptoslate.com/feed/"
+  ],
+  "headline_count": 104,
+  "coins": {
+    "ONE-USDT": {
+      "score": -0.3849001794597505,
+      "headlines": [
+        {
+          "title": "S&#038;P 500 Plunges, Wall Street Fears Circuit Breaker, Just One Day After Trump Celebrated Record Highs",
+          "link": "https://decrypt.co/382637/sp-500-plunges-wall-street-circuit-breaker-trump-record-highs",
+          "published": "Thu, 05 Nov 2026 18:05:21 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.3849001794597505
+        }
+      ]
+    },
+    "MET-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "PARTI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ACT-USDT": {
+      "score": 0.0,
+      "headlines": [
+        {
+          "title": "Morning Minute: Democrat Sweep Pumps Crypto as Clarity Act Resurfaces",
+          "link": "https://decrypt.co/382603/morning-minute-democrat-sweep-pumps-crypto-as-clarity-act-resurfaces",
+          "published": "Thu, 05 Nov 2026 13:14:05 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "What Democrats’ US midterm sweep means for the CLARITY Act",
+          "link": "https://cointelegraph.com/magazine/clarity-act-faces-new-test-under-democratic-congress?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Fri, 06 Nov 2026 14:30:00 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        }
+      ]
+    },
+    "RSR-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "STX-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ARB-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "PEPE-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "INJ-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "PI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "BTC-USDT": {
+      "score": -0.13333333333333333,
+      "headlines": [
+        {
+          "title": "Why Bitcoin's Next Soft Fork Could Feel Like a Practice Run",
+          "link": "https://decrypt.co/382568/why-bitcoin-next-soft-fork-could-feel-like-practice-run",
+          "published": "Wed, 04 Nov 2026 22:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Coinbase Says 99% of Customer Crypto Is Offline and Out of Hackers’ Reach",
+          "link": "https://decrypt.co/382570/coinbase-99-percent-customer-crypto-offline-binance-hack",
+          "published": "Wed, 04 Nov 2026 20:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        },
+        {
+          "title": "American Bitcoin’s $126M profit masks mining pressure as rivals turn to AI",
+          "link": "https://cointelegraph.com/news/american-bitcoins-126m-profit-masks-mining-pressure-ai?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:43:18 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Asian crypto exchanges batten down the hatches as hacks surge: Asia Express",
+          "link": "https://cointelegraph.com/magazine/asian-crypto-exchanges-bunker-down-as-hacks-surge-asia-express?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:18:42 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Fixes This? Paraguay President Resigns After Bank Lockout Hits 60% of Country",
+          "link": "https://decrypt.co/382676/paraguay-president-resigns-bank-lockout-bitcoin-fixes-this",
+          "published": "Thu, 05 Nov 2026 22:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "TRX-USDT": {
+      "score": -0.5,
+      "headlines": [
+        {
+          "title": "Zero-click iOS exploits drain $4M USDT from active TRON wallets",
+          "link": "https://cryptoslate.com/zero-click-ios-exploits-drain-4m-usdt-from-active-tron-wallets/",
+          "published": "Sat, 07 Nov 2026 03:30:04 +0000",
+          "source": "cryptoslate.com",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "XAUT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "UNI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "AAVE-USDT": {
+      "score": 1.0,
+      "headlines": [
+        {
+          "title": "Kraken parent Payward and its clients buy AAVE tokens in DeFi investment push",
+          "link": "https://www.coindesk.com/business/2026/11/05/kraken-parent-payward-and-its-clients-buy-aave-tokens-in-defi-investment-push",
+          "published": "Thu, 05 Nov 2026 14:00:00 +0000",
+          "source": "www.coindesk.com",
+          "sentiment": 1.0
+        }
+      ]
+    },
+    "ETH-USDT": {
+      "score": -0.08333333333333333,
+      "headlines": [
+        {
+          "title": "Why Bitcoin's Next Soft Fork Could Feel Like a Practice Run",
+          "link": "https://decrypt.co/382568/why-bitcoin-next-soft-fork-could-feel-like-practice-run",
+          "published": "Wed, 04 Nov 2026 22:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Coinbase Says 99% of Customer Crypto Is Offline and Out of Hackers’ Reach",
+          "link": "https://decrypt.co/382570/coinbase-99-percent-customer-crypto-offline-binance-hack",
+          "published": "Wed, 04 Nov 2026 20:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        },
+        {
+          "title": "American Bitcoin’s $126M profit masks mining pressure as rivals turn to AI",
+          "link": "https://cointelegraph.com/news/american-bitcoins-126m-profit-masks-mining-pressure-ai?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:43:18 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Asian crypto exchanges batten down the hatches as hacks surge: Asia Express",
+          "link": "https://cointelegraph.com/magazine/asian-crypto-exchanges-bunker-down-as-hacks-surge-asia-express?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:18:42 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Fixes This? Paraguay President Resigns After Bank Lockout Hits 60% of Country",
+          "link": "https://decrypt.co/382676/paraguay-president-resigns-bank-lockout-bitcoin-fixes-this",
+          "published": "Thu, 05 Nov 2026 22:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "MERL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "DGB-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "RAY-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "KAT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "NIGHT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "BNB-USDT": {
+      "score": -0.08333333333333333,
+      "headlines": [
+        {
+          "title": "Why Bitcoin's Next Soft Fork Could Feel Like a Practice Run",
+          "link": "https://decrypt.co/382568/why-bitcoin-next-soft-fork-could-feel-like-practice-run",
+          "published": "Wed, 04 Nov 2026 22:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Coinbase Says 99% of Customer Crypto Is Offline and Out of Hackers’ Reach",
+          "link": "https://decrypt.co/382570/coinbase-99-percent-customer-crypto-offline-binance-hack",
+          "published": "Wed, 04 Nov 2026 20:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        },
+        {
+          "title": "American Bitcoin’s $126M profit masks mining pressure as rivals turn to AI",
+          "link": "https://cointelegraph.com/news/american-bitcoins-126m-profit-masks-mining-pressure-ai?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:43:18 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Asian crypto exchanges batten down the hatches as hacks surge: Asia Express",
+          "link": "https://cointelegraph.com/magazine/asian-crypto-exchanges-bunker-down-as-hacks-surge-asia-express?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:18:42 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Fixes This? Paraguay President Resigns After Bank Lockout Hits 60% of Country",
+          "link": "https://decrypt.co/382676/paraguay-president-resigns-bank-lockout-bitcoin-fixes-this",
+          "published": "Thu, 05 Nov 2026 22:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "HYPE-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "LINK-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "MORPHO-USDT": {
+      "score": 0.0,
+      "headlines": [
+        {
+          "title": "Morpho loan stress exposes cbXRP, but spares native XRP",
+          "link": "https://cryptoslate.com/morpho-loan-stress-exposes-cbxrp-but-spares-native-xrp/",
+          "published": "Sat, 07 Nov 2026 10:30:51 +0000",
+          "source": "cryptoslate.com",
+          "sentiment": 0.0
+        }
+      ]
+    },
+    "ASTER-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SOL-USDT": {
+      "score": 0.03333333333333333,
+      "headlines": [
+        {
+          "title": "Why Bitcoin's Next Soft Fork Could Feel Like a Practice Run",
+          "link": "https://decrypt.co/382568/why-bitcoin-next-soft-fork-could-feel-like-practice-run",
+          "published": "Wed, 04 Nov 2026 22:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Coinbase Says 99% of Customer Crypto Is Offline and Out of Hackers’ Reach",
+          "link": "https://decrypt.co/382570/coinbase-99-percent-customer-crypto-offline-binance-hack",
+          "published": "Wed, 04 Nov 2026 20:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        },
+        {
+          "title": "American Bitcoin’s $126M profit masks mining pressure as rivals turn to AI",
+          "link": "https://cointelegraph.com/news/american-bitcoins-126m-profit-masks-mining-pressure-ai?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:43:18 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Asian crypto exchanges batten down the hatches as hacks surge: Asia Express",
+          "link": "https://cointelegraph.com/magazine/asian-crypto-exchanges-bunker-down-as-hacks-surge-asia-express?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:18:42 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Fixes This? Paraguay President Resigns After Bank Lockout Hits 60% of Country",
+          "link": "https://decrypt.co/382676/paraguay-president-resigns-bank-lockout-bitcoin-fixes-this",
+          "published": "Thu, 05 Nov 2026 22:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "CC-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "CFG-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "POL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "DOGE-USDT": {
+      "score": -0.08333333333333333,
+      "headlines": [
+        {
+          "title": "Why Bitcoin's Next Soft Fork Could Feel Like a Practice Run",
+          "link": "https://decrypt.co/382568/why-bitcoin-next-soft-fork-could-feel-like-practice-run",
+          "published": "Wed, 04 Nov 2026 22:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Coinbase Says 99% of Customer Crypto Is Offline and Out of Hackers’ Reach",
+          "link": "https://decrypt.co/382570/coinbase-99-percent-customer-crypto-offline-binance-hack",
+          "published": "Wed, 04 Nov 2026 20:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        },
+        {
+          "title": "American Bitcoin’s $126M profit masks mining pressure as rivals turn to AI",
+          "link": "https://cointelegraph.com/news/american-bitcoins-126m-profit-masks-mining-pressure-ai?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:43:18 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Asian crypto exchanges batten down the hatches as hacks surge: Asia Express",
+          "link": "https://cointelegraph.com/magazine/asian-crypto-exchanges-bunker-down-as-hacks-surge-asia-express?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:18:42 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Fixes This? Paraguay President Resigns After Bank Lockout Hits 60% of Country",
+          "link": "https://decrypt.co/382676/paraguay-president-resigns-bank-lockout-bitcoin-fixes-this",
+          "published": "Thu, 05 Nov 2026 22:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "OKB-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "CSPR-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SHIB-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "MAGIC-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ZEC-USDT": {
+      "score": 0.5,
+      "headlines": [
+        {
+          "title": "Zcash NU7 upgrade goes live, leaves 12,224 ZEC stranded in Sprout pool",
+          "link": "https://cointelegraph.com/news/zcash-nu7-upgrade-15m-sprout-funds-unspendable?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Fri, 06 Nov 2026 09:00:36 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.5
+        }
+      ]
+    },
+    "XRP-USDT": {
+      "score": -0.08333333333333333,
+      "headlines": [
+        {
+          "title": "Why Bitcoin's Next Soft Fork Could Feel Like a Practice Run",
+          "link": "https://decrypt.co/382568/why-bitcoin-next-soft-fork-could-feel-like-practice-run",
+          "published": "Wed, 04 Nov 2026 22:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Coinbase Says 99% of Customer Crypto Is Offline and Out of Hackers’ Reach",
+          "link": "https://decrypt.co/382570/coinbase-99-percent-customer-crypto-offline-binance-hack",
+          "published": "Wed, 04 Nov 2026 20:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        },
+        {
+          "title": "American Bitcoin’s $126M profit masks mining pressure as rivals turn to AI",
+          "link": "https://cointelegraph.com/news/american-bitcoins-126m-profit-masks-mining-pressure-ai?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:43:18 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Asian crypto exchanges batten down the hatches as hacks surge: Asia Express",
+          "link": "https://cointelegraph.com/magazine/asian-crypto-exchanges-bunker-down-as-hacks-surge-asia-express?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 05 Nov 2026 22:18:42 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Fixes This? Paraguay President Resigns After Bank Lockout Hits 60% of Country",
+          "link": "https://decrypt.co/382676/paraguay-president-resigns-bank-lockout-bitcoin-fixes-this",
+          "published": "Thu, 05 Nov 2026 22:16:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "BCH-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "WLFI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SUI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    }
+  },
+  "note": "Headline sentiment is a lightweight keyword heuristic; missing news is neutral."
+}

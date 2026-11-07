@@ -1,0 +1,488 @@
+{
+  "version": 1,
+  "updated_at": 1794063873.2338965,
+  "timeframe": "1H",
+  "scanned": 40,
+  "coins": {
+    "ONE-USDT": {
+      "score": -0.67,
+      "patterns": [
+        {
+          "name": "Inverted Hammer / Shooting Star",
+          "direction": "bearish",
+          "confidence": 0.67
+        }
+      ]
+    },
+    "MET-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "PARTI-USDT": {
+      "score": -0.62,
+      "patterns": [
+        {
+          "name": "Bearish Harami",
+          "direction": "bearish",
+          "confidence": 0.62
+        }
+      ]
+    },
+    "ACT-USDT": {
+      "score": 0.6,
+      "patterns": [
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "RSR-USDT": {
+      "score": 0.0,
+      "patterns": [
+        {
+          "name": "Doji",
+          "direction": "neutral",
+          "confidence": 0.55
+        },
+        {
+          "name": "Spinning Top",
+          "direction": "neutral",
+          "confidence": 0.45
+        }
+      ]
+    },
+    "STX-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "ARB-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "PEPE-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "INJ-USDT": {
+      "score": -0.7733333333333333,
+      "patterns": [
+        {
+          "name": "Bearish Engulfing",
+          "direction": "bearish",
+          "confidence": 0.86
+        },
+        {
+          "name": "Bearish Harami",
+          "direction": "bearish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Evening Star",
+          "direction": "bearish",
+          "confidence": 0.84
+        }
+      ]
+    },
+    "PI-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "BTC-USDT": {
+      "score": -0.012500000000000011,
+      "patterns": [
+        {
+          "name": "Inverted Hammer / Shooting Star",
+          "direction": "bearish",
+          "confidence": 0.67
+        },
+        {
+          "name": "Bullish Harami",
+          "direction": "bullish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "TRX-USDT": {
+      "score": -0.20666666666666667,
+      "patterns": [
+        {
+          "name": "Bearish Harami",
+          "direction": "bearish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "XAUT-USDT": {
+      "score": 0.0,
+      "patterns": [
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "UNI-USDT": {
+      "score": 0.72,
+      "patterns": [
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Morning Star",
+          "direction": "bullish",
+          "confidence": 0.84
+        }
+      ]
+    },
+    "AAVE-USDT": {
+      "score": 0.6866666666666666,
+      "patterns": [
+        {
+          "name": "Bullish Harami",
+          "direction": "bullish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Morning Star",
+          "direction": "bullish",
+          "confidence": 0.84
+        }
+      ]
+    },
+    "ETH-USDT": {
+      "score": -0.3,
+      "patterns": [
+        {
+          "name": "Spinning Top",
+          "direction": "neutral",
+          "confidence": 0.45
+        },
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "MERL-USDT": {
+      "score": 0.86,
+      "patterns": [
+        {
+          "name": "Bullish Engulfing",
+          "direction": "bullish",
+          "confidence": 0.86
+        }
+      ]
+    },
+    "DGB-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "RAY-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "KAT-USDT": {
+      "score": 0.84,
+      "patterns": [
+        {
+          "name": "Morning Star",
+          "direction": "bullish",
+          "confidence": 0.84
+        }
+      ]
+    },
+    "NIGHT-USDT": {
+      "score": 0.61,
+      "patterns": [
+        {
+          "name": "Bullish Harami",
+          "direction": "bullish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "BNB-USDT": {
+      "score": 0.0,
+      "patterns": [
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "HYPE-USDT": {
+      "score": 0.6,
+      "patterns": [
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "LINK-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "MORPHO-USDT": {
+      "score": 0.61,
+      "patterns": [
+        {
+          "name": "Bullish Harami",
+          "direction": "bullish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "ASTER-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "SOL-USDT": {
+      "score": -0.6,
+      "patterns": [
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "CC-USDT": {
+      "score": 0.31,
+      "patterns": [
+        {
+          "name": "Spinning Top",
+          "direction": "neutral",
+          "confidence": 0.45
+        },
+        {
+          "name": "Bullish Harami",
+          "direction": "bullish",
+          "confidence": 0.62
+        }
+      ]
+    },
+    "CFG-USDT": {
+      "score": 0.0,
+      "patterns": [
+        {
+          "name": "Spinning Top",
+          "direction": "neutral",
+          "confidence": 0.45
+        }
+      ]
+    },
+    "POL-USDT": {
+      "score": 0.0,
+      "patterns": []
+    },
+    "DOGE-USDT": {
+      "score": -0.635,
+      "patterns": [
+        {
+          "name": "Inverted Hammer / Shooting Star",
+          "direction": "bearish",
+          "confidence": 0.67
+        },
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "OKB-USDT": {
+      "score": 0.024999999999999967,
+      "patterns": [
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Outside Bar",
+          "direction": "bearish",
+          "confidence": 0.55
+        }
+      ]
+    },
+    "CSPR-USDT": {
+      "score": 0.25666666666666665,
+      "patterns": [
+        {
+          "name": "Inverted Hammer / Shooting Star",
+          "direction": "bearish",
+          "confidence": 0.67
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Morning Star",
+          "direction": "bullish",
+          "confidence": 0.84
+        }
+      ]
+    },
+    "SHIB-USDT": {
+      "score": -0.46399999999999997,
+      "patterns": [
+        {
+          "name": "Bearish Engulfing",
+          "direction": "bearish",
+          "confidence": 0.86
+        },
+        {
+          "name": "Bearish Harami",
+          "direction": "bearish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Evening Star",
+          "direction": "bearish",
+          "confidence": 0.84
+        }
+      ]
+    },
+    "MAGIC-USDT": {
+      "score": -0.62,
+      "patterns": [
+        {
+          "name": "Bearish Harami",
+          "direction": "bearish",
+          "confidence": 0.62
+        }
+      ]
+    },
+    "ZEC-USDT": {
+      "score": 0.0,
+      "patterns": [
+        {
+          "name": "Doji",
+          "direction": "neutral",
+          "confidence": 0.55
+        },
+        {
+          "name": "Spinning Top",
+          "direction": "neutral",
+          "confidence": 0.45
+        }
+      ]
+    },
+    "XRP-USDT": {
+      "score": 0.62,
+      "patterns": [
+        {
+          "name": "Bullish Harami",
+          "direction": "bullish",
+          "confidence": 0.62
+        }
+      ]
+    },
+    "BCH-USDT": {
+      "score": 0.010000000000000009,
+      "patterns": [
+        {
+          "name": "Bullish Harami",
+          "direction": "bullish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Tweezer Top",
+          "direction": "bearish",
+          "confidence": 0.6
+        }
+      ]
+    },
+    "WLFI-USDT": {
+      "score": -0.2866666666666667,
+      "patterns": [
+        {
+          "name": "Bearish Harami",
+          "direction": "bearish",
+          "confidence": 0.62
+        },
+        {
+          "name": "Tweezer Bottom",
+          "direction": "bullish",
+          "confidence": 0.6
+        },
+        {
+          "name": "Evening Star",
+          "direction": "bearish",
+          "confidence": 0.84
+        }
+      ]
+    },
+    "SUI-USDT": {
+      "score": 0.0,
+      "patterns": []
+    }
+  },
+  "note": "Candlestick patterns are heuristic context, not guaranteed predictions."
+}
