@@ -209,10 +209,10 @@ def update_governance(state_dir, discovery=None, strategy=None,
     health = "warning" if (degradation or realized_degradation) else (
         "monitoring" if drift.get("status") not in (None, "ok") else "stable"
     )
-    regime_rows = regime.get("recommendations") or regime.get("profiles") or []
+    regime_rows = regime.get("selected_by_regime") or regime.get("recommendations") or regime.get("profiles") or []
     opportunities = {
         "validated_candidates": int((discovery or {}).get("validation_passed") or 0),
-        "regime_recommendations": len(regime_rows) if isinstance(regime_rows, list) else 0,
+        "regime_recommendations": (sum(len(v) for v in regime_rows.values() if isinstance(v, list)) if isinstance(regime_rows, dict) else len(regime_rows) if isinstance(regime_rows, list) else 0),
         "selection_rule": "positive net expectancy, PF > 1.05, cross-symbol consistency and independent holdout",
     }
 
