@@ -470,6 +470,7 @@ header{padding-left:278px}
 <div class="nav-group"><span class="nav-caption">MODEL & RESEARCH</span>
 <button type="button" data-tab="modelHealth"><i>♡</i><span>Model Health</span></button>
 <button type="button" data-tab="learningHistory"><i>⟳</i><span>Learning History</span></button>
+<button type="button" data-tab="evolutionLab"><i>🧬</i><span>AI Evolution</span></button>
 <button type="button" data-tab="backtestValidation"><i>▥</i><span>Backtest & Validation</span></button>
 <button type="button" data-tab="strategyLabZ"><i>✦</i><span>Strategy Lab Z</span></button>
 </div>
@@ -504,6 +505,16 @@ header{padding-left:278px}
 <section id="page-exitIntelligence" class="hide section"><h2>Exit Intelligence</h2><div id="exitMetrics" class="grid"></div><div class="card section"><h2>Résultats selon le motif de clôture</h2><div id="exitTable" class="tablewrap"></div></div></section>
 <section id="page-modelHealth" class="hide section"><h2>Model Health</h2><div id="modelHealthMetrics" class="grid"></div><div class="card section"><h2>Contrôles de validation et calibration</h2><div id="modelHealthTable" class="tablewrap"></div></div><div class="notice">AUC, Brier, ECE et drift affichent N/A si absents des données publiées.</div></section>
 <section id="page-learningHistory" class="hide section"><h2>Learning History</h2><div id="learningMetrics" class="grid"></div><div class="card section"><h2>État des laboratoires de recherche</h2><div id="learningTable" class="tablewrap"></div></div><div class="card section"><h2>Autonomous Strategy Discovery</h2><p class="muted">Dix nouvelles règles symboliques sont générées et testées à chaque cycle. Recherche uniquement : aucune stratégie ne modifie les signaux actifs.</p><div id="autonomousStrategyMetrics" class="grid"></div><div id="autonomousStrategyTable" class="tablewrap"></div></div><div class="card section"><h2>Meta-Selector par régime — Shadow Paper</h2><p class="muted">Le sélecteur apprend les meilleures stratégies par régime à partir de trades simulés indépendants. Il faut au moins 30 trades clôturés, une espérance nette positive, un Profit Factor ≥ 1,20 et un drawdown ≤ 20 %. Aucune stratégie n'est connectée au trading actif.</p><div id="metaSelectorMetrics" class="grid"></div><h3>Sélection proposée par régime</h3><div id="metaSelectorTable" class="tablewrap"></div><h3>Historique de performance par stratégie et régime</h3><div id="metaSelectorProfiles" class="tablewrap"></div></div></section>
+<section id="page-evolutionLab" class="hide section">
+ <div class="strategy-tv-heading"><div><h2>AI Evolution · Mutation &amp; Generations</h2><p class="muted">Suivi des générations، الطفرات، التزاوج بين والدين، وتطور جينات المدخلات وسياسة الخروج. المصدر الوحيد: dashboard_data.json.</p></div><span id="evolutionStatus" class="eval-tag wait">En attente</span></div>
+ <div id="evolutionMetrics" class="grid"></div>
+ <div class="card section"><h2>Dernière génération · Candidats</h2><p class="muted">Les candidats sont évalués chronologiquement. Le holdout reste une observation indépendante et ne sert pas à choisir les parents.</p><div id="evolutionCandidates" class="tablewrap"></div></div>
+ <div class="cols">
+  <div class="card"><h2>Gènes modifiés</h2><div id="evolutionGenome" class="tablewrap"></div></div>
+  <div class="card"><h2>Champion et sélection</h2><div id="evolutionChampion"></div></div>
+ </div>
+ <div id="evolutionNote" class="notice">Les informations seront affichées après publication du rapport d’évolution dans dashboard_data.json.</div>
+</section>
 <section id="page-backtestValidation" class="hide section"><h2>Backtest &amp; Validation</h2><div id="backtestMetrics" class="grid"></div><div class="card section"><h2>Résultats du Backtest complet — cycle d’analyse</h2><div id="backtestTable" class="tablewrap"></div><p class="notice">Recherche isolée : les résultats du Backtest ne modifient pas les signaux actifs, le portefeuille ni le modèle de production.</p></div></section>
 <section id="page-strategyLabZ" class="hide section">
 <h2>Strategy Lab Z</h2>
@@ -558,7 +569,7 @@ const fmt=x=>x===null||x===undefined||x===""?"—":typeof x==="number"?x.toLocal
 const priceFmt=x=>{if(x===null||x===undefined||x==="")return "—";const n=Number(x);return Number.isFinite(n)?n.toFixed(10):String(x)};
 const timeFmt=x=>{if(x===null||x===undefined||x==="")return "—";let n=Number(x);if(Number.isFinite(n)&&n>1000000000){if(n<100000000000)n*=1000}else{n=Date.parse(String(x));if(!Number.isFinite(n))return String(x)}const d=new Date(n);return Number.isNaN(d.getTime())?String(x):d.toLocaleTimeString("fr-FR",{timeZone:"Africa/Tunis",hour:"2-digit",minute:"2-digit",hour12:false})};
 const DASHBOARD_REPOSITORY={owner:"ziedb1132-cpu",repo:"Zied-",branch:"state-data"};
-let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[],strategy_lab:null};
+let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[],strategy_lab:null,evolution:null};
 
 
 function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table class="'+(cols.length===2?'kv-table':'data-table')+'"><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>{const value=typeof c[1]==="function"?c[1](r):r[c[1]];const retClass=c[0]==="Rendement réalisé"&&r.ret!==null&&r.ret!==undefined&&r.ret!==""?(Number(r.ret)>0?"good":Number(r.ret)<0?"bad":""):"";return '<td'+(retClass?' class="'+retClass+'"':'')+' title="'+esc(value)+'">'+esc(value)+'</td>'}).join("")+'</tr>').join("")+'</tbody></table>'}
@@ -697,7 +708,59 @@ function renderVirtualPortfolio(gateWins,gateLosses,modelReady){
  $("vpHistory").innerHTML=table(virtualPortfolio.history.slice().reverse(),histCols);
 }
 
+function renderEvolutionPanel(){
+ const report=state.evolution||((state.contents["comprehensive_backtest.json"]||{}).layers||{}).autonomous_feature_discovery||null;
+ const status=$("evolutionStatus"),metrics=$("evolutionMetrics"),candidateHost=$("evolutionCandidates");
+ if(!report||typeof report!=="object"){
+  if(status){status.textContent="Rapport indisponible";status.className="eval-tag wait";}
+  if(metrics)metrics.innerHTML=metric("Génération","—","Aucune donnée publiée")+metric("Candidats","—","—")+metric("Validés","—","—")+metric("Crossover","—","—");
+  if(candidateHost)candidateHost.innerHTML='<div class="empty">Le rapport autonome n’est pas encore présent dans dashboard_data.json. Il sera affiché après le prochain cycle de recherche complet.</div>';
+  $("evolutionGenome").innerHTML='<div class="empty">Aucun génome publié.</div>';
+  $("evolutionChampion").innerHTML='<div class="empty">Aucun champion enregistré.</div>';
+  $("evolutionNote").textContent="Aucune donnée d’évolution disponible. Le tableau de bord ne fabrique pas de statistiques.";
+  return;
+ }
+ const latest=Array.isArray(report.latest_experiments)?report.latest_experiments:[];
+ const tested=Number(report.tested??latest.length)||0;
+ const cross=Number(report.crossover_candidates??latest.filter(x=>x&&x.spec&&x.spec.crossover).length)||0;
+ const champion=report.champion||null;
+ if(status){status.textContent=report.status==="ok"?"Rapport publié":"État : "+String(report.status||"inconnu");status.className=report.status==="ok"?"eval-tag ready":"eval-tag wait";}
+ metrics.innerHTML=
+  metric("Génération",report.generation??"—","Compteur persistant")+
+  metric("Candidats générés",report.generated??tested,"Cette génération")+
+  metric("Validés",report.validation_passed??0,"Train + validation")+
+  metric("Pool de reproduction",report.breeding_pool_size??"—","Meilleurs individus validés")+
+  metric("Crossover",cross,"Candidats issus de deux parents")+
+  metric("Gènes features",report.feature_count??"—","Bibliothèque d’entrées sélectionnables");
+ const rows=latest.map(x=>{
+  const spec=x.spec||{},genome=x.genome||{},parents=Array.isArray(spec.parent_id)?spec.parent_id.join(" × "):(spec.parent_id||"—");
+  const genes=Array.isArray(genome.input_features)?genome.input_features.join(", "):(Array.isArray(spec.input_features)?spec.input_features.join(", "):"—");
+  return {...x,_parents:parents,_geneCount:genome.input_feature_count??(Array.isArray(spec.conditions)?new Set(spec.conditions.map(c=>c.feature)).size:0),_genes:genes,_conditions:Array.isArray(spec.conditions)?spec.conditions.length:0,_exit:"SL "+(spec.sl_atr??"—")+" / TP "+(spec.tp_atr??"—")+" ATR · "+(spec.max_hold??"—")+" barres"};
+ });
+ candidateHost.innerHTML=table(rows,[["ID","id"],["Génération","generation"],["Statut",r=>r.status==="validation_pass"?"Validé":r.status||"—"],["Score",r=>Number.isFinite(Number(r.score))?Number(r.score).toFixed(2):"—"],["Parents","_parents"],["Gènes d’entrée","_geneCount"],["Conditions","_conditions"],["SL / TP / durée","_exit"],["Trades validation",r=>r.validation?.trades??"—"],["Profit Factor",r=>r.validation?.profit_factor==null?"—":Number(r.validation.profit_factor).toFixed(2)]]);
+ const championGenome=champion?(champion.genome||champion.spec||{}):{};
+ const championSpec=champion?(champion.spec||champion):{};
+ const champFeatures=Array.isArray(championGenome.input_features)?championGenome.input_features:(Array.isArray(championSpec.input_features)?championSpec.input_features:[]);
+ $("evolutionGenome").innerHTML=showRows({
+  "Portée du génome":report.genome_scope||"—",
+  "Features du champion":championGenome.input_feature_count??new Set(champFeatures).size,
+  "Features sélectionnées":champFeatures.length?champFeatures.join(", "):"—",
+  "Conditions":Array.isArray(championSpec.conditions)?championSpec.conditions.length:"—",
+  "SL ATR":championSpec.sl_atr??"—",
+  "TP ATR":championSpec.tp_atr??"—",
+  "Durée maximale":championSpec.max_hold??"—"
+ });
+ $("evolutionChampion").innerHTML=champion?showRows({
+  "ID":champion.id||"—","Génération":champion.generation??"—","Score":champion.score==null?"—":Number(champion.score).toFixed(2),
+  "Statut":champion.status||"—","Validation":champion.validation?.trades??"—",
+  "Win rate":champion.validation?.win_rate==null?"—":(Number(champion.validation.win_rate)*100).toFixed(1)+"%",
+  "Profit Factor":champion.validation?.profit_factor==null?"—":Number(champion.validation.profit_factor).toFixed(2)
+ }):'<div class="empty">Aucun individu n’a encore passé la validation. Aucun champion ne sera inventé.</div>';
+ $("evolutionNote").textContent=(report.note||"Mutation + crossover + sélection élitiste.")+" · Le rapport est lu depuis dashboard_data.json ; la promotion du modèle de production reste indépendante et verrouillée par les 500 gagnants + 500 perdants et le holdout.";
+}
+
 function renderIndependentPages(){
+ renderEvolutionPanel();
  const closed=state.tracked.filter(r=>String(r.status).toUpperCase()==="CLOSED"),byReason={};
  closed.forEach(r=>{const k=String(r.close_reason||r.outcome||"UNKNOWN").toUpperCase().replace(/[ -]+/g,"_");(byReason[k]??=[]).push(r);});
  const reasonRows=Object.entries(byReason).map(([reason,rows])=>({reason,count:rows.length,win:rows.filter(r=>Number(r.ret)>0).length,avg:rows.length?rows.reduce((s,r)=>s+Number(r.ret||0),0)/rows.length:null}));
@@ -1376,7 +1439,7 @@ async function connect(){
  const {owner,repo,branch}=DASHBOARD_REPOSITORY;
  $("error").style.display="none";$("error").textContent="";
  $("status").textContent="Connexion à GitHub…";$("dot").style.background="var(--gold)";
- state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[]};
+ state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[],evolution:null};
  try{
   const rawUrl="https://raw.githubusercontent.com/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo)+"/"+encodeURIComponent(branch)+"/dashboard_data.json?ts="+Date.now();
   let data=null,source="raw.githubusercontent.com",rawError="";
@@ -1404,6 +1467,7 @@ async function connect(){
   
   state.contents=data.contents||{};
   state.strategy_lab=data.strategy_lab||null;
+  state.evolution=data.evolution||null;
   state.manifest={generated_at:data.generated_at};
   $("status").textContent="Connecté · "+(data.generated_at?timeFmt(data.generated_at):"Heure indisponible")+" · "+source;
   $("dot").style.background="var(--green)";
