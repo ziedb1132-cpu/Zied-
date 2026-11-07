@@ -1284,7 +1284,7 @@ async function loadXrpSummary(){
   const cc=ctx.candle_counts||{};
   $("xrpDataQuality").textContent=ctx.data_quality==="ok"?("OK · 5m "+(cc["5m"]??"—")+" · 15m "+(cc["15m"]??"—")+" · 1h "+(cc["1h"]??"—")+" · 4h "+(cc["4h"]??"—")):(ctx.data_quality||"En attente");
   const tr=d.last_training||{};
-  $("xrpTraining").textContent=tr.trained?("Entraîné · "+fmt(tr.samples)+" échantillons"):(tr.reason||"Pas encore entraîné");
+  $("xrpTraining").textContent=!gate.enabled?"Modèle non autorisé · attente de 30 gagnants + 30 perdants":(tr.trained?("Entraîné · "+fmt(tr.samples)+" échantillons"):(tr.reason||"Pas encore entraîné"));
   const performanceText=m=>!m||!Number(m.signals)?"Aucune donnée":fmt(m.signals)+" signaux · WR "+(m.win_rate_pct??"—")+"% · net "+(m.net_profit_pct>0?"+":"")+fmt(m.net_profit_pct??0)+"% · PF "+fmt(m.profit_factor??0);
   $("xrpAiPerformance").textContent=performanceText(d.ai_performance);
   $("xrpPreAiPerformance").textContent=performanceText(d.pre_ai_performance);
