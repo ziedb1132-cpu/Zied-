@@ -420,7 +420,9 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
     champion=max(valid,key=lambda x:float(x.get("score",-100))) if valid else memory.get("champion")
     result={"status":"ok","generation":generation,"generated":len(candidates),
             "tested":len(results),"validation_passed":sum(x["status"]=="validation_pass" for x in results),
-            "archive_size":len(archive),"symbols":symbols,"champion":champion,\n            "breeding_pool_size":len(population),"crossover_candidates":sum(bool(x.get("spec",{}).get("crossover")) for x in results),\n            "genome_scope":"561 causal input features + thresholds/operators + SL/TP ATR + max-hold genes",
+            "archive_size":len(archive),"symbols":symbols,"champion":champion,
+            "breeding_pool_size":len(population),"crossover_candidates":sum(bool(x.get("spec",{}).get("crossover")) for x in results),
+            "genome_scope":"561 causal input features + thresholds/operators + SL/TP ATR + max-hold genes",
             "feature_count":len(_LIBRARY_FEATURES),"total_feature_columns":len(FEATURES),
             "feature_library_version":FEATURE_LIBRARY_VERSION,
             "latest_experiments":results,
