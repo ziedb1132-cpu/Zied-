@@ -1476,7 +1476,7 @@ def rank_universe(X, vol24, paper=None, regimes=None, spread24=None):
         coins = regime_series.index[regime_series == regime]
         weights, samples, adaptive = (paper.adaptive_ranking_weights(regime)
                                       if paper is not None else (base, 0, False))
-        part = sum(weights[k] * factors[k].loc[coins] for k in base)
+        part = sum(weights.get(k, base[k]) * factors[k].loc[coins] for k in base)
         score.loc[coins] = part
         diagnostics[str(regime)] = {"samples": int(samples), "adaptive": bool(adaptive),
                                     "weights": weights}
