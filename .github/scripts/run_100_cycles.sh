@@ -20,6 +20,7 @@ persist_state() {
     echo "ERROR: zied_data is missing after cycle $cycle; refusing to overwrite durable state." >&2
     return 1
   fi
+  python "$GITHUB_WORKSPACE/state_integrity.py" zied_data --require-db
   cp -a zied_data "$STATE_BACKUP/zied_data"
 
   git config user.name "github-actions[bot]"
