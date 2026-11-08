@@ -658,6 +658,22 @@ main{max-width:1440px!important;width:100%!important;margin:0 auto!important;pad
 }
 </style>
 
+
+<style id="standalone-section-pages">
+/* Every workspace opens as an independent page; the overview is only the section launcher. */
+body.standalone-section>header,
+body.standalone-section>#dashboardNav,
+body.standalone-section>#navToggle,
+body.standalone-section>#navScrim{display:none!important}
+body.standalone-section>main{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+body.standalone-section>main>.section-standalone-bar{display:flex;position:sticky;top:0;z-index:30;align-items:center;gap:14px;min-height:66px;padding:12px clamp(14px,3vw,34px);background:rgba(255,255,255,.97);border-bottom:1px solid #e5eaf2;box-shadow:0 3px 14px rgba(20,40,70,.045);backdrop-filter:blur(12px)}
+.section-standalone-back{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:8px 14px;border:1px solid #dce4ef;border-radius:11px;background:#fff;color:#234783;font:700 13px system-ui;cursor:pointer;white-space:nowrap}
+.section-standalone-title{min-width:0;margin:0;color:#17243a;font-size:18px;font-weight:800;line-height:1.25;overflow-wrap:anywhere}
+body.standalone-section>main>section[id^="page-"]:not(.hide){display:block!important;width:100%!important;max-width:1500px!important;margin:0 auto!important;padding:22px clamp(12px,2.5vw,30px) 40px!important;min-width:0!important}
+body.standalone-section>main>section[id^="page-"].hide{display:none!important}
+@media(max-width:520px){body.standalone-section>main>.section-standalone-bar{min-height:58px;padding:9px 12px;gap:10px}.section-standalone-back{min-height:38px;padding:7px 10px;font-size:12px}.section-standalone-title{font-size:16px}body.standalone-section>main>section[id^="page-"]:not(.hide){padding:14px 10px 28px!important}}
+</style>
+
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
@@ -1947,4 +1963,36 @@ function renderReferenceDashboard(){
  root.querySelector("#refLatestSignals").innerHTML=latest.length?'<table class="reference-latest-table"><thead><tr><th>#</th><th>Actif</th><th>Résultat</th><th>Action</th></tr></thead><tbody>'+latest.map((x,i)=>'<tr><td>'+(i+1)+'</td><td><b>'+refEsc(x.inst)+'</b></td><td><span class="reference-pill">Ouvert</span></td><td><button class="reference-tool" data-ref-page="signals">Voir</button></td></tr>').join("")+'</tbody></table>':'<div class="reference-empty">Aucun signal ouvert.</div>';
 }
 </script>
+
+<script id="standalone-section-pages-script">
+(function(){
+ const original=window.showDashboardPage;
+ if(typeof original!=="function")return;
+ const labels={};
+ document.querySelectorAll("#dashboardNav button[data-tab]").forEach(b=>{labels[b.dataset.tab]=b.querySelector("span")?.textContent?.trim()||b.textContent.trim();});
+ let bar=document.getElementById("sectionStandaloneBar");
+ if(!bar){
+  bar=document.createElement("div");bar.id="sectionStandaloneBar";bar.className="section-standalone-bar";
+  bar.innerHTML='<button type="button" class="section-standalone-back" id="sectionStandaloneBack">← <span>Retour aux sections</span></button><h1 class="section-standalone-title" id="sectionStandaloneTitle"></h1>';
+  const main=document.querySelector("body>main");
+  if(main)main.insertBefore(bar,main.firstChild);
+  bar.querySelector("#sectionStandaloneBack").addEventListener("click",()=>{window.location.href=window.location.pathname;});
+ }
+ window.showDashboardPage=function(page,updateHash=true){
+  original(page,updateHash);
+  const valid=["overview","portfolio","signals","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","evolutionLab","backtestValidation","strategyLabZ","strategyMonitor","solana","xrp","okb","bnb","systemLogs"];
+  const key=valid.includes(page)?page:"overview";
+  const standalone=key!=="overview";
+  document.body.classList.toggle("standalone-section",standalone);
+  bar.style.display=standalone?"flex":"none";
+  const title=document.getElementById("sectionStandaloneTitle");
+  if(title)title.textContent=labels[key]||key;
+  if(standalone)window.scrollTo({top:0,behavior:"instant"});
+ };
+ const initial=new URLSearchParams(location.search).get("page")||location.hash.slice(1)||"overview";
+ window.showDashboardPage(initial,false);
+ window.addEventListener("popstate",()=>{const p=new URLSearchParams(location.search).get("page")||location.hash.slice(1)||"overview";window.showDashboardPage(p,false);});
+})();
+</script>
+
 </body></html>
