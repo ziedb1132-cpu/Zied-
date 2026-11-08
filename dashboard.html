@@ -469,6 +469,55 @@ header{padding-left:278px}
 
 <style id="analytics-charts-mobile">@media(max-width:760px){.analytics-charts{grid-template-columns:minmax(0,1fr)!important}.analytics-charts .chartbox{min-width:0;overflow:hidden}.analytics-charts svg{width:100%;height:auto;display:block}}.strategy-lab-list{display:grid;gap:12px}.strategy-lab-item{box-shadow:none;background:#fbfcfe}.strategy-lab-item h3{font-size:14px;margin:0 0 7px;color:#203653}.strategy-lab-item p{margin:0;color:#53647e;line-height:1.75;white-space:normal}
 </style>
+
+<style id="clean-light-interactive-v1">
+:root{--bg:#f6f8fc;--panel:#fff;--line:#e7ecf4;--txt:#192943;--mut:#748198;--blue:#3569c8;--shadow:0 8px 24px rgba(31,55,91,.055);--radius:18px}
+body{background:#f6f8fc!important;color:#192943!important}
+header{background:rgba(255,255,255,.94)!important;border-bottom:1px solid #e8edf4!important;box-shadow:0 3px 18px rgba(25,45,75,.045)!important;backdrop-filter:blur(16px)!important}
+.brand h1{color:#1b2d49!important}.brand .muted{color:#7b8799!important}
+.logo{background:linear-gradient(145deg,#4d80dc,#315fbd)!important;box-shadow:0 5px 13px rgba(49,95,189,.18)!important}
+.status{color:#52647f!important;background:#f5f8fd!important;border:1px solid #e5ebf4!important}
+.dot{box-shadow:0 0 0 4px rgba(49,95,189,.08)!important}
+main{padding-top:24px!important}
+.page-nav{background:#fff!important;border:1px solid #e7ecf4!important;box-shadow:0 8px 26px rgba(25,45,75,.055)!important;border-radius:18px!important}
+.page-nav:before,.page-nav:after{display:none!important}
+.page-nav .nav-brand{border-bottom:1px solid #edf1f6!important;padding:0 7px 15px!important}
+.nav-mark{background:linear-gradient(145deg,#4d80dc,#315fbd)!important;color:#fff!important;border-radius:12px!important;box-shadow:0 4px 12px rgba(49,95,189,.16)!important}
+.page-nav .nav-brand b{color:#233958!important}.page-nav .nav-brand small{color:#8290a4!important}
+.page-nav .nav-group{padding:3px 0!important}
+.page-nav .nav-caption{color:#9aa6b7!important;font-size:9px!important;letter-spacing:1.2px!important;font-weight:800!important}
+.page-nav button{background:#fbfcfe!important;border:1px solid #edf1f6!important;border-radius:12px!important;color:#53647d!important;padding:10px 11px!important;min-height:42px!important;transition:transform .18s ease,background .18s ease,border-color .18s ease,box-shadow .18s ease!important}
+.page-nav button i{display:grid!important;place-items:center!important;width:27px!important;height:27px!important;flex:0 0 27px!important;border-radius:9px!important;background:#eef3fb!important;color:#5577b5!important;font-style:normal!important;font-size:15px!important}
+.page-nav button span{font-weight:650!important;font-size:11px!important}
+.page-nav button:hover{background:#f2f6fd!important;border-color:#d8e4f5!important;transform:translateY(-1px)!important;box-shadow:0 5px 14px rgba(38,67,110,.055)!important}
+.page-nav button.active{background:#edf4ff!important;border-color:#cbdcf7!important;color:#2857a8!important;box-shadow:inset 3px 0 #3569c8!important}
+.page-nav button.active i{background:#dce9ff!important;color:#2857a8!important}
+.nav-footer{color:#8290a4!important;border-top:1px solid #edf1f6!important;font-size:9px!important}
+.nav-footer small{color:#9aa6b7!important}
+.card,.overview-launcher,.overview-details,.eval-block{box-shadow:0 6px 22px rgba(31,55,91,.045)!important;border-color:#e7ecf4!important}
+.card{transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease!important}
+.card:hover{transform:translateY(-2px)!important;box-shadow:0 12px 28px rgba(31,55,91,.075)!important}
+.overview-shortcut{min-height:82px!important;border-radius:15px!important;background:linear-gradient(145deg,#fff,#fbfcff)!important;border-color:#e7edf6!important;box-shadow:0 3px 10px rgba(31,55,91,.025)!important;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease,background .2s ease!important}
+.overview-shortcut:hover{transform:translateY(-3px)!important;background:#fff!important;border-color:#cbdcf5!important;box-shadow:0 10px 22px rgba(43,79,135,.09)!important}
+.shortcut-icon{border:1px solid #e1eaf8!important;background:#f0f5fd!important;color:#3569c8!important}
+button:focus-visible,.overview-shortcut:focus-visible{outline:3px solid rgba(53,105,200,.25)!important;outline-offset:2px!important}
+#navToggle{background:#fff!important;color:#315fbd!important;border:1px solid #e4eaf3!important;box-shadow:0 5px 15px rgba(25,45,75,.09)!important}
+.nav-scrim{background:rgba(22,37,60,.28)!important;backdrop-filter:blur(2px)!important}
+@media(max-width:760px){
+ header{padding-left:58px!important;background:rgba(255,255,255,.97)!important}
+ .page-nav{box-shadow:12px 0 35px rgba(25,45,75,.12)!important;border-radius:0 18px 18px 0!important}
+ .page-nav .nav-brand{padding-bottom:13px!important}
+ .overview-shortcuts{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ .overview-shortcut{min-height:76px!important}
+}
+@media(max-width:420px){
+ .overview-shortcuts{gap:8px!important}
+ .overview-shortcut{padding:9px!important;gap:7px!important}
+ .shortcut-arrow{font-size:18px!important}
+}
+@media(prefers-reduced-motion:reduce){.card,.overview-shortcut,.page-nav button{transition:none!important}}
+</style>
+
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
