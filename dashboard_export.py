@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a compact, read-only dashboard snapshot from the completed paper state."""
+"""Create a complete, read-only dashboard snapshot from the completed paper state."""
 import json, sqlite3, sys
 from pathlib import Path
 
@@ -27,7 +27,7 @@ data = {
     "contents": {}, "strategy_lab": None, "evolution": None, "evolution_governance": None
 }
 
-# Strategy Lab is a compact optional summary; full research files are never copied here.
+# Strategy Lab summary; full research files are included when present in the state directory.
 if len(sys.argv) > 3:
     data["strategy_lab"] = safe_json(Path(sys.argv[3])) or None
 # Latest compact genetic-evolution report; the full archive remains in durable state.
@@ -48,7 +48,7 @@ if db_path.exists():
       WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL""") or [{}])[0]
     data["summary"].update({"gateWins":gate.get("wins") or 0,"gateLosses":gate.get("losses") or 0,
       "gateTotal":gate.get("total") or 0})
-    data["signals"] = rows(conn, "SELECT id,ts,inst,price,atr,prob,rank,labeled,label,ret,hold,feature_ts FROM signals ORDER BY ts DESC LIMIT 10")
+    data["signals"] = rows(conn, "SELECT * FROM signals ORDER BY ts DESC, id DESC")
     # Export every closed and open tracked signal so dashboard analytics use the full history.
     # Preserve the entry-time market regime in the dashboard snapshot. The regime is
     # stored on tracked_signals when each signal is created; omitting it here made
