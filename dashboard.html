@@ -1789,7 +1789,7 @@ function bootDashboard(){
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bootDashboard,{once:true});
 else bootDashboard();
-showDashboardPage(location.hash.slice(1)||"overview",false);
+const initialPage=new URLSearchParams(window.location.search).get("page")||location.hash.slice(1)||"overview";showDashboardPage(initialPage,false);
 try{render();}catch(initialRenderError){console.error("Initial dashboard render failed:",initialRenderError);}
 setLanguage();
 </script>
