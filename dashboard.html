@@ -568,6 +568,26 @@ button:focus-visible{outline:3px solid rgba(53,105,200,.22)!important;outline-of
 }
 @media(max-width:370px){.card-navigation-grid{grid-template-columns:1fr}.page-card{min-height:72px}}
 @media(prefers-reduced-motion:reduce){.page-card,main>section:not(#page-overview){animation:none!important;transition:none!important}}
+/* Professional workspace navigation refresh */
+.reference-nav-section{margin:28px 0 24px}
+.reference-section-heading{display:flex;align-items:end;justify-content:space-between;gap:16px;margin:0 0 15px}
+.reference-section-heading h2{margin:0;font-size:19px;font-weight:800;letter-spacing:-.35px;color:#17243a}
+.reference-section-heading p{margin:3px 0 0;color:#718096;font-size:12px}
+.reference-section-heading>span{font-size:10px;letter-spacing:1.2px;color:#8a96a8;font-weight:800}
+.reference-nav-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:0}
+.reference-nav-group{min-width:0;padding:16px;background:#fff;border:1px solid #e7ebf1;border-radius:16px;box-shadow:0 2px 10px rgba(22,39,66,.025)}
+.reference-nav-group>h3{margin:0 0 10px;padding:0 0 10px;border-bottom:1px solid #eef1f5;color:#8792a3;font-size:10px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase}
+.reference-nav-links{display:grid;grid-template-columns:1fr;gap:6px}
+.reference-nav-card{min-height:58px;padding:9px 10px;border:1px solid transparent;border-radius:10px;background:#fff;box-shadow:none;gap:11px;transition:background .15s,border-color .15s}
+.reference-nav-card:nth-child(n){background:#fff;border-color:transparent}
+.reference-nav-card:hover{transform:none;background:#f7f9fc;border-color:#e7edf5;box-shadow:none}
+.reference-nav-icon{width:36px;height:36px;border-radius:10px;background:#eef3fb;color:#315fbd;font-size:16px}
+.reference-nav-card:nth-child(n) .reference-nav-icon{background:#eef3fb;color:#315fbd}
+.reference-nav-copy b{font-size:13px;font-weight:700;color:#25344b}
+.reference-nav-copy small{font-size:10px;color:#8490a1;margin-top:1px}
+.reference-nav-arrow{font-size:19px;color:#9aa5b5}
+.reference-nav-section+.reference-lower-grid{margin-top:22px}
+@media(max-width:760px){.reference-nav-grid{grid-template-columns:1fr;gap:10px}.reference-nav-group{padding:13px;border-radius:13px}.reference-section-heading{align-items:center}.reference-section-heading h2{font-size:17px}}
 </style>
 
 
@@ -1809,13 +1829,9 @@ setLanguage();
   <div class="reference-panel"><div class="reference-panel-head"><h2>📈 Évolution des performances</h2><div class="reference-chart-tabs"><button class="active" data-range="7">7J</button><button data-range="30">30J</button><button data-range="all">Tout</button></div></div><div class="reference-chart-host" id="refChart"></div></div>
   <div class="reference-panel"><div class="reference-panel-head"><h2>↗ Position ouverte</h2><span class="reference-pill" id="refPositionState">Active</span></div><div id="refOpenPosition"></div></div>
  </div>
- <div class="reference-nav-grid">
-  <button class="reference-nav-card" data-ref-page="closedTrades"><span class="reference-nav-icon">▥</span><span class="reference-nav-copy"><b>Performance</b><small>Analyse des résultats</small></span><span class="reference-nav-arrow">➜</span></button>
-  <button class="reference-nav-card" data-ref-page="aiIntelligence"><span class="reference-nav-icon">♧</span><span class="reference-nav-copy"><b>Intelligence IA</b><small>Modèle et apprentissage</small></span><span class="reference-nav-arrow">➜</span></button>
-  <button class="reference-nav-card" data-ref-page="evolutionLab"><span class="reference-nav-icon">🧬</span><span class="reference-nav-copy"><b>Évolution</b><small>Générations et mutations</small></span><span class="reference-nav-arrow">➜</span></button>
-  <button class="reference-nav-card" data-ref-page="signals"><span class="reference-nav-icon">◉</span><span class="reference-nav-copy"><b>Signaux</b><small>Signaux actifs</small></span><span class="reference-nav-arrow">➜</span></button>
-  <button class="reference-nav-card" data-ref-page="marketRegime"><span class="reference-nav-icon">▥</span><span class="reference-nav-copy"><b>Analyse des marchés</b><small>Régimes et stratégies</small></span><span class="reference-nav-arrow">➜</span></button>
-  <button class="reference-nav-card" data-ref-page="systemLogs"><span class="reference-nav-icon">⚙</span><span class="reference-nav-copy"><b>Paramètres</b><small>Configuration et système</small></span><span class="reference-nav-arrow">➜</span></button>
+ <div class="reference-nav-section">
+  <div class="reference-section-heading"><div><h2>Espaces de travail</h2><p>Accès organisé aux outils d’analyse et de suivi</p></div><span>WORKSPACE</span></div>
+  <div class="reference-nav-grid" id="referenceNavGrid"></div>
  </div>
  <div class="reference-lower-grid">
   <div class="reference-panel"><div class="reference-panel-head"><h2>🧠 IA & apprentissage</h2><span class="reference-pill" id="refModelState">Suivi</span></div><div class="reference-learning-body" id="refLearning"></div></div>
@@ -1830,29 +1846,40 @@ setLanguage();
  </nav>`;
 
  const allNav=document.getElementById("dashboardNav");
- const navGrid=shell.querySelector(".reference-nav-grid");
+ const navGrid=shell.querySelector("#referenceNavGrid");
  if(allNav&&navGrid){
-  allNav.querySelectorAll("button[data-tab]").forEach(source=>{
-   const key=source.dataset.tab;
-   if(navGrid.querySelector('[data-ref-page="'+key+'"]'))return;
-   const label=source.querySelector("span")?.textContent?.trim()||key;
-   const icon=source.querySelector("i")?.textContent?.trim()||"◈";
-   const card=document.createElement("button");card.type="button";card.className="reference-nav-card";card.dataset.refPage=key;
-   const ico=document.createElement("span");ico.className="reference-nav-icon";ico.textContent=icon;
-   const copy=document.createElement("span");copy.className="reference-nav-copy";
-   const title=document.createElement("b");title.textContent=label;
-   const desc=document.createElement("small");desc.textContent=({
-    overview:"Vue générale et indicateurs",portfolio:"Simulation locale",signals:"Positions actuellement ouvertes",
-    closedTrades:"Historique et résultats",aiIntelligence:"Modèle et mémoire IA",featureAnalysis:"Qualité et analyse des variables",
-    marketRegime:"Régimes et conditions du marché",exitIntelligence:"Gestion et analyse des sorties",
-    modelHealth:"Validation et robustesse",learningHistory:"Progression de l’apprentissage",
-    evolutionLab:"Mutations et générations",backtestValidation:"Tests et validation",
-    strategyLabZ:"Recherche de stratégies",strategyMonitor:"Suivi des stratégies",
-    solana:"Analyse SOL/USDT",xrp:"Analyse XRP/USDT",okb:"Analyse OKB/USDT",bnb:"Analyse BNB/USDT",
-    systemLogs:"Journaux et diagnostic"
-   })[key]||"Ouvrir la rubrique";
-   const arrow=document.createElement("span");arrow.className="reference-nav-arrow";arrow.textContent="➜";
-   copy.append(title,desc);card.append(ico,copy,arrow);navGrid.appendChild(card);
+  const descriptions={
+   overview:"Vue générale et indicateurs",portfolio:"Simulation et allocation",
+   signals:"Positions actuellement ouvertes",closedTrades:"Historique et résultats",
+   aiIntelligence:"Modèle et mémoire IA",featureAnalysis:"Qualité des variables",
+   marketRegime:"Conditions et phases du marché",exitIntelligence:"Gestion des sorties",
+   modelHealth:"Robustesse et validation",learningHistory:"Progression de l’apprentissage",
+   evolutionLab:"Mutations et générations",backtestValidation:"Tests et validation",
+   strategyLabZ:"Recherche de stratégies",strategyMonitor:"Suivi des stratégies",
+   solana:"Analyse SOL/USDT",xrp:"Analyse XRP/USDT",okb:"Analyse OKB/USDT",
+   bnb:"Analyse BNB/USDT",systemLogs:"Journaux et diagnostic"
+  };
+  allNav.querySelectorAll(".nav-group").forEach(group=>{
+   const sources=[...group.querySelectorAll("button[data-tab]")];
+   if(!sources.length)return;
+   const panel=document.createElement("section");panel.className="reference-nav-group";
+   const heading=document.createElement("h3");
+   heading.textContent=group.querySelector(".nav-caption")?.textContent?.trim()||"AUTRES";
+   panel.appendChild(heading);
+   const links=document.createElement("div");links.className="reference-nav-links";
+   sources.forEach(source=>{
+    const key=source.dataset.tab;
+    const label=source.querySelector("span")?.textContent?.trim()||key;
+    const icon=source.querySelector("i")?.textContent?.trim()||"◈";
+    const card=document.createElement("button");card.type="button";card.className="reference-nav-card";card.dataset.refPage=key;
+    const ico=document.createElement("span");ico.className="reference-nav-icon";ico.textContent=icon;
+    const copy=document.createElement("span");copy.className="reference-nav-copy";
+    const title=document.createElement("b");title.textContent=label;
+    const desc=document.createElement("small");desc.textContent=descriptions[key]||"Ouvrir cet espace";
+    const arrow=document.createElement("span");arrow.className="reference-nav-arrow";arrow.textContent="›";
+    copy.append(title,desc);card.append(ico,copy,arrow);links.appendChild(card);
+   });
+   panel.appendChild(links);navGrid.appendChild(panel);
   });
  }
  const extraCards=document.getElementById("cardNavigation");
