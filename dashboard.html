@@ -1896,7 +1896,7 @@ setLanguage();
  <div class="reference-kpis" id="refKpis"></div>
  <div class="reference-main-grid">
   <div class="reference-panel"><div class="reference-panel-head"><h2>📈 Évolution des performances</h2><div class="reference-chart-tabs"><button class="active" data-range="7">7J</button><button data-range="30">30J</button><button data-range="all">Tout</button></div></div><div class="reference-chart-host" id="refChart"></div></div>
-  <div class="reference-panel"><div class="reference-panel-head"><h2>↗ Position ouverte</h2><span class="reference-pill" id="refPositionState">Active</span></div><div id="refOpenPosition"></div></div>
+  <div class="reference-panel"><div class="reference-panel-head"><h2>↗ Position ouverte XRP</h2><span class="reference-pill" id="refPositionState">XRP/USDT</span></div><div id="refOpenPosition"></div></div>
  </div>
  <div class="reference-nav-section">
   <div class="reference-section-heading"><div><h2>Espaces de travail</h2><p>Accès organisé aux outils d’analyse et de suivi</p></div><span>WORKSPACE</span></div>
@@ -1997,12 +1997,13 @@ function renderReferenceDashboard(){
  root.querySelector("#refStatus").textContent=status.includes("Connecté")?"● Connecté":"● "+status;
  root.querySelector("#refUpdated").textContent="◷ "+(state.manifest?.generated_at?timeFmt(state.manifest.generated_at):"—");
  const chart=document.getElementById("returnChart");root.querySelector("#refChart").innerHTML=chart?chart.innerHTML:'<div class="reference-empty">Graphique indisponible</div>';
- const p=open[0];root.querySelector("#refPositionState").textContent=p?"Active":"Aucune position";
+ const xrpOpen=open.filter(x=>String(x.inst||x.symbol||x.pair||x.instrument||"").trim().toUpperCase().startsWith("XRP"));
+ const p=xrpOpen[0]||null;root.querySelector("#refPositionState").textContent=p?"XRP active":"XRP — aucune";
  if(p){
   const entry=Number(p.entry),current=Number(p.current_price??p.price??p.last_price??p.mark_price);
   const pnl=Number.isFinite(entry)&&entry?((current-entry)/entry*100):null;
   root.querySelector("#refOpenPosition").innerHTML='<div class="reference-open-symbol"><div class="reference-coin">'+(String(p.inst||"").toUpperCase().startsWith("XRP")?"X":"◈")+'</div><div><div class="reference-open-name">'+refEsc(p.inst)+'</div><div class="reference-open-pnl">'+(pnl===null?"—":(pnl>=0?"+":"")+pnl.toFixed(2)+"%")+'</div></div></div><div class="reference-position-rows"><div class="reference-position-row"><span>Prix d’entrée</span><b>'+refEsc(p.entry)+'</b></div><div class="reference-position-row"><span>Prix actuel</span><b>'+refEsc(Number.isFinite(current)?current:"—")+'</b></div><div class="reference-position-row"><span>Stop-loss</span><b>'+refEsc(p.sl)+'</b></div><div class="reference-position-row"><span>Take-profit</span><b>'+refEsc(p.tp)+'</b></div></div><div class="reference-position-foot"><span class="reference-pill">● Ouverte</span><button class="reference-tool" data-ref-page="signals">Détails →</button></div>';
- }else root.querySelector("#refOpenPosition").innerHTML='<div class="reference-empty">Aucune position ouverte actuellement.</div>';
+ }else root.querySelector("#refOpenPosition").innerHTML='<div class="reference-empty">Aucune position XRP/USDT ouverte actuellement.</div>';
  const gw=Number(summary.gateWins)||0,gl=Number(summary.gateLosses)||0,ready=gw>=500&&gl>=500;
  const progress=Math.min(100,Math.min(gw/500,gl/500)*100);
  root.querySelector("#refModelState").textContent=ready?"Actif":"Apprentissage";
