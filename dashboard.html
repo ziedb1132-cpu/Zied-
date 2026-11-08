@@ -683,7 +683,7 @@ body.standalone-section>main>section#page-overview[aria-hidden="true"]{display:n
 </style>
 
 <style id="workspace-bottom-menu-styles">
-.workspace-bottom-menu{display:none;position:fixed;inset:0;z-index:49;background:rgba(18,31,53,.28);padding:14px 12px calc(82px + env(safe-area-inset-bottom));align-items:flex-end;justify-content:center}
+.workspace-bottom-menu{display:none;position:fixed;inset:0;z-index:1000;background:rgba(18,31,53,.28);padding:14px 12px calc(82px + env(safe-area-inset-bottom));align-items:flex-end;justify-content:center}
 .workspace-bottom-menu.is-open{display:flex}
 .workspace-bottom-menu-panel{width:min(920px,100%);max-height:min(72vh,720px);overflow:auto;overscroll-behavior:contain;background:#f6f8fc;border:1px solid #e2e8f1;border-radius:22px 22px 16px 16px;padding:16px;box-shadow:0 18px 55px rgba(20,38,67,.22)}
 .workspace-bottom-menu .reference-nav-section{margin:0!important}
@@ -1958,16 +1958,21 @@ setLanguage();
  workspaceMenu.id="workspaceBottomMenu";
  workspaceMenu.innerHTML='<div class="workspace-bottom-menu-panel" role="dialog" aria-label="Espaces de travail"></div>';
  if(workspaceSection){workspaceMenu.querySelector(".workspace-bottom-menu-panel").appendChild(workspaceSection);}
- shell.insertBefore(workspaceMenu,shell.querySelector(".reference-bottom-nav"));
  const workspaceToggle=shell.querySelector("[data-workspace-toggle]");
  const closeWorkspaceMenu=()=>{workspaceMenu.classList.remove("is-open");workspaceToggle?.setAttribute("aria-expanded","false");};
  workspaceToggle?.addEventListener("click",()=>{const opened=workspaceMenu.classList.toggle("is-open");workspaceToggle.setAttribute("aria-expanded",String(opened));});
- workspaceMenu.addEventListener("click",e=>{if(e.target===workspaceMenu)closeWorkspaceMenu();});
+ workspaceMenu.addEventListener("click",e=>{
+  if(e.target===workspaceMenu){closeWorkspaceMenu();return;}
+  const item=e.target.closest("[data-ref-page]");
+  if(item){closeWorkspaceMenu();window.location.href=item.dataset.refPage==="overview"?location.pathname:"?page="+encodeURIComponent(item.dataset.refPage);}
+ });
  document.addEventListener("keydown",e=>{if(e.key==="Escape")closeWorkspaceMenu();});
 
  const extraCards=document.getElementById("cardNavigation");
  if(extraCards)extraCards.remove();
  overview.prepend(shell);
+ /* Keep the workspace sheet outside the homepage layout so it can only appear as a bottom overlay. */
+ document.body.appendChild(workspaceMenu);
  shell.addEventListener("click",e=>{const b=e.target.closest("[data-ref-page]");if(b){workspaceMenu.classList.remove("is-open");workspaceToggle?.setAttribute("aria-expanded","false");window.location.href=b.dataset.refPage==="overview"?location.pathname:"?page="+encodeURIComponent(b.dataset.refPage);}});
  shell.querySelector("#refRefresh").addEventListener("click",()=>connect());
  shell.querySelector("#refLang").addEventListener("click",()=>{setLanguage();});
