@@ -725,7 +725,7 @@ function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="
 function dbQuery(sql){try{if(!state.db)return [];let r=state.db.exec(sql);if(!r.length)return [];return r[0].values.map(row=>Object.fromEntries(r[0].columns.map((c,i)=>[c,row[i]])))}catch(e){return []}}
 function fileText(path){let x=state.contents[path];return typeof x==="string"?x:x===undefined?"":JSON.stringify(x,null,2)}
 function parseCSV(text){const lines=text.trim().split(/\r?\n/);if(lines.length<2)return [];const parse=line=>{let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===","&&!q){out.push(cur);cur=""}else cur+=c}out.push(cur);return out};const headers=parse(lines[0]).map((h,i)=>h.trim()||(i===0?"inst":"column_"+i));return lines.slice(1).filter(Boolean).map(line=>{const vals=parse(line),o={};headers.forEach((h,i)=>o[h]=vals[i]??"");return o})}
-let 
+let currentLang="fr";
 /* Card-first navigation: use the existing page registry and handlers. */
 (function initCardFirstNavigation(){
  const nav=document.getElementById("dashboardNav");
