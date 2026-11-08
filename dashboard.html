@@ -802,7 +802,7 @@ let currentLang="fr";
    card.querySelector(".page-card-icon").textContent=icon;
    card.querySelector(".page-card-copy b").textContent=label;
    card.querySelector(".page-card-copy small").textContent=descriptions[key]||"Ouvrir les détails";
-   card.addEventListener("click",()=>{showDashboardPage(key);window.scrollTo({top:0,behavior:"smooth"});});
+   card.addEventListener("click",()=>{window.location.href="?page="+encodeURIComponent(key);});
    grid.appendChild(card);
   });
   section.appendChild(grid);root.appendChild(section);
@@ -814,7 +814,7 @@ let currentLang="fr";
   const card=document.createElement("button");card.type="button";card.className="page-card";card.dataset.cardPage=item[0];
   card.innerHTML="<span class='page-card-icon'></span><span class='page-card-copy'><b></b><small></small></span><span class='page-card-arrow'>›</span>";
   card.querySelector(".page-card-icon").textContent=item[1];card.querySelector(".page-card-copy b").textContent=item[2];card.querySelector(".page-card-copy small").textContent=item[3];
-  card.addEventListener("click",()=>{showDashboardPage(item[0]);window.scrollTo({top:0,behavior:"instant"});});coinGrid.appendChild(card);
+  card.addEventListener("click",()=>{window.location.href="?page="+encodeURIComponent(item[0]);});coinGrid.appendChild(card);
  });
  coinSection.appendChild(coinGrid);root.appendChild(coinSection);
  const oldLauncher=overview.querySelector(".overview-launcher");
@@ -822,10 +822,10 @@ let currentLang="fr";
  const hero=overview.querySelector(".executive-hero");
  if(hero)hero.insertAdjacentElement("afterend",root);else overview.prepend(root);
  const back=document.createElement("div");back.className="page-back-row";back.innerHTML='<button type="button" class="page-back"><span aria-hidden="true">←</span> Accueil</button><span class="page-back-title">Workspace</span>';
- back.querySelector("button").addEventListener("click",()=>{showDashboardPage("overview");window.scrollTo({top:0,behavior:"smooth"});});
+ back.querySelector("button").addEventListener("click",()=>{window.location.href=location.pathname;});
  document.querySelectorAll("main>section[id^=page-]:not(#page-overview)").forEach(page=>{
   page.insertBefore(back.cloneNode(true),page.firstChild);
-  page.querySelector(".page-back").addEventListener("click",()=>{showDashboardPage("overview");window.scrollTo({top:0,behavior:"smooth"});});
+  page.querySelector(".page-back").addEventListener("click",()=>{window.location.href=location.pathname;});
  });
 })();
 
@@ -1773,7 +1773,7 @@ document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.targe
 document.querySelector("main").addEventListener("click",e=>{const shortcut=e.target.closest("[data-open-page]");if(shortcut){showDashboardPage(shortcut.dataset.openPage);window.scrollTo({top:0,behavior:"smooth"});}});
 document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
 document.getElementById("navScrim")?.addEventListener("click",()=>{document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
-window.addEventListener("popstate",()=>{showDashboardPage(location.hash.slice(1)||"overview",false);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
+window.addEventListener("popstate",()=>{const requestedPage=new URLSearchParams(location.search).get("page")||location.hash.slice(1)||"overview";showDashboardPage(requestedPage,false);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");});
 currentLang="fr";
 let dashboardBooted=false;
 function bootDashboard(){
@@ -1829,7 +1829,7 @@ setLanguage();
   <button data-ref-page="systemLogs"><span>☰</span>Plus</button>
  </nav>`;
  overview.prepend(shell);
- shell.addEventListener("click",e=>{const b=e.target.closest("[data-ref-page]");if(b){showDashboardPage(b.dataset.refPage);window.scrollTo({top:0,behavior:"smooth"});shell.querySelectorAll(".reference-bottom-nav button").forEach(x=>x.classList.toggle("active",x.dataset.refPage===b.dataset.refPage));}});
+ shell.addEventListener("click",e=>{const b=e.target.closest("[data-ref-page]");if(b){window.location.href=b.dataset.refPage==="overview"?location.pathname:"?page="+encodeURIComponent(b.dataset.refPage);}});
  shell.querySelector("#refRefresh").addEventListener("click",()=>connect());
  shell.querySelector("#refLang").addEventListener("click",()=>{setLanguage();});
  shell.querySelectorAll("[data-range]").forEach(b=>b.addEventListener("click",()=>{shell.querySelectorAll("[data-range]").forEach(x=>x.classList.toggle("active",x===b));}));
