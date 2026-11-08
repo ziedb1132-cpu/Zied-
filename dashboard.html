@@ -787,7 +787,7 @@ let currentLang="fr";
  strategyMonitor:"Suivi des stratégies",solana:"Espace Solana",xrp:"Espace XRP",okb:"Espace OKB",bnb:"Espace BNB",systemLogs:"Événements du système"
  };
  groups.forEach(group=>{
-  const buttons=[...group.querySelectorAll("button[data-tab]")];
+  const buttons=[...group.querySelectorAll("button[data-tab]")].filter(button=>!["solana","xrp","okb","bnb"].includes(button.dataset.tab));
   if(!buttons.length)return;
   const section=document.createElement("section");section.className="card-navigation-group";
   const caption=group.querySelector(".nav-caption");
