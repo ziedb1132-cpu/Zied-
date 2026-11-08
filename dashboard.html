@@ -530,7 +530,8 @@ header{padding-left:278px}
   <button type="button" class="overview-shortcut" data-open-page="systemLogs"><span class="shortcut-icon">≡</span><span><b>Système</b><small>Logs et diagnostic</small></span><span class="shortcut-arrow">›</span></button>
  </div>
 </div>
-<details class="overview-details">
+<div id="metrics" class="grid overview-metrics"></div>
+ <details class="overview-details">
  <summary>Graphiques et informations complémentaires <span>Ouvrir les détails</span></summary>
  <div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2><span id="chartReturnMeta" class="muted">En attente de données</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats des signaux</h2><span class="muted">Parmi les signaux suivis et clôturés</span></div><div id="outcomeChart" class="chartbox"></div></div></div>
  <div class="chartgrid analytics-charts"><div class="card"><div class="charthead"><h2>Progression de validation IA</h2><span class="muted">Démarrage après 10 signaux clôturés</span></div><div id="learningProgressChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Performance par motif de clôture</h2><span class="muted">Rendement moyen observé</span></div><div id="exitPerformanceChart" class="chartbox"></div></div></div>
