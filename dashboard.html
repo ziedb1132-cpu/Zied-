@@ -1828,6 +1828,35 @@ setLanguage();
   <button data-ref-page="closedTrades"><span>▤</span>Historique</button>
   <button data-ref-page="systemLogs"><span>☰</span>Plus</button>
  </nav>`;
+
+ const allNav=document.getElementById("dashboardNav");
+ const navGrid=shell.querySelector(".reference-nav-grid");
+ if(allNav&&navGrid){
+  allNav.querySelectorAll("button[data-tab]").forEach(source=>{
+   const key=source.dataset.tab;
+   if(navGrid.querySelector('[data-ref-page="'+key+'"]'))return;
+   const label=source.querySelector("span")?.textContent?.trim()||key;
+   const icon=source.querySelector("i")?.textContent?.trim()||"◈";
+   const card=document.createElement("button");card.type="button";card.className="reference-nav-card";card.dataset.refPage=key;
+   const ico=document.createElement("span");ico.className="reference-nav-icon";ico.textContent=icon;
+   const copy=document.createElement("span");copy.className="reference-nav-copy";
+   const title=document.createElement("b");title.textContent=label;
+   const desc=document.createElement("small");desc.textContent=({
+    overview:"Vue générale et indicateurs",portfolio:"Simulation locale",signals:"Positions actuellement ouvertes",
+    closedTrades:"Historique et résultats",aiIntelligence:"Modèle et mémoire IA",featureAnalysis:"Qualité et analyse des variables",
+    marketRegime:"Régimes et conditions du marché",exitIntelligence:"Gestion et analyse des sorties",
+    modelHealth:"Validation et robustesse",learningHistory:"Progression de l’apprentissage",
+    evolutionLab:"Mutations et générations",backtestValidation:"Tests et validation",
+    strategyLabZ:"Recherche de stratégies",strategyMonitor:"Suivi des stratégies",
+    solana:"Analyse SOL/USDT",xrp:"Analyse XRP/USDT",okb:"Analyse OKB/USDT",bnb:"Analyse BNB/USDT",
+    systemLogs:"Journaux et diagnostic"
+   })[key]||"Ouvrir la rubrique";
+   const arrow=document.createElement("span");arrow.className="reference-nav-arrow";arrow.textContent="➜";
+   copy.append(title,desc);card.append(ico,copy,arrow);navGrid.appendChild(card);
+  });
+ }
+ const extraCards=document.getElementById("cardNavigation");
+ if(extraCards)extraCards.remove();
  overview.prepend(shell);
  shell.addEventListener("click",e=>{const b=e.target.closest("[data-ref-page]");if(b){window.location.href=b.dataset.refPage==="overview"?location.pathname:"?page="+encodeURIComponent(b.dataset.refPage);}});
  shell.querySelector("#refRefresh").addEventListener("click",()=>connect());
