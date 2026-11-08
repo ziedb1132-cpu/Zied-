@@ -518,6 +518,58 @@ button:focus-visible,.overview-shortcut:focus-visible{outline:3px solid rgba(53,
 @media(prefers-reduced-motion:reduce){.card,.overview-shortcut,.page-nav button{transition:none!important}}
 </style>
 
+
+<style id="card-first-clean-light-layout">
+:root{--bg:#f5f7fb;--panel:#fff;--line:#e7ecf3;--txt:#1c2b43;--mut:#7b8799;--blue:#3569c8}
+body{background:#f5f7fb!important;color:#1c2b43!important}
+header{position:sticky!important;top:0!important;height:auto!important;padding:15px 22px!important;background:rgba(255,255,255,.94)!important;border-bottom:1px solid #e8edf4!important;box-shadow:0 3px 18px rgba(30,50,80,.05)!important;backdrop-filter:blur(14px)!important}
+.brand h1{color:#1c2b43!important}.brand .muted{color:#7b8799!important}.logo{background:linear-gradient(145deg,#5b8be0,#3569c8)!important}
+.status{background:#f6f8fc!important;color:#53647b!important;border:1px solid #e6ebf3!important}
+main{margin:0 auto!important;max-width:1440px!important;padding:26px clamp(14px,3vw,38px) 48px!important}
+#dashboardNav{display:none!important}
+#navToggle,#navScrim{display:none!important}
+.executive-hero{background:linear-gradient(115deg,#fff 0%,#f4f8ff 100%)!important;border:1px solid #e5ecf6!important;border-radius:24px!important;box-shadow:0 10px 30px rgba(31,55,91,.045)!important;color:#1c2b43!important}
+.executive-hero h2,.executive-hero p,.executive-hero .eyebrow,.executive-hero .hero-cycle,.executive-hero .hero-mini{color:inherit!important}
+.executive-hero p{color:#728099!important}.hero-chip{background:#edf3fc!important;color:#47638f!important;border:1px solid #e1eaf7!important}
+.hero-cycle,.hero-mini>div{background:#fff!important;border:1px solid #e7edf5!important;border-radius:14px!important}
+.overview-launcher{display:none!important}
+#cardNavigation{margin:22px 0 10px}
+.card-navigation-heading{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:0 2px 14px}
+.card-navigation-heading h2{margin:0;color:#1d304d;font-size:19px;letter-spacing:-.3px}
+.card-navigation-heading p{margin:4px 0 0;color:#8190a4;font-size:12px}
+.card-navigation-group{margin:19px 0 0}
+.card-navigation-group h3{margin:0 0 10px;color:#8b98aa;font-size:10px;font-weight:800;letter-spacing:1.25px}
+.card-navigation-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
+.page-card{display:flex;align-items:center;gap:13px;min-width:0;min-height:100px;padding:16px;text-align:left;white-space:normal;background:#fff;border:1px solid #e7ecf3;border-radius:17px;box-shadow:0 5px 17px rgba(30,53,87,.035);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.page-card:hover{transform:translateY(-3px);border-color:#cbdaf1;background:#fff;box-shadow:0 12px 25px rgba(39,75,130,.09)}
+.page-card-icon{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:13px;background:#eff4fc;color:#3569c8;font-size:20px}
+.page-card-copy{display:grid;gap:4px;min-width:0}
+.page-card-copy b{font-size:12px;color:#293d5b}
+.page-card-copy small{font-size:10px;color:#8a96a8;line-height:1.4}
+.page-card-arrow{margin-left:auto;color:#9aa8ba;font-size:21px}
+.page-back-row{display:flex;align-items:center;gap:12px;margin:0 0 17px}
+.page-back{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid #e4eaf2;border-radius:12px;padding:10px 14px;color:#355f9f;box-shadow:0 3px 10px rgba(30,53,87,.035)}
+.page-back:hover{background:#f1f6ff;border-color:#cbdaf1}
+.page-back-title{font-size:12px;color:#8390a2}
+main>section:not(#page-overview){animation:pageEnter .22s ease both}
+@keyframes pageEnter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+.card,.eval-block,.tablewrap{border-color:#e7ecf3!important;box-shadow:0 5px 18px rgba(30,53,87,.035)!important}
+button:focus-visible{outline:3px solid rgba(53,105,200,.22)!important;outline-offset:2px!important}
+@media(max-width:1000px){.card-navigation-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){
+ header{padding:12px 14px!important}.brand h1{font-size:16px!important}.logo{width:38px!important;height:38px!important}
+ main{padding:15px 12px 35px!important}
+ .card-navigation-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .page-card{min-height:84px;padding:11px;gap:9px;border-radius:14px}
+ .page-card-icon{flex-basis:34px;height:34px;border-radius:10px;font-size:17px}
+ .page-card-copy b{font-size:11px}.page-card-copy small{font-size:9px}
+ .card-navigation-heading h2{font-size:17px}
+ .executive-hero{border-radius:18px!important}
+}
+@media(max-width:370px){.card-navigation-grid{grid-template-columns:1fr}.page-card{min-height:72px}}
+@media(prefers-reduced-motion:reduce){.page-card,main>section:not(#page-overview){animation:none!important;transition:none!important}}
+</style>
+
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
@@ -673,7 +725,57 @@ function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="
 function dbQuery(sql){try{if(!state.db)return [];let r=state.db.exec(sql);if(!r.length)return [];return r[0].values.map(row=>Object.fromEntries(r[0].columns.map((c,i)=>[c,row[i]])))}catch(e){return []}}
 function fileText(path){let x=state.contents[path];return typeof x==="string"?x:x===undefined?"":JSON.stringify(x,null,2)}
 function parseCSV(text){const lines=text.trim().split(/\r?\n/);if(lines.length<2)return [];const parse=line=>{let out=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===","&&!q){out.push(cur);cur=""}else cur+=c}out.push(cur);return out};const headers=parse(lines[0]).map((h,i)=>h.trim()||(i===0?"inst":"column_"+i));return lines.slice(1).filter(Boolean).map(line=>{const vals=parse(line),o={};headers.forEach((h,i)=>o[h]=vals[i]??"");return o})}
-let currentLang="fr";
+let 
+/* Card-first navigation: use the existing page registry and handlers. */
+(function initCardFirstNavigation(){
+ const nav=document.getElementById("dashboardNav");
+ const overview=document.getElementById("page-overview");
+ if(!nav||!overview||document.getElementById("cardNavigation"))return;
+ const groups=[...nav.querySelectorAll(".nav-group")];
+ const root=document.createElement("div");root.id="cardNavigation";
+ root.innerHTML='<div class="card-navigation-heading"><div><h2>Explore workspace</h2><p>Choisissez une carte pour ouvrir son espace de travail.</p></div></div>';
+ const descriptions={
+ overview:"Vue générale et indicateurs",portfolio:"Simulation locale",signals:"Positions actuellement ouvertes",
+ closedTrades:"Historique et résultats",aiIntelligence:"Mesures et mémoire IA",featureAnalysis:"Analyse des variables",
+ marketRegime:"Conditions du marché",exitIntelligence:"Gestion des sorties",modelHealth:"Validation et robustesse",
+ learningHistory:"Progression de l’apprentissage",evolutionLab:"Mutations et générations",
+ backtestValidation:"Tests et validation",strategyLabZ:"Recherche de stratégies",
+ strategyMonitor:"Suivi des stratégies",solana:"Espace Solana",xrp:"Espace XRP",okb:"Espace OKB",bnb:"Espace BNB",systemLogs:"Événements du système"
+ };
+ groups.forEach(group=>{
+  const buttons=[...group.querySelectorAll("button[data-tab]")];
+  if(!buttons.length)return;
+  const section=document.createElement("section");section.className="card-navigation-group";
+  const caption=group.querySelector(".nav-caption");
+  const heading=document.createElement("h3");heading.textContent=caption?caption.textContent.trim():"WORKSPACE";section.appendChild(heading);
+  const grid=document.createElement("div");grid.className="card-navigation-grid";
+  buttons.forEach(button=>{
+   const key=button.dataset.tab;
+   const card=document.createElement("button");card.type="button";card.className="page-card";card.dataset.cardPage=key;
+   const icon=button.querySelector("i")?.textContent?.trim()||"◈";
+   const label=button.querySelector("span")?.textContent?.trim()||key;
+   card.innerHTML='<span class="page-card-icon"></span><span class="page-card-copy"><b></b><small></small></span><span class="page-card-arrow">›</span>';
+   card.querySelector(".page-card-icon").textContent=icon;
+   card.querySelector(".page-card-copy b").textContent=label;
+   card.querySelector(".page-card-copy small").textContent=descriptions[key]||"Ouvrir les détails";
+   card.addEventListener("click",()=>{showDashboardPage(key);window.scrollTo({top:0,behavior:"smooth"});});
+   grid.appendChild(card);
+  });
+  section.appendChild(grid);root.appendChild(section);
+ });
+ const oldLauncher=overview.querySelector(".overview-launcher");
+ if(oldLauncher)oldLauncher.remove();
+ const hero=overview.querySelector(".executive-hero");
+ if(hero)hero.insertAdjacentElement("afterend",root);else overview.prepend(root);
+ const back=document.createElement("div");back.className="page-back-row";back.innerHTML='<button type="button" class="page-back"><span aria-hidden="true">←</span> Accueil</button><span class="page-back-title">Workspace</span>';
+ back.querySelector("button").addEventListener("click",()=>showDashboardPage("overview"));
+ document.querySelectorAll("main>section[id^=page-]:not(#page-overview)").forEach(page=>{
+  page.insertBefore(back.cloneNode(true),page.firstChild);
+  page.querySelector(".page-back").addEventListener("click",()=>showDashboardPage("overview"));
+ });
+})();
+
+currentLang="fr";
 function setLanguage(){document.documentElement.lang="fr";document.documentElement.dir="ltr";}
 function renderCharts(){
  const closed=state.tracked.filter(r=>r.status==="CLOSED"&&Number.isFinite(Number(r.ret))).sort((a,b)=>Number(a.closed_ts||a.opened_ts||0)-Number(b.closed_ts||b.opened_ts||0));
