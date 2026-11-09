@@ -69,7 +69,7 @@ CFG = dict(
     MAX_OPEN=5, POS_FRAC=0.15, RISK_PER_TRADE=0.005, MAX_PORTFOLIO_RISK=0.02,
     MAX_OPEN_CORR=0.85,                 # reject a new paper entry if abs(correlation) to an open coin is higher
     # self-learning
-    RETRAIN_SIGNALS=500,               # outcomes required between scheduled retraining checks
+    RETRAIN_SIGNALS=10,                # retrain after each 10 new labelled outcomes
     DIR="zied_data",
 )
 os.makedirs(CFG["DIR"], exist_ok=True)
@@ -1727,12 +1727,13 @@ def stats_msg(paper, prices=None):
     worst_coins = " | ".join(
         f"{coin} ({len(vals)} خسائر، متوسط {np.mean(vals)*100:+.2f}%)"
         for coin, vals in sorted(losing_coins.items(), key=lambda kv: (-len(kv[1]), np.mean(kv[1])))[:5])
-    gate_text = ("جاهز للتعلم" if closed_counts["wins"] >= 500 and closed_counts["losses"] >= 500
-                 else "ينتظر اكتمال 500 رابحة و500 خاسرة")
+    gate_text = (f"بيانات النموذج كافية ({closed_counts['total']}/{MIN_CLOSED_MODEL_SAMPLES})"
+                 if closed_counts["total"] >= MIN_CLOSED_MODEL_SAMPLES
+                 else f"يتعلم من الذاكرة المتاحة؛ النموذج الإشرافي ينتظر {MIN_CLOSED_MODEL_SAMPLES} عينة موثقة")
     return (f"📊 تقييم سجل الإشارات الورقية\n"
             f"سجل التعلم: {total} | مكتملة التقييم: {labelled} | تنتظر: {pending}\n"
             f"مفتوحة: {opened} | مغلقة: {tracked} | رابحة: {tracked_wins}\n"
-            f"بوابة AI: {gate_text} | رابحة مغلقة {closed_counts['wins']}/500 | خاسرة مغلقة {closed_counts['losses']}/500\n"
+            f"حالة التعلم: {gate_text} | عينات مغلقة: {closed_counts['total']} (رابحة {closed_counts['wins']} / خاسرة {closed_counts['losses']})\n"
             f"رابحة حسب بيانات التدريب: {wins} | خاسرة: {n-wins} | نسبة النجاح: {(wins/n*100 if n else 0):.1f}%\n"
             f"متوسط العائد النظري لسجل التعلم: {avg:+.2f}%\n"
             f"\n📈 الأداء المحقق للإشارات المغلقة (صافي تقديري بعد التكلفة):\n"
@@ -1798,17 +1799,27 @@ def poll_commands(paper, brain, timeout=0):
 # =====================================================================
 # PIPELINE
 # =====================================================================
+MIN_CLOSED_MODEL_SAMPLES = 600
+MIN_CLOSED_CLASS_SAMPLES = 10
+LEARNING_REFRESH_SAMPLES = 10
+
+
 def learning_gate_status(paper):
+    """Use all verified closed outcomes; no arbitrary 500-win/500-loss quota."""
     counts = paper.closed_outcome_counts()
-    ready = counts["wins"] >= 500 and counts["losses"] >= 500
-    return dict(**counts, ready=ready)
+    ready = (counts["total"] >= MIN_CLOSED_MODEL_SAMPLES
+             and counts["wins"] >= MIN_CLOSED_CLASS_SAMPLES
+             and counts["losses"] >= MIN_CLOSED_CLASS_SAMPLES)
+    return dict(**counts, ready=ready,
+                min_samples=MIN_CLOSED_MODEL_SAMPLES,
+                min_per_class=MIN_CLOSED_CLASS_SAMPLES)
 
 
 def enforce_closed_outcome_gate(brain, paper):
-    """Use only models explicitly trained from closed tracked-signal outcomes."""
+    """Keep validated closed-signal models; never erase memory for a sample-count shortfall."""
     status = learning_gate_status(paper)
     legacy_model = brain.ready and brain.info.get("learning_source") != "closed_tracked_signals_v1"
-    if not status["ready"] or legacy_model:
+    if legacy_model:
         brain.nn = brain.gbm = None
         brain.mu = brain.sd = None
         brain.thrs, brain.mode, brain.auc, brain.info = {}, None, None, {}
@@ -1819,24 +1830,14 @@ def enforce_closed_outcome_gate(brain, paper):
                     os.remove(model_path)
             except OSError as exc:
                 log.warning("could not remove non-compliant model artifact %s: %s", model_path, exc)
-    if not status["ready"]:
-        # Prevent an old pattern file from influencing ranking before the closed-outcome gate.
-        pattern_path = os.path.join(CFG["DIR"], "winning_patterns.json")
-        try:
-            if os.path.exists(pattern_path):
-                os.remove(pattern_path)
-        except OSError as exc:
-            log.warning("could not remove pre-gate pattern memory: %s", exc)
+    # Pattern/strategy memory is retained and may inform conservative ranking before
+    # the supervised model has enough balanced, verified outcomes.
     return status
 
 
 def collect_training_data(paper, universe=None, refresh=False, with_trades=False):
-    # The AI learns only from completed tracked signals, never raw historical candles.
+    # Learn only from observed, completed tracked signals; never invent missing outcomes.
     status = learning_gate_status(paper)
-    if not status["ready"]:
-        raise RuntimeError(
-            f"learning gate not reached: closed winners={status['wins']}/500, "
-            f"closed losers={status['losses']}/500; training is disabled")
     ds = paper.closed_signal_dataset()
     valid = (feature_coverage_mask(ds["X"], 0.80)
              & np.isfinite(ds["y"])
@@ -1844,18 +1845,22 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=False
              & np.isfinite(ds["ts"])
              & np.isfinite(ds["ret"]))
     ds = {k: v[valid] for k, v in ds.items()}
-    log.info("closed-signal-only training: winners=%d/500 losers=%d/500 samples=%d",
-             status["wins"], status["losses"], len(ds["y"]))
-    if len(ds["y"]) < 1000:
-        raise RuntimeError("closed-signal training requires at least 1000 completed outcomes")
+    wins = int(np.sum(ds["y"] == 1))
+    losses = int(np.sum(ds["y"] == 0))
+    log.info("verified closed-signal memory: samples=%d wins=%d losses=%d (minimum total=%d, per class=%d)",
+             len(ds["y"]), wins, losses, MIN_CLOSED_MODEL_SAMPLES, MIN_CLOSED_CLASS_SAMPLES)
+    if len(ds["y"]) < MIN_CLOSED_MODEL_SAMPLES:
+        raise RuntimeError(f"waiting for {MIN_CLOSED_MODEL_SAMPLES} verified closed outcomes; have {len(ds['y'])}")
+    if min(wins, losses) < MIN_CLOSED_CLASS_SAMPLES:
+        raise RuntimeError(f"insufficient real examples in one outcome class; wins={wins}, losses={losses}, minimum={MIN_CLOSED_CLASS_SAMPLES}")
     return ds
 
 def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     status = learning_gate_status(paper)
     if not status["ready"]:
-        log.info("AI learning paused until 500 closed winners and 500 closed losers: %d/500 wins, %d/500 losses",
-                 status["wins"], status["losses"])
-        return {"accepted": False, "skipped": True, "reason": "closed_outcome_gate",
+        log.info("AI supervised model waiting for verified data: samples=%d/%d wins=%d losses=%d (memory learning remains active)",
+                 status["total"], MIN_CLOSED_MODEL_SAMPLES, status["wins"], status["losses"])
+        return {"accepted": False, "skipped": True, "reason": "insufficient_verified_closed_data",
                 "wins": status["wins"], "losses": status["losses"], "n": status["total"]}
     ds = collect_training_data(paper, universe, refresh)
     info = brain.fit(ds["X"], ds["y"], ds["ts"], ds["ret"])
@@ -1890,7 +1895,8 @@ def need_retrain(paper):
     if not status["ready"]:
         return False
     previous = int(paper._get("last_learning_attempt_closed_count") or 0)
-    return status["total"] > previous
+    return (previous == 0 or
+            status["total"] - previous >= LEARNING_REFRESH_SAMPLES)
 
 def _hourly_returns(inst):
     d = get_candles(inst, "1H", 100)
@@ -2199,8 +2205,8 @@ def once():
         finally:
             paper._set("last_learning_attempt_closed_count", status["total"])
     elif not status["ready"]:
-        log.info("AI learning gate: closed wins=%d/500 losses=%d/500; model disabled",
-                 status["wins"], status["losses"])
+        log.info("AI memory learning active; supervised model waiting for verified samples=%d/%d (wins=%d losses=%d)",
+                 status["total"], MIN_CLOSED_MODEL_SAMPLES, status["wins"], status["losses"])
     cycle = int(paper._get("cycle") or 0)
     scan(brain, paper, uni, cycle)
     # Keep the full analysis pipeline in this same cycle: scan and walk-forward backtest.
@@ -2232,7 +2238,7 @@ def run():
     if uni.empty:
         raise RuntimeError("OKX returned no tradable pairs (OKX unreachable?)")
     threading.Thread(target=telegram_loop, args=(paper, brain, stop), daemon=True).start()
-    tg("🚀 Zied Quant بدأ العمل: التعلم محصور في الإشارات المغلقة، ويبدأ بعد 500 رابحة و500 خاسرة.")
+    tg("🚀 Zied Quant بدأ العمل: يستفيد من الذاكرة والنتائج المغلقة المتاحة؛ لا تُختلق بيانات ناقصة، ويُعتمد النموذج بعد تحقق عينة كافية.")
     cycle = 0
     try:
         while True:
@@ -2250,8 +2256,8 @@ def run():
                     finally:
                         paper._set("last_learning_attempt_closed_count", status["total"])
                 elif not status["ready"]:
-                    log.info("AI learning gate: wins=%d/500 losses=%d/500; model disabled",
-                             status["wins"], status["losses"])
+                    log.info("AI memory learning active; supervised model waiting: samples=%d/%d wins=%d losses=%d",
+                             status["total"], MIN_CLOSED_MODEL_SAMPLES, status["wins"], status["losses"])
                 scan(brain, paper, None, cycle)
                 run_cycle_backtest(uni, paper)
                 cycle += 1
