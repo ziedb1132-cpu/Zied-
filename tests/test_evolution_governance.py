@@ -29,6 +29,25 @@ class EvolutionGovernanceTests(unittest.TestCase):
         self.assertAlmostEqual(report["break_even_win_rate"], 0.5714285714)
         self.assertEqual(report["status"], "ok")
 
+    def test_validation_gate_rejects_weak_candidate_even_if_holdout_is_positive(self):
+        from evolution_governance import _candidate_from_discovery
+        weak = self._candidate()
+        weak["validation"]["trades"] = 12
+        weak["validation"]["avg_net"] = -0.001
+        weak["validation"]["profit_factor"] = 0.9
+        result = _candidate_from_discovery({
+            "latest_experiments": [weak],
+        })
+        self.assertIsNone(result)
+
+    def test_validation_gate_accepts_only_sufficient_positive_net_evidence(self):
+        from evolution_governance import _candidate_from_discovery
+        result = _candidate_from_discovery({
+            "latest_experiments": [self._candidate()],
+        })
+        self.assertIsNotNone(result)
+        self.assertTrue(result["validation_gate"]["passed"])
+
     def test_holdout_rejects_non_positive_expectancy(self):
         audit = _holdout_quality(self._candidate(holdout_avg=-0.001))
         self.assertFalse(audit["passed"])
