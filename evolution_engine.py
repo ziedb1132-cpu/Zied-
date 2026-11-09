@@ -47,6 +47,17 @@ def chronological_train_tune_holdout_masks(ts, block, embargo):
     return train_mask, tune_mask, test_mask
 
 
+def fit_partition_requirements(n):
+    """Minimum evidence and chronological partition sizes for supervised retraining."""
+    n = int(n)
+    if n < 600:
+        raise ValueError(f"not enough closed-signal samples for train/tune/holdout ({n}; need 600)")
+    # Keep meaningful later tuning and untouched holdout blocks without imposing
+    # the obsolete 1,000-row floor. Embargo is still applied between all blocks.
+    block = max(int(n * 0.15), 100)
+    return block, 360, 50, 50
+
+
 def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     """Train on past data; tune on a later block; promote only after a holdout passes."""
     zq = __import__("zied_quant")
@@ -57,13 +68,16 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     ts = np.asarray(ts, dtype=np.float64)[order]
     ret = None if ret is None else np.asarray(ret, dtype=np.float64)[order]
     n = len(X)
-    if n < 1000:
-        raise ValueError(f"not enough closed-signal samples for train/tune/holdout ({n}; need 1000)")
-    block = max(int(n * 0.15), 200)
+    block, min_train, min_tune, min_test = fit_partition_requirements(n)
     embargo = zq.CFG["BARRIER_H"] * 3600
     train_mask, tune_mask, test_mask = chronological_train_tune_holdout_masks(ts, block, embargo)
-    if train_mask.sum() < 400 or tune_mask.sum() < 100 or test_mask.sum() < 100:
-        raise ValueError("train/tune/holdout block too small after time embargo")
+    actual = (int(train_mask.sum()), int(tune_mask.sum()), int(test_mask.sum()))
+    required = (min_train, min_tune, min_test)
+    if any(a < r for a, r in zip(actual, required)):
+        raise ValueError(
+            f"train/tune/holdout block too small after 24h embargo: "
+            f"got {actual}, need at least {required}; verified samples={n}"
+        )
     Xraw, ytr = X[train_mask], y[train_mask]
     mu, sd = Xraw.mean(0), Xraw.std(0) + 1e-8
     norm = zq.Brain.__new__(zq.Brain)
@@ -73,8 +87,11 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     rtune = np.full(int(tune_mask.sum()), np.nan) if ret is None else ret[tune_mask]
     rtest = np.full(int(test_mask.sum()), np.nan) if ret is None else ret[test_mask]
     split = int(len(Xtr) * 0.85)
-    if split < 300 or len(Xtr) - split < 50:
-        raise ValueError("training split too small for early stopping")
+    if split < 300 or len(Xtr) - split < 30:
+        raise ValueError(
+            f"training split too small for early stopping: fit={split}, "
+            f"early_stop={len(Xtr) - split}; need at least 300/30"
+        )
     models, tune_p, test_p = {}, {}, {}
     gbm = zq.GBM()
     if gbm.fit(Xtr[:split], ytr[:split], Xtr[split:], ytr[split:]):
