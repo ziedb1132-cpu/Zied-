@@ -42,6 +42,8 @@ class AdvancedIntelligenceTests(unittest.TestCase):
         )
         self.assertEqual(report["status"], "ok")
         self.assertEqual(report["feature_count"], 3)
+        self.assertAlmostEqual(report["finite_feature_fraction"], 0.9333333333, places=6)
+        self.assertAlmostEqual(report["features_per_sample"], 2.8, places=6)
         self.assertEqual(report["constant_feature_count"], 1)
         self.assertGreaterEqual(report["duplicate_feature_count"], 1)
         self.assertGreater(report["high_missing_feature_count"], 0)
