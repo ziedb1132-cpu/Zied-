@@ -48,14 +48,38 @@ def chronological_train_tune_holdout_masks(ts, block, embargo):
 
 
 def fit_partition_requirements(n):
-    """Minimum evidence and chronological partition sizes for supervised retraining."""
+    """Minimum evidence and starting chronological block size for retraining."""
     n = int(n)
     if n < 600:
         raise ValueError(f"not enough closed-signal samples for train/tune/holdout ({n}; need 600)")
-    # Keep meaningful later tuning and untouched holdout blocks without imposing
-    # the obsolete 1,000-row floor. Embargo is still applied between all blocks.
+    # Start with a 15% later block, then expand it dynamically if the 24h
+    # embargo leaves too few tuning rows. Never relax the embargo itself.
     block = max(int(n * 0.15), 100)
-    return block, 360, 50, 50
+    return block, 300, 50, 50
+
+
+def adaptive_chronological_partition(ts, initial_block, embargo,
+                                      min_train=300, min_tune=50, min_test=50):
+    """Expand later blocks until all post-embargo partitions are usable."""
+    n = len(ts)
+    best = None
+    max_block = max(int(initial_block), int(n * 0.35))
+    for block in range(int(initial_block), max_block + 1):
+        masks = chronological_train_tune_holdout_masks(ts, block, embargo)
+        actual = tuple(int(mask.sum()) for mask in masks)
+        best = (block, masks, actual)
+        # An 80/20 train/early-stop split must retain at least 240/40 rows.
+        fit_rows = int(actual[0] * 0.80)
+        early_rows = actual[0] - fit_rows
+        if (actual[0] >= min_train and actual[1] >= min_tune
+                and actual[2] >= min_test and fit_rows >= 240 and early_rows >= 40):
+            return block, masks, actual
+    actual = best[2] if best else (0, 0, 0)
+    raise ValueError(
+        f"train/tune/holdout block too small after 24h embargo: "
+        f"best={actual}, need at least ({min_train}, {min_tune}, {min_test}) "
+        f"with train fit/early-stop >=240/40; verified samples={n}"
+    )
 
 
 def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
@@ -70,14 +94,9 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     n = len(X)
     block, min_train, min_tune, min_test = fit_partition_requirements(n)
     embargo = zq.CFG["BARRIER_H"] * 3600
-    train_mask, tune_mask, test_mask = chronological_train_tune_holdout_masks(ts, block, embargo)
-    actual = (int(train_mask.sum()), int(tune_mask.sum()), int(test_mask.sum()))
-    required = (min_train, min_tune, min_test)
-    if any(a < r for a, r in zip(actual, required)):
-        raise ValueError(
-            f"train/tune/holdout block too small after 24h embargo: "
-            f"got {actual}, need at least {required}; verified samples={n}"
-        )
+    block, (train_mask, tune_mask, test_mask), actual = adaptive_chronological_partition(
+        ts, block, embargo, min_train, min_tune, min_test
+    )
     Xraw, ytr = X[train_mask], y[train_mask]
     mu, sd = Xraw.mean(0), Xraw.std(0) + 1e-8
     norm = zq.Brain.__new__(zq.Brain)
@@ -86,11 +105,11 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     ytune, ytest = y[tune_mask], y[test_mask]
     rtune = np.full(int(tune_mask.sum()), np.nan) if ret is None else ret[tune_mask]
     rtest = np.full(int(test_mask.sum()), np.nan) if ret is None else ret[test_mask]
-    split = int(len(Xtr) * 0.85)
-    if split < 300 or len(Xtr) - split < 30:
+    split = int(len(Xtr) * 0.80)
+    if split < 240 or len(Xtr) - split < 40:
         raise ValueError(
             f"training split too small for early stopping: fit={split}, "
-            f"early_stop={len(Xtr) - split}; need at least 300/30"
+            f"early_stop={len(Xtr) - split}; need at least 240/40"
         )
     models, tune_p, test_p = {}, {}, {}
     gbm = zq.GBM()
