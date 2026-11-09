@@ -527,7 +527,12 @@ def build_trainset(universe):
             M = aligned_matrix(fr, btc)
             b = fr[BASE]
             ret, hold = barrier_batch(b["c"].values, b["h"].values, b["l"].values, M["1H_atr_pct"].values)
-            D = M.assign(_ret=ret, _hold=hold).dropna()
+            D = M.assign(_ret=ret, _hold=hold)
+            values = D[FEATURE_COLS].to_numpy(dtype=np.float64)
+            valid = (np.isfinite(D["_ret"].to_numpy(dtype=np.float64))
+                     & np.isfinite(D["_hold"].to_numpy(dtype=np.float64))
+                     & feature_coverage_mask(values, 0.80))
+            D = D.loc[valid]
             if D.empty:
                 return None
             return dict(X=D[FEATURE_COLS].values.astype(np.float32), y=(D["_ret"] > 0).values.astype(np.float32),
@@ -702,7 +707,11 @@ class Brain:
         return self.thrs.get(self.mode, 0.5)
 
     def _norm(self, X):
-        return np.clip((np.asarray(X, dtype=np.float64) - self.mu) / self.sd, -5, 5).astype(np.float32)
+        values = np.asarray(X, dtype=np.float64)
+        # Missing inputs are replaced with the training-only mean (z-score zero).
+        # No future/validation data is used to estimate imputation values.
+        values = np.where(np.isfinite(values), values, np.asarray(self.mu, dtype=np.float64))
+        return np.clip((values - self.mu) / self.sd, -5, 5).astype(np.float32)
 
     def describe(self):
         if not self.ready:
@@ -823,8 +832,8 @@ class Brain:
         X = np.asarray(X, dtype=np.float32)
         if X.ndim != 2 or X.shape[1] != N_FEATURES:
             raise ValueError(f"AI input shape invalid: {X.shape}; expected (*, {N_FEATURES})")
-        if not np.isfinite(X).all():
-            raise ValueError("AI input contains NaN or infinite values")
+        if not feature_coverage_mask(X, 0.80).all():
+            raise ValueError("AI input has more than 20% missing features in at least one row")
         out = np.asarray(self.predict_all(X)[self.mode], dtype=np.float64).reshape(-1)
         if len(out) != len(X):
             raise ValueError(f"AI returned {len(out)} probabilities for {len(X)} rows")
@@ -838,10 +847,19 @@ class Brain:
     def fit(self, X, y, ts, ret=None, epochs=80, force=False):
         """Fit on older data, select model/threshold on a recent tune block, and quality-check
         on a later untouched gate block. Walk-forward may force-fit solely for evaluation."""
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y, dtype=np.float32)
+        ts = np.asarray(ts, dtype=np.float64)
+        ret = None if ret is None else np.asarray(ret, dtype=np.float64)
+        valid = feature_coverage_mask(X, 0.80) & np.isfinite(y) & np.isfinite(ts)
+        if ret is not None:
+            valid &= np.isfinite(ret)
+        X, y, ts = X[valid], y[valid], ts[valid]
+        if ret is not None:
+            ret = ret[valid]
         o = np.argsort(ts, kind="stable")
-        X = np.asarray(X, dtype=np.float64)[o]; y = np.asarray(y, dtype=np.float32)[o]
-        ts = np.asarray(ts, dtype=np.float64)[o]
-        ret = None if ret is None else np.asarray(ret, dtype=np.float64)[o]
+        X = X[o]; y = y[o]; ts = ts[o]
+        ret = None if ret is None else ret[o]
         n = len(X)
         if n < 600:
             raise ValueError(f"not enough samples ({n})")
@@ -868,7 +886,14 @@ class Brain:
         if inner_train_end < 400 or ntr - nf < 50:
             raise ValueError("training part too small after inner validation embargo")
         # Fit normalization only on the purged model-fit rows.
-        mu = X[:inner_train_end].mean(0); sd = X[:inner_train_end].std(0) + 1e-8
+        fit_values = X[:inner_train_end]
+        with np.errstate(invalid="ignore"):
+            mu = np.nanmean(fit_values, axis=0)
+            sd = np.nanstd(fit_values, axis=0)
+        # A feature absent throughout the fit block carries no evidence: neutralize
+        # its imputation/scale rather than letting NaN poison every model input.
+        mu = np.where(np.isfinite(mu), mu, 0.0)
+        sd = np.where(np.isfinite(sd) & (sd > 1e-8), sd, 1.0)
         tmp = Brain.__new__(Brain); tmp.mu, tmp.sd = mu, sd
         Xtr = tmp._norm(X[:ntr])
         Xs, Xg = tmp._norm(X[selection_start:gate_start]), tmp._norm(X[gate_start:])
@@ -998,6 +1023,14 @@ def locked(f):
 
 def impact(usdt, vol24):
     return CFG["IMPACT_K"] * math.sqrt(max(usdt, 0.0) / max(vol24 or 1e6, 1.0))
+
+def feature_coverage_mask(X, min_fraction=0.80):
+    """Keep rows with enough observed features; missing values are imputed from fit-only means."""
+    values = np.asarray(X, dtype=np.float64)
+    if values.ndim != 2 or values.shape[1] == 0:
+        return np.zeros(len(values) if values.ndim else 0, dtype=bool)
+    return np.isfinite(values).mean(axis=1) >= float(min_fraction)
+
 
 def _rows_to_ds(rows, label_key="label", ret_key="ret"):
     X, y, ts, ret, hold, coin = [], [], [], [], [], []
@@ -1783,7 +1816,7 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=False
             f"learning gate not reached: closed winners={status['wins']}/500, "
             f"closed losers={status['losses']}/500; training is disabled")
     ds = paper.closed_signal_dataset()
-    valid = (np.isfinite(ds["X"]).all(axis=1)
+    valid = (feature_coverage_mask(ds["X"], 0.80)
              & np.isfinite(ds["y"])
              & np.isin(ds["y"], [0, 1])
              & np.isfinite(ds["ts"])
