@@ -10,7 +10,7 @@ import time
 import numpy as np
 
 MIN_TRAIN = 50
-MIN_TEST = 20
+MIN_TEST = 30
 BASELINE_NAME = "current"
 # (name, SL multiplier adjustment, TP ATR, trailing activation ATR,
 #  trailing distance ATR, maximum holding in 5m bars)
