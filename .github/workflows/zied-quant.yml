@@ -53,23 +53,37 @@ jobs:
 
       - name: Restore durable state
         if: ${{ inputs.reset_state != true }}
+        id: restore_state
         shell: bash
         run: |
           set -euo pipefail
-          if git fetch origin state-data:refs/remotes/origin/state-data 2>/dev/null; then
-            if git ls-tree -r --name-only origin/state-data | grep -qx 'zied_data_store/manifest.json'; then
-              git checkout origin/state-data -- zied_data_store
+          if git ls-remote --exit-code --heads origin state-data >/dev/null 2>&1; then
+            git fetch --no-tags origin +refs/heads/state-data:refs/remotes/origin/state-data
+            if git ls-tree -r --name-only refs/remotes/origin/state-data | grep -qx 'zied_data_store/manifest.json'; then
+              git checkout refs/remotes/origin/state-data -- zied_data_store
+              rm -rf zied_data_restore
+              python state_chunks.py unpack zied_data_store zied_data_restore
+              python state_integrity.py zied_data_restore --require-db --require-tracked-data
               rm -rf zied_data
-              python state_chunks.py unpack zied_data_store zied_data
+              mv zied_data_restore zied_data
+              echo "source=durable_chunks" >> "$GITHUB_OUTPUT"
               echo "DURABLE_STATE=restored_from_chunks"
-            elif git ls-tree -r --name-only origin/state-data | grep -q '^zied_data/'; then
-              git checkout origin/state-data -- zied_data
+            elif git ls-tree -r --name-only refs/remotes/origin/state-data | grep -q '^zied_data/'; then
+              git checkout refs/remotes/origin/state-data -- zied_data
+              python state_integrity.py zied_data --require-db --require-tracked-data
+              echo "source=durable_legacy" >> "$GITHUB_OUTPUT"
               echo "DURABLE_STATE=restored_legacy"
             else
-              echo "DURABLE_STATE=branch_has_no_state"
+              echo "ERROR: state-data branch exists but contains no recognized durable state; refusing to start with empty memory." >&2
+              exit 1
             fi
+          elif [ -s zied_data/paper.db ]; then
+            python state_integrity.py zied_data --require-db --require-tracked-data
+            echo "source=cache" >> "$GITHUB_OUTPUT"
+            echo "DURABLE_STATE=validated_cache_fallback"
           else
-            echo "DURABLE_STATE=first_run_no_branch"
+            echo "source=first_run" >> "$GITHUB_OUTPUT"
+            echo "DURABLE_STATE=first_run_no_branch_or_cache"
           fi
 
       - name: Initialize clean state when reset requested
@@ -83,14 +97,18 @@ jobs:
 
       - name: Verify restored memory
         shell: bash
+        env:
+          STATE_SOURCE: ${{ steps.restore_state.outputs.source || 'reset' }}
         run: |
           set -euo pipefail
-          echo "=== Persistent state files ==="
-          if [ ! -d zied_data ]; then
-            echo "No durable state found yet; cache or first-run initialization will be used."
-            mkdir -p zied_data
-          fi
+          echo "=== Persistent state files (source: $STATE_SOURCE) ==="
+          mkdir -p zied_data
           find zied_data -maxdepth 1 -type f -printf '%f %s bytes\\n' | sort
+          if [ "$STATE_SOURCE" = "durable_chunks" ] || [ "$STATE_SOURCE" = "durable_legacy" ] || [ "$STATE_SOURCE" = "cache" ]; then
+            python state_integrity.py zied_data --require-db --require-tracked-data
+          else
+            python state_integrity.py zied_data
+          fi
           for f in paper.db model.pt gbm.pkl meta.json train.npz; do
             if [ -s "zied_data/$f" ]; then
               echo "FOUND: $f"
