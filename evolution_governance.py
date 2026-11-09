@@ -41,7 +41,7 @@ def _write(path, value):
 def performance_risk_summary(returns):
     """Describe realized payoff asymmetry without treating a small sample as proof."""
     values = []
-    for value in returns or []:
+    for value in ([] if returns is None else returns):
         number = _number(value)
         if number is not None:
             values.append(number)
