@@ -59,8 +59,12 @@ jobs:
           set -euo pipefail
           if git ls-remote --exit-code --heads origin state-data >/dev/null 2>&1; then
             git fetch --no-tags origin +refs/heads/state-data:refs/remotes/origin/state-data
-            if git ls-tree -r --name-only refs/remotes/origin/state-data | grep -qx 'zied_data_store/manifest.json'; then
-              git checkout refs/remotes/origin/state-data -- zied_data_store
+            STATE_REF=refs/remotes/origin/state-data
+            echo "STATE_DATA_COMMIT=$(git rev-parse "$STATE_REF")"
+            # Test the exact required blobs instead of parsing recursive ls-tree output.
+            if git cat-file -e "$STATE_REF:zied_data_store/manifest.json" 2>/dev/null; then
+              git checkout "$STATE_REF" -- zied_data_store
+              test -s zied_data_store/manifest.json
               rm -rf zied_data_restore
               python state_chunks.py unpack zied_data_store zied_data_restore
               python state_integrity.py zied_data_restore --require-db --require-tracked-data
@@ -68,13 +72,14 @@ jobs:
               mv zied_data_restore zied_data
               echo "source=durable_chunks" >> "$GITHUB_OUTPUT"
               echo "DURABLE_STATE=restored_from_chunks"
-            elif git ls-tree -r --name-only refs/remotes/origin/state-data | grep -q '^zied_data/'; then
-              git checkout refs/remotes/origin/state-data -- zied_data
+            elif git cat-file -e "$STATE_REF:zied_data/paper.db" 2>/dev/null; then
+              git checkout "$STATE_REF" -- zied_data
               python state_integrity.py zied_data --require-db --require-tracked-data
               echo "source=durable_legacy" >> "$GITHUB_OUTPUT"
               echo "DURABLE_STATE=restored_legacy"
             else
-              echo "ERROR: state-data branch exists but contains no recognized durable state; refusing to start with empty memory." >&2
+              echo "ERROR: state-data branch exists but required state blobs were not found; refusing to start with empty memory." >&2
+              git ls-tree --name-only "$STATE_REF" >&2 || true
               exit 1
             fi
           elif [ -s zied_data/paper.db ]; then
