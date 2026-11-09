@@ -11,6 +11,7 @@ from exit_evolution import (
     _base_sl,
     _ensure,
     _regime,
+    _policy_regime,
     _canonical_reason,
     _holdout_metrics,
     _holdout_passes,
@@ -26,6 +27,12 @@ class ExitEvolutionTests(unittest.TestCase):
         self.assertEqual(_regime(0.008), "LOW")
         self.assertEqual(_regime(0.018), "MID")
         self.assertEqual(_regime(0.035), "HIGH")
+
+    def test_exit_policy_regime_uses_market_direction_and_volatility(self):
+        self.assertEqual(_policy_regime("BULL", 0.008), "BULL_LOW")
+        self.assertEqual(_policy_regime("BEAR", 0.018), "BEAR_MID")
+        self.assertEqual(_policy_regime("RANGE", 0.035), "RANGE_HIGH")
+        self.assertEqual(_policy_regime("UNKNOWN_VALUE", 0.018), "UNKNOWN_MID")
 
     def test_stop_wins_when_tp_and_sl_touch_same_candle(self):
         result = _simulate(100, 0.01, [104], [98], [101],
