@@ -16,6 +16,22 @@ class StateIntegrityTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 check_state(td, require_db=True)
 
+    def test_empty_database_fails_when_historical_data_is_required(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = Path(td) / "paper.db"
+            conn = sqlite3.connect(db)
+            conn.executescript("""
+                CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT);
+                CREATE TABLE signals (id INTEGER PRIMARY KEY);
+                CREATE TABLE tracked_signals (
+                    id INTEGER PRIMARY KEY, status TEXT NOT NULL
+                );
+            """)
+            conn.commit()
+            conn.close()
+            with self.assertRaisesRegex(RuntimeError, "no historical signals"):
+                check_state(td, require_db=True, require_tracked_data=True)
+
     def test_valid_paper_database_passes_read_only_check(self):
         with tempfile.TemporaryDirectory() as td:
             db = Path(td) / "paper.db"
