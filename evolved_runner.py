@@ -170,12 +170,19 @@ def run_comprehensive_backtest(universe=None, paper=None):
                         continue
                 recent, previous = values[:window], values[window:window * 2]
                 def _stats(sample):
-                    if not sample:
-                        return {"trades": 0, "avg_net": None, "profit_factor": None}
-                    gains = sum(x for x in sample if x > 0)
-                    losses = -sum(x for x in sample if x < 0)
-                    return {"trades": len(sample), "avg_net": sum(sample) / len(sample),
-                            "profit_factor": gains / losses if losses > 0 else (999.0 if gains > 0 else 0.0)}
+                    metrics = evolution_governance.performance_risk_summary(sample)
+                    return {
+                        "trades": metrics["trades"],
+                        "avg_net": metrics["avg_net"],
+                        "profit_factor": metrics["profit_factor"],
+                        "win_rate": metrics["win_rate"],
+                        "avg_win": metrics["avg_win"],
+                        "avg_loss": metrics["avg_loss"],
+                        "payoff_ratio": metrics["payoff_ratio"],
+                        "break_even_win_rate": metrics["break_even_win_rate"],
+                        "largest_loss": metrics["largest_loss"],
+                        "status": metrics["status"],
+                    }
                 recent_stats, previous_stats = _stats(recent), _stats(previous)
                 degraded = False
                 if len(recent) >= 20 and len(previous) >= 20:

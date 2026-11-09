@@ -11,7 +11,7 @@ import time
 import numpy as np
 import pandas as pd
 
-COST = 0.0020  # round-trip fees + slippage reserve; conservative fixed 20 bps
+COST = 0.0035  # conservative 35 bps all-in round-trip fees, spread and slippage reserve
 HOLD = 24
 MIN_TRADES = 30
 WF_FOLDS = 10

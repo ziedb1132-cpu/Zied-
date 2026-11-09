@@ -38,6 +38,35 @@ def _write(path, value):
     os.replace(tmp, path)
 
 
+def performance_risk_summary(returns):
+    """Describe realized payoff asymmetry without treating a small sample as proof."""
+    values = []
+    for value in ([] if returns is None else returns):
+        number = _number(value)
+        if number is not None:
+            values.append(number)
+    wins = [x for x in values if x > 0]
+    losses = [x for x in values if x < 0]
+    avg_win = sum(wins) / len(wins) if wins else None
+    avg_loss = sum(losses) / len(losses) if losses else None
+    gross_profit = sum(wins)
+    gross_loss = -sum(losses)
+    pf = gross_profit / gross_loss if gross_loss > 0 else (999.0 if gross_profit > 0 else 0.0)
+    payoff = (avg_win / abs(avg_loss)) if avg_win is not None and avg_loss is not None else None
+    breakeven = (abs(avg_loss) / (avg_win + abs(avg_loss))
+                 if avg_win is not None and avg_loss is not None else None)
+    return {
+        "trades": len(values), "wins": len(wins), "losses": len(losses),
+        "win_rate": len(wins) / len(values) if values else None,
+        "avg_net": sum(values) / len(values) if values else None,
+        "avg_win": avg_win, "avg_loss": avg_loss,
+        "payoff_ratio": payoff, "break_even_win_rate": breakeven,
+        "profit_factor": pf,
+        "largest_loss": min(losses) if losses else None,
+        "status": "ok" if len(values) >= 30 else "insufficient_history",
+    }
+
+
 def _holdout_quality(row):
     validation = row.get("validation") or row.get("tune") or {}
     holdout = row.get("holdout_observation") or row.get("test") or {}
@@ -209,7 +238,13 @@ def update_governance(state_dir, discovery=None, strategy=None,
         or (len(recent_perf) >= 2 and recent_perf[-1] < recent_perf[0] * 0.70)
     )
     realized_degradation = bool(closed_perf.get("degraded"))
-    health = "warning" if (degradation or realized_degradation) else (
+    recent_perf = closed_perf.get("recent") or {}
+    structurally_unprofitable = bool(
+        int(recent_perf.get("trades") or 0) >= 30
+        and _number(recent_perf.get("avg_net"), 0.0) <= 0.0
+        and _number(recent_perf.get("profit_factor"), 0.0) <= 1.05
+    )
+    health = "warning" if (degradation or realized_degradation or structurally_unprofitable) else (
         "monitoring" if drift.get("status") not in (None, "ok") else "stable"
     )
     regime_rows = regime.get("selected_by_regime") or regime.get("recommendations") or regime.get("profiles") or []
@@ -248,7 +283,11 @@ def update_governance(state_dir, discovery=None, strategy=None,
             "top_features": feature_rows,
         },
         "performance_monitor": {
-            "status": health, "drift_fraction": drift_fraction,
+            "status": health,
+            "risk_flag": ("recent_net_edge_not_proven" if structurally_unprofitable
+                          else ("performance_degraded" if (degradation or realized_degradation)
+                                else "no_current_warning")),
+            "drift_fraction": drift_fraction,
             "drifted_feature_count": drift.get("drifted_feature_count"),
             "unstable_scale_feature_count": drift.get("unstable_scale_feature_count"),
             "history_points": len(history), "closed_signal_performance": closed_perf,

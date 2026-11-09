@@ -14,6 +14,22 @@ def trade_metrics(returns, selected):
     return {"n": int(len(x)), "avg": float(x.mean()), "pf": float(pf),
             "win": float((x > 0).mean())}
 
+def holdout_edge_passes(selected, baseline, min_trades=30, min_pf=1.05, min_edge=0.001):
+    """Require a sufficiently sampled, positive net edge over the unfiltered baseline."""
+    if not isinstance(selected, dict) or not isinstance(baseline, dict):
+        return False
+    try:
+        n = int(selected.get("n") or 0)
+        avg = float(selected.get("avg"))
+        pf = float(selected.get("pf"))
+        base_avg = float(baseline.get("avg"))
+    except (TypeError, ValueError):
+        return False
+    return bool(n >= int(min_trades) and np.isfinite([avg, pf, base_avg]).all()
+                and avg > 0.0 and pf > float(min_pf)
+                and avg >= base_avg + float(min_edge))
+
+
 def chronological_train_tune_holdout_masks(ts, block, embargo):
     """Build chronological masks without splitting rows sharing one market timestamp."""
     zq = __import__("zied_quant")
@@ -119,8 +135,10 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
         None if not np.isfinite(base_test["avg"]) else round(float(base_test["avg"]), 6),
         None if not np.isfinite(final["avg"]) else round(float(final["avg"]), 6),
         int(final["n"]), float(final["pf"]), float(thresholds[mode]))
-    accepted = force or (hold_auc[mode] >= 0.52 and final["n"] >= 30
-        and np.isfinite(final["avg"]) and final["avg"] > 0 and final["pf"] > 1.05
+    holdout_edge_ok = holdout_edge_passes(final, base_test)
+    info["holdout_edge_ok"] = bool(holdout_edge_ok)
+    info["holdout_edge_required"] = 0.001
+    accepted = force or (hold_auc[mode] >= 0.52 and holdout_edge_ok
         and (self.auc is None or hold_auc[mode] >= self.auc - 0.03))
     info["accepted"] = bool(accepted)
     if accepted:

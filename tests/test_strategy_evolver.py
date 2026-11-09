@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 import pandas as pd
-from strategy_evolver import candidate_specs, signal_for, evaluate, evaluate_candidate
+from strategy_evolver import COST, candidate_specs, signal_for, evaluate, evaluate_candidate
 
 
 def sample_candles(n=1200, seed=4):
@@ -15,6 +15,9 @@ def sample_candles(n=1200, seed=4):
 
 
 class StrategyEvolutionTests(unittest.TestCase):
+    def test_research_cost_reserve_matches_conservative_all_in_assumption(self):
+        self.assertAlmostEqual(COST, 0.0035)
+
     def test_candidate_generator_has_multiple_rule_families(self):
         specs = candidate_specs()
         self.assertEqual(len(specs), 150)

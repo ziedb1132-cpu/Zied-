@@ -1,7 +1,7 @@
 import math
 import unittest
 import numpy as np
-from evolution_engine import trade_metrics, chronological_train_tune_holdout_masks
+from evolution_engine import trade_metrics, chronological_train_tune_holdout_masks, holdout_edge_passes
 
 
 class TradeMetricsTests(unittest.TestCase):
@@ -41,6 +41,17 @@ class TradeMetricsTests(unittest.TestCase):
         self.assertEqual(m["pf"], 999.0)
 
 
+
+    def test_holdout_edge_requires_positive_edge_over_baseline(self):
+        selected = {"n": 35, "avg": 0.012, "pf": 1.2}
+        baseline = {"avg": 0.010}
+        self.assertTrue(holdout_edge_passes(selected, baseline))
+        self.assertFalse(holdout_edge_passes(
+            {"n": 35, "avg": 0.0105, "pf": 1.5}, baseline))
+        self.assertFalse(holdout_edge_passes(
+            {"n": 20, "avg": 0.020, "pf": 2.0}, baseline))
+        self.assertFalse(holdout_edge_passes(
+            {"n": 35, "avg": -0.001, "pf": 0.8}, baseline))
 
     def test_auc_uses_average_ranks_for_tied_scores(self):
         from zied_quant import auc_score
