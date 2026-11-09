@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 
-from evolution_governance import update_governance, _holdout_quality
+from evolution_governance import update_governance, _holdout_quality, performance_risk_summary
 
 
 class EvolutionGovernanceTests(unittest.TestCase):
@@ -19,6 +19,15 @@ class EvolutionGovernanceTests(unittest.TestCase):
                 {"holdout": {"avg_net": 0.005}},
             ],
         }
+
+    def test_realized_payoff_summary_exposes_loss_asymmetry(self):
+        report = performance_risk_summary([0.01, 0.02, -0.03, -0.01] * 8)
+        self.assertEqual(report["trades"], 32)
+        self.assertAlmostEqual(report["avg_win"], 0.015)
+        self.assertAlmostEqual(report["avg_loss"], -0.02)
+        self.assertAlmostEqual(report["payoff_ratio"], 0.75)
+        self.assertAlmostEqual(report["break_even_win_rate"], 0.5714285714)
+        self.assertEqual(report["status"], "ok")
 
     def test_holdout_rejects_non_positive_expectancy(self):
         audit = _holdout_quality(self._candidate(holdout_avg=-0.001))
