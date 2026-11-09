@@ -21,6 +21,8 @@ MAX_DRAWDOWN = 0.20
 MAX_ACTIVE_STRATEGIES = 3
 MAX_SYMBOLS = 5
 MAX_CANDIDATES = 30
+MIN_SYMBOL_SHADOW_TRADES = 20
+SYMBOL_PRIOR_STRENGTH = 40
 
 
 def _load(path):
@@ -70,6 +72,13 @@ def _metrics(trades):
             "avg_net": float(np.mean(returns)),
             "profit_factor": gp / gl if gl else (999.0 if gp else 0.0),
             "max_drawdown": dd}
+
+
+def _symbol_adjusted_expectancy(symbol_avg, regime_avg, samples):
+    """Shrink coin-specific expectancy toward its regime prior to limit overfit."""
+    n = max(0, int(samples))
+    weight = n / (n + SYMBOL_PRIOR_STRENGTH)
+    return float(weight * float(symbol_avg) + (1.0 - weight) * float(regime_avg))
 
 
 def _close_position(position, price, reason, now_bar, history):
@@ -243,11 +252,43 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
             eligible[regime].append({"strategy_id": sid, **m})
 
     # A selector proposal is a top-three ensemble by matured shadow performance.
-    # It is a research output only; no production signal is affected.
+    # Coin-specific evidence is shrunk toward its regime-wide prior to limit overfit.
     selected = {}
     for regime, rows in eligible.items():
         rows.sort(key=lambda x: (x["avg_net"], x["profit_factor"], -x["max_drawdown"]), reverse=True)
         selected[regime] = rows[:MAX_ACTIVE_STRATEGIES]
+
+    regime_avg = {}
+    for regime in {x["entry_regime"] for x in memory["closed_trades"]}:
+        values = [float(x["net_return"]) for x in memory["closed_trades"]
+                  if x["entry_regime"] == regime]
+        if values:
+            regime_avg[regime] = float(np.mean(values))
+    symbol_groups = defaultdict(list)
+    for trade in memory["closed_trades"]:
+        symbol_groups[(trade["strategy_id"], trade["entry_regime"], trade["symbol"])].append(trade)
+    symbol_profiles = {}
+    selected_by_symbol_regime = defaultdict(list)
+    for (sid, regime, symbol), trades in symbol_groups.items():
+        m = _metrics(trades)
+        prior = regime_avg.get(regime, 0.0)
+        shrunk_avg = _symbol_adjusted_expectancy(m["avg_net"] or 0.0, prior, m["trades"])
+        regime_approved = any(x["strategy_id"] == sid for x in eligible.get(regime, []))
+        passed = (regime_approved and m["trades"] >= MIN_SYMBOL_SHADOW_TRADES
+                  and shrunk_avg > MIN_EXPECTANCY
+                  and m["profit_factor"] >= MIN_PROFIT_FACTOR
+                  and m["max_drawdown"] <= MAX_DRAWDOWN)
+        profile = {**m, "shrunk_avg_net": shrunk_avg,
+                   "prior_regime_avg_net": prior, "paper_approved": bool(passed)}
+        symbol_profiles.setdefault(symbol, {}).setdefault(regime, {})[sid] = profile
+        if passed:
+            selected_by_symbol_regime[(symbol, regime)].append({"strategy_id": sid, **profile})
+    selected_by_symbol_regime = {
+        f"{symbol}|{regime}": sorted(rows, key=lambda x: (
+            x["shrunk_avg_net"], x["profit_factor"], -x["max_drawdown"]), reverse=True
+        )[:MAX_ACTIVE_STRATEGIES]
+        for (symbol, regime), rows in selected_by_symbol_regime.items()
+    }
 
     memory["closed_trades"] = memory["closed_trades"][-10000:]
     memory["last_report"] = {
@@ -263,7 +304,11 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
         "pending_shadow_entries": len(memory["pending_entries"]),
         "closed_shadow_trades": len(memory["closed_trades"]),
         "profiles": profiles, "selected_by_regime": selected,
+        "symbol_profiles": symbol_profiles,
+        "selected_by_symbol_regime": selected_by_symbol_regime,
         "approval_rules": {"min_trades": MIN_SHADOW_TRADES,
+                           "min_symbol_trades": MIN_SYMBOL_SHADOW_TRADES,
+                           "symbol_prior_strength": SYMBOL_PRIOR_STRENGTH,
                            "min_profit_factor": MIN_PROFIT_FACTOR,
                            "min_expectancy": MIN_EXPECTANCY,
                            "max_drawdown": MAX_DRAWDOWN},
