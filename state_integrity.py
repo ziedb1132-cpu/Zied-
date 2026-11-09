@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 
-def check_state(state_dir, require_db=False):
+def check_state(state_dir, require_db=False, require_tracked_data=False):
     root = Path(state_dir)
     db = root / "paper.db"
     if not db.exists():
@@ -36,6 +36,11 @@ def check_state(state_dir, require_db=False):
             "SELECT COUNT(*) FROM tracked_signals WHERE status='CLOSED'").fetchone()[0])
         if open_count + closed_count > tracked:
             raise RuntimeError("tracked signal counts are inconsistent")
+        if require_tracked_data and (signals <= 0 or tracked <= 0):
+            raise RuntimeError(
+                "durable paper.db contains no historical signals/tracked signals; "
+                "refusing to continue with an empty learning history"
+            )
         return {
             "status": "ok", "database": "paper.db",
             "bytes": db.stat().st_size, "signals": signals,
@@ -51,8 +56,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("state_dir")
     parser.add_argument("--require-db", action="store_true")
+    parser.add_argument("--require-tracked-data", action="store_true")
     args = parser.parse_args()
-    report = check_state(args.state_dir, require_db=args.require_db)
+    report = check_state(
+        args.state_dir,
+        require_db=args.require_db,
+        require_tracked_data=args.require_tracked_data,
+    )
     print("STATE_INTEGRITY_OK " + json.dumps(report, sort_keys=True))
 
 
