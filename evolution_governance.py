@@ -102,19 +102,39 @@ def _holdout_quality(row):
     }
 
 
+def _validation_quality(metrics):
+    """Validation-only eligibility gate; never consult the reusable final holdout."""
+    metrics = metrics if isinstance(metrics, dict) else {}
+    trades = int(metrics.get("trades") or 0)
+    avg = _number(metrics.get("avg_net"))
+    pf = _number(metrics.get("profit_factor"), 0.0)
+    reasons = []
+    if trades < 30:
+        reasons.append("validation_trades_below_30")
+    if avg is None or avg <= 0:
+        reasons.append("validation_expectancy_not_positive")
+    if pf <= 1.05:
+        reasons.append("validation_profit_factor_not_above_1.05")
+    return {"passed": not reasons, "reasons": reasons,
+            "trades": trades, "avg_net": avg, "profit_factor": pf}
+
+
 def _candidate_from_discovery(discovery):
     candidates = []
     for row in (discovery or {}).get("latest_experiments", []):
         if not isinstance(row, dict) or row.get("status") != "validation_pass":
             continue
-        quality = _holdout_quality(row)
         validation = row.get("validation") or {}
+        validation_gate = _validation_quality(validation)
+        if not validation_gate["passed"]:
+            continue
+        quality = _holdout_quality(row)
         candidates.append({
             "id": row.get("id"), "generation": row.get("generation"),
             "score": _number(row.get("score"), -100.0),
             "spec": row.get("spec"), "genome": row.get("genome"),
-            "validation": validation, "holdout": quality,
-            "source": "autonomous_feature_discovery",
+            "validation": validation, "validation_gate": validation_gate,
+            "holdout": quality, "source": "autonomous_feature_discovery",
         })
     # Select by tune/validation only. The same chronological holdout is
     # reused across generations, so it must never rank candidates or promote
@@ -131,6 +151,10 @@ def _candidate_from_strategy(strategy):
     if not isinstance(strategy, dict) or strategy.get("status") != "accepted":
         return None
     champion = strategy.get("champion") or strategy.get("latest_tested") or {}
+    validation = champion.get("tune") or champion.get("validation") or {}
+    validation_gate = _validation_quality(validation)
+    if not validation_gate["passed"]:
+        return None
     test = champion.get("test") or {}
     holdout = {
         "passed": int(test.get("trades") or 0) >= 30
@@ -150,8 +174,8 @@ def _candidate_from_strategy(strategy):
         "id": "strategy-" + hashlib.sha256(json.dumps(champion.get("spec", {}), sort_keys=True).encode()).hexdigest()[:12],
         "generation": strategy.get("last_run"), "score": _number((champion.get("tune") or {}).get("avg_net"), -100.0),
         "spec": champion.get("spec"), "genome": None,
-        "validation": champion.get("tune") or {}, "holdout": holdout,
-        "source": "six_strategy_families",
+        "validation": validation, "validation_gate": validation_gate,
+        "holdout": holdout, "source": "six_strategy_families",
     }
 
 
