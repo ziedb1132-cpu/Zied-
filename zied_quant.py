@@ -1555,15 +1555,35 @@ def evaluate_entry_quality(features):
 
 
 def regime_entry_threshold(paper, regime):
-    """Learn a modest regime-specific entry threshold only after 30 closed outcomes."""
+    """Adapt entry-quality strictness to realized net performance in this market regime."""
     stats = paper.regime_stats(regime)
     if stats["n"] < 30:
         return 55.0, stats
-    if stats["avg_ret"] < 0:
-        return 65.0, stats
-    if stats["avg_ret"] > 0 and (stats["pf"] is None or stats["pf"] >= 1.0):
+    pf = stats.get("pf")
+    avg = float(stats.get("avg_ret") or 0.0)
+    if avg <= 0.0 or (pf is not None and pf < 0.90):
+        return 68.0, stats
+    if avg < 0.001 or (pf is not None and pf < 1.05):
+        return 62.0, stats
+    if stats["n"] >= 60 and pf is not None and pf >= 1.20:
         return 52.0, stats
-    return 60.0, stats
+    return 57.0, stats
+
+
+def effective_probability_threshold(brain):
+    """Use the model's validated, net-return-selected threshold unless explicitly overridden."""
+    configured = CFG.get("PROB_MIN")
+    if configured is not None:
+        value = float(configured)
+        if not np.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError("CFG.PROB_MIN must be finite and within [0, 1]")
+        return value
+    if brain is not None and brain.ready:
+        value = float(brain.thr)
+        if np.isfinite(value) and 0.0 <= value <= 1.0:
+            return value
+        raise ValueError("validated model threshold is invalid")
+    return 0.55
 
 # =====================================================================
 # WALK-FORWARD BACKTEST
@@ -1996,7 +2016,7 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         log.error("validated AI returned invalid probabilities; entries blocked")
         tg("⚠️ احتمالات النموذج غير صالحة؛ تم منع الدخول في هذه الدورة.")
         return R
-    prob_min = CFG["PROB_MIN"] if CFG["PROB_MIN"] is not None else 0.55
+    prob_min = effective_probability_threshold(brain)
     # Entry universe is strictly the top 10 by cross-sectional rank.
     # Do not backfill from rank 11+ when a top-10 coin is already open or fails
     # the AI threshold; duplicates are skipped, never replaced by coin #11.
