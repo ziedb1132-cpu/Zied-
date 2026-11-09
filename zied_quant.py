@@ -832,6 +832,8 @@ class Brain:
         X = np.asarray(X, dtype=np.float32)
         if X.ndim != 2 or X.shape[1] != N_FEATURES:
             raise ValueError(f"AI input shape invalid: {X.shape}; expected (*, {N_FEATURES})")
+        if not np.isfinite(X).all():
+            raise ValueError("AI input contains NaN or infinite features")
         if not feature_coverage_mask(X, 0.80).all():
             raise ValueError("AI input has more than 20% missing features in at least one row")
         out = np.asarray(self.predict_all(X)[self.mode], dtype=np.float64).reshape(-1)
