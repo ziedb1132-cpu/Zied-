@@ -69,7 +69,7 @@ CFG = dict(
     MAX_OPEN=5, POS_FRAC=0.15, RISK_PER_TRADE=0.005, MAX_PORTFOLIO_RISK=0.02,
     MAX_OPEN_CORR=0.85,                 # reject a new paper entry if abs(correlation) to an open coin is higher
     # self-learning
-    RETRAIN_SIGNALS=10,                # retrain after each 10 new labelled outcomes
+    RETRAIN_SIGNALS=500,               # bootstrap cache retry interval; separate from closed-memory learning
     DIR="zied_data",
 )
 os.makedirs(CFG["DIR"], exist_ok=True)
