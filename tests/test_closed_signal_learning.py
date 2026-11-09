@@ -69,6 +69,22 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertTrue(status["ready"])
         self.assertEqual(status["total"], 600)
 
+    def test_adaptive_memory_learning_starts_with_20_real_closed_outcomes(self):
+        for _ in range(10):
+            self.add_signal(0.01)
+        for _ in range(10):
+            self.add_signal(-0.01)
+        self.paper.db.execute("UPDATE tracked_signals SET regime='trend'")
+        self.paper.db.commit()
+        weights, samples, active = self.paper.adaptive_ranking_weights("trend")
+        self.assertEqual(samples, 20)
+        self.assertTrue(active)
+        self.assertEqual(set(weights), {
+            "ret1h", "ret4h", "ret1d", "ret15m", "trend",
+            "volume_ratio", "adx", "obv", "liquidity",
+            "atr_penalty", "overbought_penalty",
+        })
+
     def test_training_dataset_keeps_all_outcomes_above_threshold(self):
         # The 500/500 rule is a minimum gate, not a per-class cap.
         for _ in range(501):
