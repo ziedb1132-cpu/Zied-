@@ -9,7 +9,21 @@ class TradeMetricsTests(unittest.TestCase):
         from evolution_engine import fit_partition_requirements
         block, min_train, min_tune, min_test = fit_partition_requirements(671)
         self.assertEqual(block, 100)
-        self.assertEqual((min_train, min_tune, min_test), (360, 50, 50))
+        self.assertEqual((min_train, min_tune, min_test), (300, 50, 50))
+
+    def test_adaptive_partition_preserves_embargo_and_finds_usable_tuning_block(self):
+        from evolution_engine import adaptive_chronological_partition
+        ts = np.arange(672, dtype=float) * 3600
+        block, masks, actual = adaptive_chronological_partition(
+            ts, initial_block=100, embargo=24 * 3600
+        )
+        self.assertGreaterEqual(block, 100)
+        self.assertGreaterEqual(actual[0], 300)
+        self.assertGreaterEqual(actual[1], 50)
+        self.assertGreaterEqual(actual[2], 50)
+        train, tune, test = masks
+        self.assertLess(np.max(ts[train]), np.min(ts[tune]) - 24 * 3600)
+        self.assertLess(np.max(ts[tune]), np.min(ts[test]) - 24 * 3600)
 
     def test_supervised_fit_still_requires_600_verified_samples(self):
         from evolution_engine import fit_partition_requirements
