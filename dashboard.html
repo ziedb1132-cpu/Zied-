@@ -2000,7 +2000,7 @@ function renderReferenceDashboard(){
  root.querySelector("#refStatus").textContent=status.includes("Connecté")?"● Connecté":"● "+status;
  root.querySelector("#refUpdated").textContent="◷ "+(state.manifest?.generated_at?timeFmt(state.manifest.generated_at):"—");
  const chart=document.getElementById("returnChart");root.querySelector("#refChart").innerHTML=chart?chart.innerHTML:'<div class="reference-empty">Graphique indisponible</div>';
- [["returnChart","refPerformanceChart"],["outcomeChart","refOutcomeChart"],["learningProgressChart","refLearningChart"],["exitPerformanceChart","refExitChart"]].forEach(([source,target])=>{const a=document.getElementById(source),b=root.querySelector("#"+target);if(a&&b)b.innerHTML=a.innerHTML;});
+ [["returnChart","refPerformanceChart"],["outcomeChart","refOutcomeChart"],["learningProgressChart","refLearningChart"],["exitPerformanceChart","refExitChart"]].forEach(([source,target])=>{const a=document.getElementById(source),b=document.getElementById(target);if(a&&b)b.innerHTML=a.innerHTML;});
  const xrpOpen=open.filter(x=>String(x.inst||x.symbol||x.pair||x.instrument||"").trim().toUpperCase().startsWith("XRP"));
  const p=window.xrpDashboardOpenSignal||xrpOpen[0]||null;root.querySelector("#refPositionState").textContent=p?"XRP active":"XRP — aucune";
  if(p){
