@@ -145,6 +145,10 @@ def feature_quality_report(zq, fit_snapshot, max_rows=1024):
                                "correlation": corr})
     high_pairs.sort(key=lambda item: abs(item["correlation"]), reverse=True)
     n_features, n_rows = int(X.shape[1]), int(len(y))
+    finite_per_row = np.isfinite(X).sum(axis=1).astype(np.float64)
+    finite_values = int(np.isfinite(X).sum())
+    total_values = int(X.size)
+    finite_fraction = float(finite_values / total_values) if total_values else 0.0
     flags = []
     if len(constant):
         flags.append("constant_or_near_constant_features")
@@ -160,7 +164,11 @@ def feature_quality_report(zq, fit_snapshot, max_rows=1024):
         flags.append("strong_univariate_label_association_requires_leakage_review")
     return {
         "status": "ok", "updated_at": time.time(), "sample_rows": n_rows,
-        "feature_count": n_features, "features_per_sample": float(n_features / n_rows),
+        "feature_count": n_features,
+        "features_per_sample": float(finite_per_row.mean()),
+        "finite_feature_fraction": finite_fraction,
+        "finite_values_per_sample_min": int(finite_per_row.min()) if len(finite_per_row) else 0,
+        "finite_values_per_sample_max": int(finite_per_row.max()) if len(finite_per_row) else 0,
         "sampled_feature_pairs": sampled_pairs,
         "high_correlation_pair_count": len(high_pairs),
         "high_correlation_pairs": high_pairs[:50],
