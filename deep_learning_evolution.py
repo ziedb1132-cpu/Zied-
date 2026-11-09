@@ -92,7 +92,9 @@ def _install_features(zq):
     # into the model's input matrix, not only strategies that passed the approval gate.
     from autonomous_strategy_engine import _LIBRARY_FEATURES, build_features as build_discovery_features
     research_names = list(_LIBRARY_FEATURES)
-    new_names = old_names + EXTRA_NAMES + research_names + derived_names
+    # Deduplicate the expanded 3k-column schema before it reaches training.
+    # Preserve first occurrence so existing feature meaning/order remains stable.
+    new_names = list(dict.fromkeys(old_names + EXTRA_NAMES + research_names + derived_names))
 
     def expanded_tf_features(df):
         base = old_tf_isolated(df)
