@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from strategy_meta_selector import market_regime, _metrics, run_meta_selector
+from strategy_meta_selector import market_regime, _metrics, _symbol_adjusted_expectancy, run_meta_selector
 
 
 class MetaSelectorTests(unittest.TestCase):
@@ -14,6 +14,12 @@ class MetaSelectorTests(unittest.TestCase):
         self.assertEqual(market_regime(bullish), "BULL")
         self.assertEqual(market_regime(bearish), "BEAR")
         self.assertEqual(market_regime(volatile), "HIGH_VOL")
+
+    def test_symbol_expectancy_is_shrunk_toward_regime_prior(self):
+        estimate = _symbol_adjusted_expectancy(0.02, -0.01, 20)
+        self.assertLess(estimate, 0.02)
+        self.assertGreater(estimate, -0.01)
+        self.assertAlmostEqual(estimate, (20/60)*0.02 + (40/60)*-0.01)
 
     def test_metrics_net_and_drawdown(self):
         m = _metrics([{"net_return":0.04},{"net_return":-0.02},{"net_return":0.01}])
