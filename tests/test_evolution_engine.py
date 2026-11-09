@@ -5,6 +5,17 @@ from evolution_engine import trade_metrics, chronological_train_tune_holdout_mas
 
 
 class TradeMetricsTests(unittest.TestCase):
+    def test_verified_671_samples_clear_the_obsolete_1000_row_floor(self):
+        from evolution_engine import fit_partition_requirements
+        block, min_train, min_tune, min_test = fit_partition_requirements(671)
+        self.assertEqual(block, 100)
+        self.assertEqual((min_train, min_tune, min_test), (360, 50, 50))
+
+    def test_supervised_fit_still_requires_600_verified_samples(self):
+        from evolution_engine import fit_partition_requirements
+        with self.assertRaisesRegex(ValueError, "need 600"):
+            fit_partition_requirements(599)
+
     def test_chronological_split_keeps_equal_timestamps_together(self):
         # Each timestamp represents multiple coins observed on the same candle.
         ts = np.repeat(np.arange(1600, dtype=float) * 3600, 3)
