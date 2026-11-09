@@ -119,12 +119,12 @@ class ExitEvolutionTests(unittest.TestCase):
         self.assertEqual(_canonical_reason(None), "UNKNOWN")
 
     def test_holdout_requires_beating_actual_tp_sl_trailing_results(self):
-        candidate = [0.025, 0.030, 0.018, 0.022, 0.027] * 4
-        baseline = [0.010, 0.012, 0.009, 0.011, 0.010] * 4
-        actual = [0.008, 0.009, 0.007, 0.008, 0.009] * 4
+        candidate = [0.025, 0.030, 0.018, 0.022, 0.027] * 6
+        baseline = [0.010, 0.012, 0.009, 0.011, 0.010] * 6
+        actual = [0.008, 0.009, 0.007, 0.008, 0.009] * 6
         metrics = _holdout_metrics(candidate, baseline, actual)
         self.assertTrue(_holdout_passes(metrics))
-        self.assertEqual(metrics["n"], 20)
+        self.assertEqual(metrics["n"], 30)
         self.assertGreater(metrics["paired_win_rate"], 0.99)
 
     def test_holdout_rejects_candidate_that_only_beats_shadow_baseline(self):
@@ -136,7 +136,7 @@ class ExitEvolutionTests(unittest.TestCase):
 
     def test_holdout_rejects_nonpositive_or_small_samples(self):
         self.assertFalse(_holdout_passes(_holdout_metrics(
-            [-0.01] * 20, [-0.02] * 20, [-0.03] * 20)))
+            [-0.01] * 30, [-0.02] * 30, [-0.03] * 30)))
         self.assertFalse(_holdout_passes(_holdout_metrics(
             [0.03] * 10, [0.01] * 10, [0.005] * 10)))
 
