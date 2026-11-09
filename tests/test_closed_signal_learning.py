@@ -52,20 +52,22 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertGreater(ret, 0.0)
         self.assertEqual(outcome, "WIN")
 
-    def test_gate_requires_500_closed_wins_and_500_closed_losses(self):
-        for _ in range(500):
+    def test_gate_uses_total_verified_samples_not_500_per_class(self):
+        # The model may start with an imbalanced but non-empty real dataset.
+        for _ in range(590):
             self.add_signal(0.01)
-        for _ in range(499):
+        for _ in range(9):
             self.add_signal(-0.01)
         status = zq.learning_gate_status(self.paper)
-        self.assertEqual(status["wins"], 500)
-        self.assertEqual(status["losses"], 499)
+        self.assertEqual(status["wins"], 590)
+        self.assertEqual(status["losses"], 9)
         self.assertFalse(status["ready"])
         self.add_signal(-0.01)
         status = zq.learning_gate_status(self.paper)
-        self.assertEqual(status["wins"], 500)
-        self.assertEqual(status["losses"], 500)
+        self.assertEqual(status["wins"], 590)
+        self.assertEqual(status["losses"], 10)
         self.assertTrue(status["ready"])
+        self.assertEqual(status["total"], 600)
 
     def test_training_dataset_keeps_all_outcomes_above_threshold(self):
         # The 500/500 rule is a minimum gate, not a per-class cap.
