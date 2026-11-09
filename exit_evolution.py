@@ -36,6 +36,14 @@ def _regime(atr):
     return "LOW" if atr < 0.012 else ("MID" if atr < 0.025 else "HIGH")
 
 
+def _policy_regime(market_regime, atr):
+    """Use broad market direction plus volatility for exit-policy specialization."""
+    market = str(market_regime or "UNKNOWN").upper()
+    if market not in ("BULL", "BEAR", "RANGE", "TREND", "HIGH_VOL"):
+        market = "UNKNOWN"
+    return f"{market}_{_regime(float(atr))}"
+
+
 def _ensure(paper):
     with paper.lock:
         paper.db.executescript("""
@@ -280,7 +288,7 @@ def _evaluate(paper, zq):
     now = time.time()
     with paper.lock:
         pending = [dict(r) for r in paper.db.execute(
-            "SELECT t.id,t.inst,t.opened_ts,t.closed_ts,t.entry,t.atr_pct,"
+            "SELECT t.id,t.inst,t.opened_ts,t.closed_ts,t.entry,t.atr_pct,t.regime AS market_regime,"
             "t.close_reason,t.ret,t.hold FROM tracked_signals t "
             "WHERE t.status='CLOSED' AND t.closed_ts IS NOT NULL "
             "AND t.opened_ts>=? AND t.opened_ts<=? AND NOT EXISTS "
@@ -312,7 +320,7 @@ def _evaluate(paper, zq):
                 path = path.iloc[:horizon]
                 atr = float(np.clip(signal["atr_pct"], 0.004, 0.06))
                 base_sl = _base_sl(atr)
-                regime = _regime(atr)
+                regime = _policy_regime(signal.get("market_regime"), atr)
                 records = []
                 for name, sl_delta, tp, activation, distance, max_bars in POLICIES:
                     sl_mult = min(2.4, max(1.4, base_sl + sl_delta))
@@ -349,11 +357,17 @@ def _evaluate(paper, zq):
     return evaluated
 
 
-def _selected(paper, atr):
-    regime = _regime(atr)
+def _selected(paper, atr, market_regime=None):
+    # Prefer a champion for the exact market-direction + volatility regime.
+    # Fall back to legacy LOW/MID/HIGH champions so existing learned state remains usable.
+    regimes = (_policy_regime(market_regime, atr), _regime(atr))
     with paper.lock:
-        row = paper.db.execute(
-            "SELECT policy FROM exit_policy_champion_v2 WHERE regime=?", (regime,)).fetchone()
+        row = None
+        for regime in dict.fromkeys(regimes):
+            row = paper.db.execute(
+                "SELECT policy FROM exit_policy_champion_v2 WHERE regime=?", (regime,)).fetchone()
+            if row:
+                break
     name = row["policy"] if row else BASELINE_NAME
     return next((p for p in POLICIES if p[0] == name), POLICIES[0])
 
@@ -415,7 +429,8 @@ def install(zq):
         if signal is None:
             return None
         atr = float(np.clip(float(row["atr"]), 0.004, 0.06))
-        name, sl_delta, tp, activation, distance, max_bars = _selected(self, atr)
+        name, sl_delta, tp, activation, distance, max_bars = _selected(
+            self, atr, row.get("regime"))
         sl_mult = min(2.4, max(1.4, _base_sl(atr) + sl_delta))
         # Keep gross reward at least 1.5x initial price risk after policy selection.
         sl_mult = min(sl_mult, tp / 1.5)
@@ -438,7 +453,7 @@ def install(zq):
                       trail_distance_atr=distance, max_hold_bars=max_bars,
                       risk_pct=risk_pct, reward_pct=reward_pct, risk_reward=risk_reward)
         zq.log.info("paper exit policy=%s regime=%s SL=%.2f ATR TP=%.2f ATR trail=%.2f/%.2f ATR time=%dh",
-                    name, _regime(atr), sl_mult, tp, activation, distance,
+                    name, _policy_regime(row.get("regime"), atr), sl_mult, tp, activation, distance,
                     max_bars * 5 // 60)
         return signal
 
