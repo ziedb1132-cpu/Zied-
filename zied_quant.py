@@ -1171,7 +1171,7 @@ class Paper:
                     total=int(row["total"] or 0))
 
     @locked
-    def adaptive_ranking_weights(self, regime, min_samples=60, lookback=500):
+    def adaptive_ranking_weights(self, regime, min_samples=20, lookback=500):
         """Estimate conservative regime-specific factor weights from realized net outcomes."""
         base = {
             "ret1h": 0.20, "ret4h": 0.20, "ret1d": 0.15, "ret15m": 0.10,
@@ -1839,12 +1839,18 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=False
     # Learn only from observed, completed tracked signals; never invent missing outcomes.
     status = learning_gate_status(paper)
     ds = paper.closed_signal_dataset()
-    valid = (feature_coverage_mask(ds["X"], 0.80)
+    # Do not manufacture missing feature values for closed-signal learning.
+    # A row is used only when its entire recorded feature vector is present and finite.
+    valid = (np.isfinite(ds["X"]).all(axis=1)
              & np.isfinite(ds["y"])
              & np.isin(ds["y"], [0, 1])
              & np.isfinite(ds["ts"])
              & np.isfinite(ds["ret"]))
+    excluded_incomplete = int(len(valid) - np.sum(valid))
     ds = {k: v[valid] for k, v in ds.items()}
+    if excluded_incomplete:
+        log.info("closed-signal memory: excluded %d rows with missing/non-finite recorded features (no imputation)",
+                 excluded_incomplete)
     wins = int(np.sum(ds["y"] == 1))
     losses = int(np.sum(ds["y"] == 0))
     log.info("verified closed-signal memory: samples=%d wins=%d losses=%d (minimum total=%d, per class=%d)",
