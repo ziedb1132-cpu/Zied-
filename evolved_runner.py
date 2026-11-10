@@ -70,7 +70,11 @@ def run_comprehensive_backtest(universe=None, paper=None):
         "production_model_changed": False,
         "live_signals_changed": False,
         "portfolio_changed": False,
-        "learning_gate": "unchanged: 500 closed winners AND 500 closed losers",
+        "learning_gate": {
+            "minimum_verified_closed_samples": zied_quant.MIN_CLOSED_MODEL_SAMPLES,
+            "minimum_per_class": zied_quant.MIN_CLOSED_CLASS_SAMPLES,
+            "source": "verified closed tracked signals only",
+        },
         "layers": {},
     }
     universe = universe if universe is not None else zied_quant.get_universe()
@@ -236,7 +240,7 @@ def run_comprehensive_backtest(universe=None, paper=None):
     report["note"] = (
         "Research feedback only. No backtest result is injected as a training label, "
         "no live policy is changed, and no paper position is modified. AI Learning may "
-        "consume only matured real closed-signal outcomes under its existing 500/500 gate."
+        "consume only matured real closed-signal outcomes under the configured verified-sample gate."
     )
     output = os.path.join(state_dir, "comprehensive_backtest.json")
     tmp = output + ".tmp"

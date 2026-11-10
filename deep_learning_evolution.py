@@ -152,8 +152,9 @@ def _install_features(zq):
     schema = "|".join(zq.FEATURE_COLS).encode("utf-8")
     zq.DATA_VER = 4 + int(hashlib.sha256(schema).hexdigest()[:8], 16)
     zq.CFG["REQUIRED_SIGNAL_FEATURES"] = zq.N_FEATURES
-    zq.CFG["TOP_AI"] = 50
-    zq.CFG["LOG_TOP"] = 50
+    zq.CFG["TOP_AI"] = 100
+    zq.CFG["LOG_TOP"] = 100
+    zq.CFG["MAX_SIGNAL_RANK"] = 30
     zq.CFG["MAX_OPEN"] = 10
     # Smaller notional per position lets up to 10 slots fit within the existing 75% exposure cap.
     zq.CFG["POS_FRAC"] = 0.075
