@@ -1293,14 +1293,18 @@ class Paper:
 
     @locked
     def closed_outcome_counts(self):
-        row = self.db.execute(
-            "SELECT SUM(CASE WHEN s.ret>0 THEN 1 ELSE 0 END) AS wins,"
-            "SUM(CASE WHEN s.ret<0 THEN 1 ELSE 0 END) AS losses,"
-            "COUNT(*) AS total "
-            "FROM tracked_signals t JOIN signals s ON s.id=t.signal_id "
-            "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL").fetchone()
-        return dict(wins=int(row["wins"] or 0), losses=int(row["losses"] or 0),
-                    total=int(row["total"] or 0))
+        # Count only outcomes whose feature snapshots are usable by the trainer.
+        # A row with too little source data cannot open the supervised model gate.
+        ds = self.closed_signal_dataset()
+        if not len(ds["y"]):
+            return dict(wins=0, losses=0, total=0)
+        valid = (feature_coverage_mask(ds["X"], 0.80)
+                 & np.isfinite(ds["y"]) & np.isin(ds["y"], [0, 1])
+                 & np.isfinite(ds["ts"]) & np.isfinite(ds["ret"]) & (ds["ret"] != 0))
+        labels = ds["y"][valid]
+        wins = int(np.sum(labels == 1))
+        losses = int(np.sum(labels == 0))
+        return dict(wins=wins, losses=losses, total=wins + losses)
 
     @locked
     def adaptive_ranking_weights(self, regime, min_samples=20, lookback=500):
@@ -1663,9 +1667,11 @@ def rank_universe(X, vol24, paper=None, regimes=None, spread24=None):
 
 def classify_market_regime(features):
     """Classify the broad market using only information available at signal time."""
-    btc = float(features.get("ctx_btc_regime", 0.0))
-    adx = float(features.get("1H_adx14", 0.0))
-    atr = float(features.get("1H_atr_pct", 0.0))
+    btc = float(features.get("ctx_btc_regime", np.nan))
+    adx = float(features.get("1H_adx14", np.nan))
+    atr = float(features.get("1H_atr_pct", np.nan))
+    if not np.isfinite([btc, adx, atr]).all():
+        return "UNKNOWN"
     if atr >= 0.035:
         return "HIGH_VOL"
     if btc >= 0.015 and adx >= 18:
@@ -1741,6 +1747,8 @@ def simulate(idx, ds):
     open_, taken, events = [], [], []
     for i in np.argsort(ts, kind="stable"):
         t = ts[i]
+        if not np.isfinite([ret[i], hold[i], atr[i]]).all():
+            continue
         open_ = [p for p in open_ if p[0] > t]
         if len(open_) >= CFG["MAX_OPEN"] or any(p[1] == coin[i] for p in open_):
             continue
