@@ -1153,7 +1153,7 @@ def _rows_to_ds(rows, label_key="label", ret_key="ret"):
             f = json.loads(r["feats"])
             if not isinstance(f, list) or len(f) != N_FEATURES:
                 continue
-            vector = np.asarray(f, dtype=np.float64)
+            vector = np.asarray([np.nan if v is None else v for v in f], dtype=np.float64)
             if vector.shape != (N_FEATURES,):
                 continue
         except (TypeError, ValueError, json.JSONDecodeError):
@@ -1261,11 +1261,14 @@ class Paper:
         prepared = []
         for r in rows:
             vector = np.asarray(r["feats"], dtype=np.float64).reshape(-1)
-            if vector.size != expected_count or not np.isfinite(vector).all():
-                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected {expected_count} finite values, got {vector.size}")
+            if (vector.size != expected_count or np.isinf(vector).any()
+                    or not feature_coverage_mask(vector.reshape(1, -1), 0.80)[0]):
+                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected {expected_count} values with >=80% known")
+            encoded_vector = json.dumps([float(v) if np.isfinite(v) else None for v in vector],
+                                        allow_nan=False, separators=(",", ":"))
             prepared.append((
                 float(r.get("ts", now)), r["inst"], float(r["price"]), float(r["atr"]),
-                json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":")),
+                encoded_vector,
                 None if r.get("prob") is None or np.isnan(r["prob"]) else float(r["prob"]),
                 int(r["rank"]), float(r.get("feature_ts", r.get("ts", now))),
                 str(r.get("prob_source") or "ranking_exploration"),
@@ -1427,9 +1430,11 @@ class Paper:
         if int(N_FEATURES) != required_count:
             raise RuntimeError(f"Tracked signals require {required_count} runtime features; got {N_FEATURES}")
         vector = np.asarray(row["feats"], dtype=np.float64).reshape(-1)
-        if vector.size != required_count or not np.isfinite(vector).all():
-            raise ValueError(f"Invalid feature snapshot for {inst}: expected {required_count} finite values, got {vector.size}")
-        feats = json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":"))
+        if (vector.size != required_count or np.isinf(vector).any()
+                or not feature_coverage_mask(vector.reshape(1, -1), 0.80)[0]):
+            raise ValueError(f"Invalid feature snapshot for {inst}: expected {required_count} values with >=80% known")
+        feats = json.dumps([float(v) if np.isfinite(v) else None for v in vector],
+                           allow_nan=False, separators=(",", ":"))
         feature_names = json.dumps(list(FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
         schema_version = int(DATA_VER)
         cur = self.db.execute(
@@ -2103,18 +2108,19 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     valid = {k: v for k, v in res.items() if v is not None}
     X_raw = pd.DataFrame({k: v[0] for k, v in valid.items()}).T
     feature_ts = {k: v[1] for k, v in valid.items()}
-    X = X_raw.dropna()
+    coverage = feature_coverage_mask(X_raw.to_numpy(dtype=np.float64), 0.80) if not X_raw.empty else np.zeros(0, dtype=bool)
+    X = X_raw.loc[coverage].copy()
     failed_frames = len(uni) - len(valid)
     rows_before_dropna = len(X_raw)
     rows_after_dropna = len(X)
     log.info("scan data diagnostics: universe=%d frame_failures=%d frame_success=%d feature_rows=%d "
-             "complete_feature_rows=%d dropped_nan_rows=%d feature_columns=%d",
+             "usable_feature_rows=%d dropped_low_coverage=%d feature_columns=%d",
              len(uni), failed_frames, len(valid), rows_before_dropna, rows_after_dropna,
              rows_before_dropna - rows_after_dropna, X_raw.shape[1] if not X_raw.empty else 0)
     if X.empty:
         if not X_raw.empty:
             nan_counts = X_raw.isna().sum().sort_values(ascending=False)
-            log.warning("no data: all %d feature rows dropped; top_nan_features=%s",
+            log.warning("no data: no feature rows reached 80%% coverage; top_unknown_features=%s",
                         rows_before_dropna,
                         json.dumps({str(k): int(v) for k, v in nan_counts.head(12).items()}, ensure_ascii=False))
         else:
@@ -2279,7 +2285,7 @@ def bootstrap_training_due(paper, now=None):
             X = np.asarray(cached["X"], dtype=np.float64)
             y = np.asarray(cached["y"], dtype=np.float64)
             ts = np.asarray(cached["ts"], dtype=np.float64)
-            valid = (np.isfinite(X).all(axis=1) & np.isfinite(y)
+            valid = (feature_coverage_mask(X, 0.80) & np.isfinite(y)
                      & np.isfinite(ts) & np.isin(y, [0, 1]))
             cached_rows = int(valid.sum())
     except Exception as exc:
