@@ -800,7 +800,9 @@ class Brain:
             raise RuntimeError("selected AI mode requires a neural network, but it is unavailable")
         if need_gbm and self.gbm is None:
             raise RuntimeError("selected AI mode requires GBM, but it is unavailable")
-        if self.mu is None or self.sd is None or len(self.mu) != n_in or len(self.sd) != n_in:
+        raw_n_in = int(n_in)
+        model_n_in = raw_n_in * 2
+        if self.mu is None or self.sd is None or len(self.mu) != raw_n_in or len(self.sd) != raw_n_in:
             raise RuntimeError("refusing to save model with invalid normalization vectors")
 
         os.makedirs(CFG["DIR"], exist_ok=True)
@@ -812,14 +814,14 @@ class Brain:
             except FileNotFoundError: pass
         try:
             if need_nn:
-                torch.save({"state": self.nn.state_dict(), "n_in": n_in}, model_tmp)
+                torch.save({"state": self.nn.state_dict(), "n_in": model_n_in}, model_tmp)
             if need_gbm:
                 with open(gbm_tmp, "wb") as fh:
                     pickle.dump(self.gbm, fh, protocol=pickle.HIGHEST_PROTOCOL)
             meta = dict(mu=np.asarray(self.mu, dtype=float).tolist(),
                         sd=np.asarray(self.sd, dtype=float).tolist(), thrs=self.thrs, mode=self.mode,
                         auc=self.auc, has_nn=need_nn, has_gbm=need_gbm,
-                        n_in=n_in, raw_n_in=n_in // 2,
+                        n_in=model_n_in, raw_n_in=raw_n_in,
                         missing_mask_version=1, info=self.info)
             with open(meta_tmp, "w", encoding="utf-8") as fh:
                 json.dump(meta, fh, allow_nan=False)
@@ -1099,7 +1101,7 @@ class Brain:
             self.nn, self.gbm = models.get("nn"), models.get("gbm")
             self.mu, self.sd, self.thrs, self.mode, self.auc, self.info = mu, sd, thrs, mode, gate_auc, info
             if self.persist:
-                self.save(X.shape[1] * 2)
+                self.save(X.shape[1])
         self.last_fit = dict(info=info, pv=ps, yv=ys, gate_p=pg, gate_y=yg,
                              X_gate=np.asarray(X[gate_start:], dtype=np.float64))
         return info
