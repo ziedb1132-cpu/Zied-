@@ -234,14 +234,7 @@ def _install_30_layer_net(zq):
 
 
 def discover_winning_patterns(zq, paper):
-    """Discover winner-associated features from the canonical, labelled signals table.
-
-    The old implementation queried an 'experience' table, but Paper.__init__
-    deliberately drops that legacy table. The canonical source is signals:
-    each row is labelled from later candles and contains the original 300-feature
-    vector plus net return. Do not count an outcome as a win unless both its
-    label and net return agree.
-    """
+    """Discover winner-associated features from schema-matched, net-closed signals."""
     db_path = zq.CFG["DB"]
     if not os.path.exists(db_path):
         return {"status": "no_database", "winning_samples": 0, "losing_samples": 0}
@@ -250,24 +243,29 @@ def discover_winning_patterns(zq, paper):
         with sqlite3.connect(db_path, timeout=10) as db:
             rows = db.execute(
                 "SELECT COALESCE(s.feature_ts, s.ts) AS feature_ts, s.feats, "
-                "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label, s.ret "
+                "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label, s.ret, "
+                "s.feature_count, s.feature_names "
                 "FROM signals s JOIN tracked_signals t ON t.signal_id=s.id "
                 "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL "
-                "ORDER BY t.closed_ts, s.id"
+                "AND s.ret != 0 ORDER BY t.closed_ts, s.id"
             ).fetchall()
     except sqlite3.Error as exc:
         zq.log.warning("pattern discovery could not read labelled signals: %s", exc)
         return {"status": "database_error", "error": str(exc)}
 
     parsed = []
-    for feature_ts, feats_json, label, ret in rows:
+    expected_names = json.dumps(list(zq.FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
+    for feature_ts, feats_json, label, ret, feature_count, feature_names in rows:
         try:
             vector = np.asarray(json.loads(feats_json), dtype=np.float64)
             label, ret = int(label), float(ret)
-            if (vector.shape == (zq.N_FEATURES,)
+            # Do not compare snapshots from a different feature order/version.
+            if (int(feature_count or 0) == int(zq.N_FEATURES)
+                    and feature_names == expected_names
+                    and vector.shape == (zq.N_FEATURES,)
                     and np.isfinite(vector).all()
                     and label in (0, 1)
-                    and np.isfinite(ret)):
+                    and np.isfinite(ret) and ret != 0):
                 parsed.append((float(feature_ts or 0.0), vector, label, ret))
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
@@ -313,7 +311,8 @@ def discover_winning_patterns(zq, paper):
         })
 
     result = {
-        "version": 2, "updated_at": time.time(), "feature_count": int(zq.N_FEATURES),
+        "version": 3, "updated_at": time.time(), "feature_count": int(zq.N_FEATURES),
+        "feature_names": list(zq.FEATURE_COLS),
         "winning_samples": len(winners), "losing_samples": len(losers),
         "total_usable_samples": len(parsed),
         "source": "closed tracked signals only; outcomes and net returns from later-candle evaluation",
