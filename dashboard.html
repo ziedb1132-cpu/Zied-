@@ -193,6 +193,21 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 </style>
+<style id="global-news-intelligence-style">
+.news-intel-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
+.news-intel-kpi{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:13px}
+.news-intel-kpi b{display:block;font-size:20px;color:var(--text);margin-top:5px}
+.news-intel-kpi span{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.news-analysis{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.news-analysis span{font-size:9px;padding:4px 7px;border:1px solid var(--line);border-radius:6px;color:var(--text)}
+.news-analysis .positive{color:var(--green)!important}.news-analysis .negative{color:var(--red)!important}
+.news-source-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.news-source-chip{display:flex;justify-content:space-between;gap:8px;align-items:center;border:1px solid var(--line-soft);border-radius:7px;padding:8px 9px;background:var(--surface-2);font-size:9px}
+.news-source-chip small{color:var(--muted)}
+.news-source-chip .online{color:var(--green)}.news-source-chip .offline{color:var(--red)}
+@media(max-width:850px){.news-intel-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.news-source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.news-source-grid{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
 
@@ -250,9 +265,11 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
  <div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div>
 </section>
 <section id="page-news" class="hide section">
- <div class="page-heading"><div><div class="page-eyebrow">MARKET INTELLIGENCE</div><h1>Actualités crypto</h1><p>Les 10 dernières actualités du marché, triées de la plus récente à la plus ancienne.</p></div><button type="button" class="refresh-btn" id="newsRefresh">↻ Actualiser</button></div>
- <div class="news-toolbar"><span id="newsStatus" class="muted">Chargement des actualités…</span><span class="news-source-note">Sources : CoinDesk · Cointelegraph</span></div>
- <div id="newsList" class="news-list"><div class="card empty">Chargement des 10 dernières actualités…</div></div>
+ <div class="page-heading"><div><div class="page-eyebrow">GLOBAL NEWS INTELLIGENCE</div><h1>Actualités & analyse mondiale</h1><p>50 sources internationales · analyse du sentiment, du risque et de l’impact sur les crypto-actifs.</p></div><button type="button" class="refresh-btn" id="newsRefresh">↻ Actualiser</button></div>
+ <div class="news-toolbar"><span id="newsStatus" class="muted">Chargement de l’intelligence mondiale…</span><span class="news-source-note">50 flux RSS / Atom · analyse IA supervisée par les clôtures</span></div>
+ <div id="newsSummary" class="news-intel-summary"></div>
+ <div id="newsList" class="news-list"><div class="card empty">Chargement des actualités et de leur analyse…</div></div>
+ <div class="card section news-sources-card"><h2>Les 50 sources mondiales</h2><div id="newsSources" class="news-source-grid"></div></div>
 </section>
 
 <section id="page-graphiques" class="hide section"><h2>Graphiques</h2><p class="muted">Visualisation des performances, résultats et progression de l’apprentissage.</p><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2></div><div id="refPerformanceChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats</h2></div><div id="refOutcomeChart" class="chartbox"></div></div></div><div class="chartgrid analytics-charts"><div class="card"><div class="charthead"><h2>Progression de validation IA</h2></div><div id="refLearningChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Performance par motif de clôture</h2></div><div id="refExitChart" class="chartbox"></div></div></div></section>\n\n<section id="page-closedTrades" class="hide section"><h2>Closed Trades</h2><p class="muted">Historique des signaux suivis et clôturés. Les sorties TRAIL sont comptabilisées dans SL.</p><div id="closedKpis" class="grid closed-kpis"></div><div class="chartgrid closed-charts"><div class="card"><div class="charthead"><h2>Répartition des clôtures</h2><span class="muted">100 dernières clôtures</span></div><div id="closedReasonChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Rendement cumulé réalisé</h2><span class="muted">Ordre chronologique</span></div><div id="closedReturnChart" class="chartbox"></div></div></div><div id="trackedClosed" class="tablewrap"></div></section>
@@ -1292,11 +1309,47 @@ function renderNews(items,statusText){
   return '<article class="news-item"><div><div class="news-meta"><span class="news-source">'+source+'</span><span>·</span><time class="news-date">'+esc(newsDate(item.pubDate))+'</time><span>·</span><span>#'+(index+1)+'</span></div><h3>'+title+'</h3><p>'+description+'</p></div>'+(url?'<a class="news-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Lire l’article ↗</a>':'')+'</article>';
  }).join("");
 }
+function renderGlobalNews(report){
+ const items=Array.isArray(report.articles)?report.articles:[];
+ const host=$("newsList"),status=$("newsStatus"),summary=$("newsSummary"),sourcesHost=$("newsSources");
+ if(!host||!status)return;
+ const online=Number(report.online_sources)||0,total=Number(report.source_count)||50;
+ const model=report.model||{};
+ const direction=String(report.market_direction||"neutral");
+ const directionLabel=direction==="positive"?"إيجابي":direction==="negative"?"سلبي":"محايد";
+ const sentiment=Number(report.market_sentiment)||0;
+ status.textContent=(items.length+" خبر · "+online+"/"+total+" مصدر متاح · تحديث "+newsDate(Number(report.updated_at||0)*1000));
+ if(summary)summary.innerHTML=
+  '<div class="news-intel-kpi"><span>مصادر متاحة</span><b>'+online+'/'+total+'</b></div>'+
+  '<div class="news-intel-kpi"><span>الأخبار المجموعة</span><b>'+Number(report.article_count||items.length)+'</b></div>'+
+  '<div class="news-intel-kpi"><span>اتجاه السوق</span><b class="'+(direction==='positive'?'positive':direction==='negative'?'negative':'')+'">'+directionLabel+' · '+(sentiment*100).toFixed(1)+'%</b></div>'+
+  '<div class="news-intel-kpi"><span>نموذج أخبار مساعد</span><b>'+(model.ready?'ACTIF':'APPRENTISSAGE')+'</b><small>'+Number(model.samples||0)+' إشارة مغلقة'+(model.validation_auc!==null&&model.validation_auc!==undefined?' · AUC '+Number(model.validation_auc).toFixed(3):'')+'</small></div>';
+ if(!items.length)host.innerHTML='<div class="card empty">لم تصل أخبار صالحة من المصادر بعد. ستظهر النتائج بعد نجاح جلب RSS في دورة GitHub Actions التالية.</div>';
+ else host.innerHTML=items.slice(0,10).map((item,index)=>{
+  const title=esc(item.title||"Titre indisponible"),description=esc(newsPlainText(item.summary||"").slice(0,420));
+  const url=/^https?:\/\//i.test(String(item.link||""))?String(item.link):"";
+  const dir=String(item.direction||"neutral"),dirLabel=dir==="positive"?"إيجابي":dir==="negative"?"سلبي":"محايد";
+  const coins=Array.isArray(item.coins)&&item.coins.length?item.coins.join(" · "):"السوق العام";
+  const date=Number(item.published_ts)>0?newsDate(Number(item.published_ts)*1000):newsDate(item.published);
+  const impact=Number(item.impact_score)||0,confidence=Number(item.confidence)||0;
+  return '<article class="news-item"><div><div class="news-meta"><span class="news-source">'+esc(item.source||"Global source")+'</span><span>·</span><time class="news-date">'+esc(date)+'</time><span>·</span><span>#'+(index+1)+'</span></div><h3>'+title+'</h3><p>'+description+'</p><div class="news-analysis"><span class="'+(dir==='positive'?'positive':dir==='negative'?'negative':'')+'">الاتجاه: '+dirLabel+'</span><span>التأثير: '+impact.toFixed(0)+'/100</span><span>الثقة: '+(confidence*100).toFixed(0)+'%</span><span>المخاطر: '+esc(item.risk_level||"غير محدد")+'</span><span>العملات: '+esc(coins)+'</span></div></div>'+(url?'<a class="news-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Lire l’article ↗</a>':'')+'</article>';
+ }).join("");
+ if(sourcesHost){
+  const list=Array.isArray(report.sources)?report.sources:[];
+  sourcesHost.innerHTML=list.map(source=>'<div class="news-source-chip"><div><b>'+esc(source.name||"Source")+'</b><br><small>'+esc(source.category||"news")+' · '+Number(source.articles||0)+' خبر</small></div><span class="'+(source.status==="online"?'online':'offline')+'">'+(source.status==="online"?'● متاح':'● متوقف')+'</span></div>').join("");
+ }
+}
 async function loadNews(){
  const status=$("newsStatus"),host=$("newsList");
  if(!status||!host)return;
  status.textContent="Mise à jour des actualités…";
  const refresh=$("newsRefresh");if(refresh){refresh.disabled=true;refresh.textContent="Chargement…";}
+ const globalReport=state.contents&&state.contents["news_intelligence.json"];
+ if(globalReport&&Array.isArray(globalReport.articles)){
+  renderGlobalNews(globalReport);
+  if(refresh){refresh.disabled=false;refresh.textContent="↻ Actualiser";}
+  return;
+ }
  try{
   const results=await Promise.allSettled(NEWS_FEEDS.map(async feed=>{
    const endpoint="https://api.rss2json.com/v1/api.json?rss_url="+encodeURIComponent(feed.url);
@@ -1370,6 +1423,7 @@ async function connect(){
   
   
   state.contents=data.contents||{};
+  if(state.contents["news_intelligence.json"])renderGlobalNews(state.contents["news_intelligence.json"]);
   state.strategy_lab=data.strategy_lab||null;
   state.evolution=data.evolution||null;
   state.manifest={generated_at:data.generated_at};
