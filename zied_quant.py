@@ -1140,10 +1140,16 @@ def feature_coverage_mask(X, min_fraction=0.80):
 def _rows_to_ds(rows, label_key="label", ret_key="ret"):
     X, y, ts, ret, hold, coin = [], [], [], [], [], []
     for r in rows:
-        f = json.loads(r["feats"])
-        if len(f) != N_FEATURES:
+        try:
+            f = json.loads(r["feats"])
+            if not isinstance(f, list) or len(f) != N_FEATURES:
+                continue
+            vector = np.asarray(f, dtype=np.float64)
+            if vector.shape != (N_FEATURES,):
+                continue
+        except (TypeError, ValueError, json.JSONDecodeError):
             continue
-        X.append(f); y.append(r[label_key]); ts.append(r["ts"])
+        X.append(vector); y.append(r[label_key]); ts.append(r["ts"])
         ret.append(r[ret_key] if r[ret_key] is not None else np.nan)
         hold.append(r["hold"] if "hold" in r.keys() and r["hold"] is not None else np.nan)
         coin.append(r["inst"])
@@ -1152,6 +1158,22 @@ def _rows_to_ds(rows, label_key="label", ret_key="ret"):
     return dict(X=np.array(X, dtype=np.float32), y=np.array(y, dtype=np.float32), ts=np.array(ts, dtype=np.float64),
                 ret=np.array(ret, dtype=np.float64), hold=np.array(hold, dtype=np.float64),
                 coin=np.array(coin, dtype="<U16"))
+
+def _eligible_closed_training_dataset(paper):
+    """One canonical eligibility filter shared by the gate and the trainer."""
+    ds = paper.closed_signal_dataset()
+    if not len(ds["y"]):
+        return ds
+    valid = (
+        np.isfinite(ds["X"]).all(axis=1)
+        & np.isfinite(ds["y"])
+        & np.isin(ds["y"], [0, 1])
+        & np.isfinite(ds["ts"])
+        & np.isfinite(ds["ret"])
+        & (ds["ret"] != 0)
+    )
+    return {key: value[valid] for key, value in ds.items()}
+
 
 class Paper:
     """Signal history and model metadata only; no wallet, positions, or trade ledger."""
@@ -1266,24 +1288,26 @@ class Paper:
 
     @locked
     def closed_signal_dataset(self):
-        """Training rows from tracked signals only, and only after their closure."""
-        return _rows_to_ds(self.db.execute(
+        """Return only closed outcomes recorded with the exact active feature schema."""
+        expected_names = json.dumps(list(FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
+        rows = self.db.execute(
             "SELECT COALESCE(s.feature_ts,s.ts) AS ts,s.inst,s.feats,"
             "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label,s.ret,s.hold "
             "FROM signals s JOIN tracked_signals t ON t.signal_id=s.id "
             "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL "
-            "AND s.ret != 0 ORDER BY t.closed_ts,s.id").fetchall())
+            "AND s.ret != 0 AND s.feature_count=? AND s.feature_names=? "
+            "ORDER BY t.closed_ts,s.id",
+            (int(N_FEATURES), expected_names),
+        ).fetchall()
+        return _rows_to_ds(rows)
 
     @locked
     def closed_outcome_counts(self):
-        row = self.db.execute(
-            "SELECT SUM(CASE WHEN s.ret>0 THEN 1 ELSE 0 END) AS wins,"
-            "SUM(CASE WHEN s.ret<0 THEN 1 ELSE 0 END) AS losses,"
-            "COUNT(*) AS total "
-            "FROM tracked_signals t JOIN signals s ON s.id=t.signal_id "
-            "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL").fetchone()
-        return dict(wins=int(row["wins"] or 0), losses=int(row["losses"] or 0),
-                    total=int(row["total"] or 0))
+        """Count exactly the finite, schema-compatible rows that training can consume."""
+        ds = _eligible_closed_training_dataset(self)
+        wins = int(np.sum(ds["y"] == 1)) if len(ds["y"]) else 0
+        losses = int(np.sum(ds["y"] == 0)) if len(ds["y"]) else 0
+        return dict(wins=wins, losses=losses, total=wins + losses)
 
     @locked
     def adaptive_ranking_weights(self, regime, min_samples=20, lookback=500):
@@ -1914,17 +1938,17 @@ def poll_commands(paper, brain, timeout=0):
 # =====================================================================
 # PIPELINE
 # =====================================================================
-MIN_CLOSED_MODEL_SAMPLES = 600
-MIN_CLOSED_CLASS_SAMPLES = 10
-LEARNING_REFRESH_SAMPLES = 10
+MIN_CLOSED_MODEL_SAMPLES = 1000
+MIN_CLOSED_CLASS_SAMPLES = 500
+LEARNING_REFRESH_SAMPLES = 1
 
 
 def learning_gate_status(paper):
-    """Use all verified closed outcomes; no arbitrary 500-win/500-loss quota."""
+    """Activate supervised learning only after 500 eligible net wins and 500 net losses."""
     counts = paper.closed_outcome_counts()
-    ready = (counts["total"] >= MIN_CLOSED_MODEL_SAMPLES
-             and counts["wins"] >= MIN_CLOSED_CLASS_SAMPLES
-             and counts["losses"] >= MIN_CLOSED_CLASS_SAMPLES)
+    ready = (counts["wins"] >= MIN_CLOSED_CLASS_SAMPLES
+             and counts["losses"] >= MIN_CLOSED_CLASS_SAMPLES
+             and counts["total"] >= MIN_CLOSED_MODEL_SAMPLES)
     return dict(**counts, ready=ready,
                 min_samples=MIN_CLOSED_MODEL_SAMPLES,
                 min_per_class=MIN_CLOSED_CLASS_SAMPLES)
@@ -1951,18 +1975,10 @@ def enforce_closed_outcome_gate(brain, paper):
 
 
 def collect_training_data(paper, universe=None, refresh=False, with_trades=False):
-    # Learn only from observed, completed tracked signals; never invent missing outcomes.
-    status = learning_gate_status(paper)
-    ds = paper.closed_signal_dataset()
-    # Do not manufacture missing feature values for closed-signal learning.
-    # A row is used only when its entire recorded feature vector is present and finite.
-    valid = (np.isfinite(ds["X"]).all(axis=1)
-             & np.isfinite(ds["y"])
-             & np.isin(ds["y"], [0, 1])
-             & np.isfinite(ds["ts"])
-             & np.isfinite(ds["ret"]))
-    excluded_incomplete = int(len(valid) - np.sum(valid))
-    ds = {k: v[valid] for k, v in ds.items()}
+    # The gate and trainer use the same canonical rows and strict finite/schema checks.
+    raw = paper.closed_signal_dataset()
+    ds = _eligible_closed_training_dataset(paper)
+    excluded_incomplete = int(len(raw["y"]) - len(ds["y"]))
     if excluded_incomplete:
         log.info("closed-signal memory: excluded %d rows with missing/non-finite recorded features (no imputation)",
                  excluded_incomplete)
@@ -1971,9 +1987,12 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=False
     log.info("verified closed-signal memory: samples=%d wins=%d losses=%d (minimum total=%d, per class=%d)",
              len(ds["y"]), wins, losses, MIN_CLOSED_MODEL_SAMPLES, MIN_CLOSED_CLASS_SAMPLES)
     if len(ds["y"]) < MIN_CLOSED_MODEL_SAMPLES:
-        raise RuntimeError(f"waiting for {MIN_CLOSED_MODEL_SAMPLES} verified closed outcomes; have {len(ds['y'])}")
-    if min(wins, losses) < MIN_CLOSED_CLASS_SAMPLES:
-        raise RuntimeError(f"insufficient real examples in one outcome class; wins={wins}, losses={losses}, minimum={MIN_CLOSED_CLASS_SAMPLES}")
+        raise RuntimeError(f"waiting for {MIN_CLOSED_MODEL_SAMPLES} schema-valid finite closed outcomes; have {len(ds['y'])}")
+    if wins < MIN_CLOSED_CLASS_SAMPLES or losses < MIN_CLOSED_CLASS_SAMPLES:
+        raise RuntimeError(
+            f"waiting for balanced verified outcomes; wins={wins}/{MIN_CLOSED_CLASS_SAMPLES}, "
+            f"losses={losses}/{MIN_CLOSED_CLASS_SAMPLES}"
+        )
     return ds
 
 def retrain(brain, paper, universe=None, reason="manual", refresh=False):
@@ -2317,7 +2336,7 @@ def once():
     monitor_tracked_signals(paper)
     label_signals(paper)
     status = enforce_closed_outcome_gate(brain, paper)
-    if status["ready"] and (not brain.ready or need_retrain(paper)):
+    if status["ready"] and need_retrain(paper):
         try:
             retrain(brain, paper, uni, "تعلّم من الإشارات المغلقة")
         except Exception as e:
