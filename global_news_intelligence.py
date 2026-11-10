@@ -162,7 +162,7 @@ def _timestamp(value):
 
 
 def _sentiment(text):
-    s = re.sub(r"[^a-z0-9$\\u0600-\\u06ff-]+", " ", str(text).lower())
+    s = re.sub(r"[^a-z0-9$\u0600-\u06ff-]+", " ", str(text).lower())
     tokens = set(s.split())
     pos = sum(1 for word in POSITIVE if word in tokens or word in s)
     neg = sum(1 for word in NEGATIVE if word in tokens or word in s)
@@ -281,8 +281,9 @@ def news_features(inst, articles=None):
     now = time.time()
     weights, sentiments = [], []
     for item, relevance in related:
-        age = max(0.0, now - float(item.get("published_ts") or now))
-        freshness = math.exp(-age / (36 * 3600))
+        published_ts = float(item.get("published_ts") or 0.0)
+        freshness = (math.exp(-max(0.0, now - published_ts) / (36 * 3600))
+                     if published_ts > 0 else 0.0)
         weight = float(item.get("credibility", 0.5)) * relevance * freshness
         weights.append(weight)
         sentiments.append(float(item.get("sentiment", 0.0)))
