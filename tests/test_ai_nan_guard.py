@@ -126,11 +126,13 @@ class AINanGuardTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     brain.predict(np.zeros((1, zq.N_FEATURES), dtype=float))
 
-    def test_ai_predict_rejects_nonfinite_features(self):
+    def test_ai_predict_accepts_nan_as_unknown_but_rejects_infinity(self):
         brain = fake_brain([0.7])
         X = np.zeros((1, zq.N_FEATURES), dtype=float)
         X[0, 0] = np.nan
-        with self.assertRaisesRegex(ValueError, "input contains"):
+        self.assertEqual(brain.predict(X).tolist(), [0.7])
+        X[0, 0] = np.inf
+        with self.assertRaisesRegex(ValueError, "infinite features"):
             brain.predict(X)
 
     def test_model_save_persists_only_selected_gbm_and_writes_metadata_last(self):
