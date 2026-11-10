@@ -1342,8 +1342,11 @@ setLanguage();
  const shell=document.createElement("div");shell.className="reference-home";shell.id="referenceHome";
  shell.innerHTML="\n<div class=\"okx-shell\">\n <div class=\"okx-market-strip\"><div class=\"okx-market-left\"><i class=\"okx-live-dot\"></i><b>SPOT MARKET</b><span>USDT PAIRS</span><span>/</span><span>PAPER TRADING</span></div><div class=\"okx-market-right\"><span id=\"refStatus\" class=\"reference-status\">● Connecté</span><span id=\"refUpdated\">Dernière mise à jour —</span><span>🇹🇳 TUNISIA</span></div></div>\n <header class=\"okx-main-header\"><div class=\"reference-brand\"><div class=\"reference-logo\">Z</div><div><b>ZIED QUANT</b><small>AI TRADING TERMINAL</small></div></div><div class=\"okx-header-actions\"><span class=\"okx-mode-chip\"><i></i> PAPER MODE</span><button class=\"reference-tool\" id=\"refLang\">FR</button><button class=\"reference-tool\" id=\"refRefresh\" title=\"Actualiser\">↻</button></div></header>\n <section class=\"okx-welcome\"><div><div class=\"okx-eyebrow\">QUANT INTELLIGENCE <span>•</span> LIVE MONITORING</div><h1>Vue d'ensemble</h1><p>Surveillance du marché, signaux et performance du moteur IA.</p></div><div class=\"okx-welcome-badge\"><span>MODE DE FONCTIONNEMENT</span><b>Simulation · Sans ordre réel</b></div></section>\n <div class=\"reference-kpis okx-kpis\" id=\"refKpis\"></div>\n <div class=\"okx-section-title\"><div><h2>Marché & performance</h2><p>Résultats des signaux clôturés et suivi des positions</p></div><span class=\"okx-section-tag\">OVERVIEW</span></div>\n <div class=\"reference-main-grid okx-main-grid\">\n  <section class=\"reference-panel okx-chart-panel\"><div class=\"reference-panel-head\"><div><h2>Performance cumulée</h2><small>Rendement des signaux clôturés</small></div><div class=\"reference-chart-tabs\"><button class=\"active\" data-range=\"7\">7J</button><button data-range=\"30\">30J</button><button data-range=\"all\">Tout</button></div></div><div class=\"reference-chart-host\" id=\"refChart\"></div></section>\n  <section class=\"reference-panel okx-position-panel\"><div class=\"reference-panel-head\"><div><h2>Position XRP/USDT</h2><small>Suivi du signal actif</small></div><span class=\"reference-pill\" id=\"refPositionState\">—</span></div><div id=\"refOpenPosition\"></div></section>\n </div>\n <div class=\"okx-section-title\"><div><h2>Trading & intelligence</h2><p>Accès rapide aux éléments les plus importants</p></div><button class=\"okx-text-action\" data-ref-page=\"signals\">Tous les signaux →</button></div>\n <div class=\"reference-lower-grid okx-lower-grid\">\n  <section class=\"reference-panel okx-ai-panel\"><div class=\"reference-panel-head\"><div><h2>AI Learning Engine</h2><small>Progression des résultats vérifiés</small></div><span class=\"reference-pill\" id=\"refModelState\">Apprentissage</span></div><div class=\"reference-learning-body\" id=\"refLearning\"></div></section>\n  <section class=\"reference-panel okx-signals-panel\"><div class=\"reference-panel-head\"><div><h2>Signaux ouverts</h2><small>Dernières positions surveillées</small></div><button class=\"okx-text-action\" data-ref-page=\"signals\">Voir tout →</button></div><div id=\"refLatestSignals\"></div></section>\n </div>\n <section class=\"okx-workspace-launch\"><div><span class=\"okx-section-tag\">WORKSPACE</span><h2>Terminal de contrôle</h2><p>Analyse approfondie, intelligence artificielle et historique.</p></div><button type=\"button\" data-workspace-toggle aria-expanded=\"false\">Ouvrir les espaces ↗</button></section>\n <nav class=\"reference-bottom-nav\" aria-label=\"Navigation principale\"><button class=\"active\" data-ref-page=\"overview\"><span>⌂</span>Accueil</button><button data-ref-page=\"graphiques\"><span>▥</span>Graphiques</button><button data-ref-page=\"signals\"><span>⌁</span>Signaux</button><button data-ref-page=\"closedTrades\"><span>▤</span>Historique</button><button type=\"button\" data-workspace-toggle aria-expanded=\"false\"><span>▦</span>Menu</button></nav>\n</div>";
 
+ const workspaceSectionBuild=document.createElement("section");
+ workspaceSectionBuild.className="reference-nav-section";
+ workspaceSectionBuild.innerHTML='<div class="reference-section-heading"><div><h2>Espaces de travail</h2><p>Ouvrez directement chaque espace du terminal.</p></div></div><div id="referenceNavGrid" class="reference-nav-grid"></div>';
  const allNav=document.getElementById("dashboardNav");
- const navGrid=shell.querySelector("#referenceNavGrid");
+ const navGrid=workspaceSectionBuild.querySelector("#referenceNavGrid");
  if(allNav&&navGrid){
   const descriptions={
    overview:"Vue générale et indicateurs",graphiques:"Graphiques et performances",portfolio:"Simulation et allocation",
@@ -1380,15 +1383,16 @@ setLanguage();
   });
  }
 
- const workspaceSection=shell.querySelector(".reference-nav-section");
+ const workspaceSection=workspaceSectionBuild;
+ shell.querySelector(".okx-workspace-launch")?.before(workspaceSection);
  const workspaceMenu=document.createElement("div");
  workspaceMenu.className="workspace-bottom-menu";
  workspaceMenu.id="workspaceBottomMenu";
  workspaceMenu.innerHTML='<div class="workspace-bottom-menu-panel" role="dialog" aria-label="Espaces de travail"></div>';
  if(workspaceSection){workspaceMenu.querySelector(".workspace-bottom-menu-panel").appendChild(workspaceSection);}
- const workspaceToggle=shell.querySelector("[data-workspace-toggle]");
- const closeWorkspaceMenu=()=>{workspaceMenu.classList.remove("is-open");workspaceToggle?.setAttribute("aria-expanded","false");};
- workspaceToggle?.addEventListener("click",()=>{const opened=workspaceMenu.classList.toggle("is-open");workspaceToggle.setAttribute("aria-expanded",String(opened));});
+ const workspaceToggles=[...shell.querySelectorAll("[data-workspace-toggle]")];
+ const closeWorkspaceMenu=()=>{workspaceMenu.classList.remove("is-open");workspaceToggles.forEach(button=>button.setAttribute("aria-expanded","false"));};
+ workspaceToggles.forEach(button=>button.addEventListener("click",()=>{const opened=!workspaceMenu.classList.contains("is-open");workspaceMenu.classList.toggle("is-open",opened);workspaceToggles.forEach(toggle=>toggle.setAttribute("aria-expanded",String(opened)));}));
  workspaceMenu.addEventListener("click",e=>{
   if(e.target===workspaceMenu){closeWorkspaceMenu();return;}
   const item=e.target.closest("[data-ref-page]");
@@ -1401,7 +1405,7 @@ setLanguage();
  overview.prepend(shell);
  /* Keep the workspace sheet outside the homepage layout so it can only appear as a bottom overlay. */
  document.body.appendChild(workspaceMenu);
- shell.addEventListener("click",e=>{const b=e.target.closest("[data-ref-page]");if(b){workspaceMenu.classList.remove("is-open");workspaceToggle?.setAttribute("aria-expanded","false");window.location.href=b.dataset.refPage==="overview"?location.pathname:"?page="+encodeURIComponent(b.dataset.refPage);}});
+ shell.addEventListener("click",e=>{const b=e.target.closest("[data-ref-page]");if(b){workspaceMenu.classList.remove("is-open");workspaceToggles.forEach(toggle=>toggle.setAttribute("aria-expanded","false"));window.location.href=b.dataset.refPage==="overview"?location.pathname:"?page="+encodeURIComponent(b.dataset.refPage);}});
  shell.querySelector("#refRefresh").addEventListener("click",()=>connect());
  shell.querySelector("#refLang").addEventListener("click",()=>{setLanguage();});
  shell.querySelectorAll("[data-range]").forEach(b=>b.addEventListener("click",()=>{shell.querySelectorAll("[data-range]").forEach(x=>x.classList.toggle("active",x===b));}));
