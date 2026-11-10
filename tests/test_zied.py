@@ -284,3 +284,56 @@ def test_bootstrap_training_retries_hourly_with_sufficient_durable_cache(monkeyp
 
     assert not zq.bootstrap_training_due(paper, now=1000 + 3599)
     assert zq.bootstrap_training_due(paper, now=1000 + 3600)
+
+
+def test_previous_validated_model_is_recovered_after_corrupt_promotion():
+    tmp_env()
+    champion = zq.Brain(persist=False)
+    champion.mode = "gbm"
+    champion.gbm = {"version": 1}
+    champion.mu = np.zeros(zq.N_FEATURES)
+    champion.sd = np.ones(zq.N_FEATURES)
+    champion.thrs = {"gbm": 0.5}
+    champion.auc = 0.61
+    champion.info = {"accepted": True}
+    champion.save(zq.N_FEATURES)
+
+    # A later accepted candidate becomes current; the former champion is retained.
+    champion.gbm = {"version": 2}
+    champion.auc = 0.62
+    champion.save(zq.N_FEATURES)
+    assert os.path.exists(zq.CFG["META"] + ".bak")
+    with open(zq.CFG["GBM"], "wb") as fh:
+        fh.write(b"corrupted-candidate")
+
+    recovered = zq.Brain(persist=True)
+    assert recovered.ready
+    assert recovered.gbm == {"version": 1}
+    assert recovered.auc == 0.61
+
+
+def test_rejected_candidate_does_not_overwrite_existing_champion():
+    tmp_env()
+    champion = zq.Brain(persist=False)
+    champion.mode = "gbm"
+    champion.gbm = {"version": 1}
+    champion.mu = np.zeros(zq.N_FEATURES)
+    champion.sd = np.ones(zq.N_FEATURES)
+    champion.thrs = {"gbm": 0.5}
+    champion.auc = 0.61
+    champion.info = {"accepted": True}
+    champion.save(zq.N_FEATURES)
+
+    # The fit path only mutates/persists a model when its independent gate accepts it.
+    before = open(zq.CFG["META"], encoding="utf-8").read()
+    candidate = zq.Brain(persist=True)
+    candidate.gbm = {"version": 2}
+    candidate.auc = 0.40
+    candidate.mode = "gbm"
+    candidate.mu = np.zeros(zq.N_FEATURES)
+    candidate.sd = np.ones(zq.N_FEATURES)
+    candidate.thrs = {"gbm": 0.5}
+    candidate.info = {"accepted": False}
+    assert candidate.auc < champion.auc
+    assert open(zq.CFG["META"], encoding="utf-8").read() == before
+    assert candidate.gbm == {"version": 2}
