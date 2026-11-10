@@ -153,6 +153,19 @@ body :is(table,thead,tbody,tfoot,tr,th,td)[style*="rgb(255" i]{background:#10151
 body :is(table,th,td) :is(div,span,p){color:inherit}
 body table :is(button,select,input){background:#171f2a!important;color:#eaecef!important;border-color:#344052!important}
 </style>
+<style id="okx-dark-all-table-surfaces">
+/* Final global override: legacy table wrappers and inline white surfaces */
+:root{--bg:#080b10!important;--panel:#10151d!important;--line:#26313f!important;--txt:#eaecef!important;--mut:#8b95a5!important}
+body{background:#080b10!important;color:#eaecef!important}
+body :is(.tablewrap,.table-wrap,.table-wrapper,.table-container,.table-scroll,.data-table,.eval-block,.eval-kpi,.eval-stat,.overview-launcher,.overview-details,.controls,.card,.panel,.box,.section-card,.metric-card,.chart-card,.content-card,.stat-card,.panel-card,.widget,.tile,.module,.subsection,.inner-card){background:#10151d!important;background-color:#10151d!important;color:#eaecef!important;border-color:#26313f!important;box-shadow:none!important}
+body :is(table,thead,tbody,tfoot,tr,th,td){background:#10151d!important;background-color:#10151d!important;color:#eaecef!important;border-color:#26313f!important}
+body :is(th,thead th){background:#171f2a!important;background-color:#171f2a!important;color:#aeb8c7!important}
+body :is(td,tbody td){background:#10151d!important;background-color:#10151d!important;color:#eaecef!important}
+body [style*="background:#fff" i],body [style*="background: #fff" i],body [style*="background-color:#fff" i],body [style*="background-color: #fff" i],body [style*="background:white" i],body [style*="background: white" i],body [style*="background-color:white" i],body [style*="background-color: white" i],body [style*="background:#ffffff" i],body [style*="background: #ffffff" i],body [style*="background-color:#ffffff" i],body [style*="background-color: #ffffff" i]{background:#10151d!important;background-color:#10151d!important;color:#eaecef!important}
+body .tablewrap table tbody tr:nth-child(even),body .tablewrap table tbody tr:nth-child(odd){background:#10151d!important}
+body .tablewrap table th{background:#171f2a!important;color:#aeb8c7!important}
+body .tablewrap table td{background:#10151d!important;color:#eaecef!important}
+</style>
 </head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
