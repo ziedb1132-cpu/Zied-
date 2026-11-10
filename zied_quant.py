@@ -1666,7 +1666,20 @@ def rank_universe(X, vol24, paper=None, regimes=None, spread24=None):
         coins = regime_series.index[regime_series == regime]
         weights, samples, adaptive = (paper.adaptive_ranking_weights(regime)
                                       if paper is not None else (base, 0, False))
-        part = sum(weights.get(k, base[k]) * factors[k].loc[coins] for k in base)
+        # Sum only observed factor evidence, then rescale to the legacy weight
+        # magnitude. Missing factors are unknown, not zero and not a reason to
+        # discard an otherwise usable asset row.
+        local_weights = {k: float(weights.get(k, base[k])) for k in base}
+        weighted = pd.DataFrame({
+            k: factors[k].loc[coins] * local_weights[k] for k in base
+        }, index=coins)
+        observed_weight = pd.DataFrame({
+            k: factors[k].loc[coins].notna().astype(float) * abs(local_weights[k])
+            for k in base
+        }, index=coins).sum(axis=1)
+        part = weighted.sum(axis=1, min_count=1)
+        scale = sum(abs(v) for v in local_weights.values())
+        part = part * scale / observed_weight.replace(0.0, np.nan)
         score.loc[coins] = part
         diagnostics[str(regime)] = {"samples": int(samples), "adaptive": bool(adaptive),
                                     "weights": weights}
@@ -2206,6 +2219,15 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         if int(rr["rank"]) > max_signal_rank:
             continue
         threshold, regime_stats = regime_entry_threshold(paper, rr["regime"])
+        # Partial rows may be ranked and scored by AI, but execution still requires
+        # every feature used by the deterministic entry-quality and ATR risk rules.
+        required_entry_features = (
+            "1H_rsi14", "1H_atr_pct", "1H_ema_dist21", "15m_ret20",
+            "1H_lower_wick", "1H_body_ratio", "1H_adx14",
+        )
+        if not np.isfinite(X.loc[inst, list(required_entry_features)].to_numpy(dtype=float)).all():
+            reject["entry_quality"] += 1
+            continue
         if bool(rr["stretched"]):
             reject["stretched"] += 1
             continue
