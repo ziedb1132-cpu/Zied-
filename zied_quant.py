@@ -558,7 +558,6 @@ def build_trainset(universe):
             # for live scanning, but never impute or train on fabricated/missing values.
             valid = (np.isfinite(D["_ret"].to_numpy(dtype=np.float64))
                      & np.isfinite(D["_hold"].to_numpy(dtype=np.float64))
-                     & np.isfinite(values).all(axis=1)
                      & feature_coverage_mask(values, 0.80))
             D = D.loc[valid]
             if D.empty:
@@ -737,10 +736,13 @@ class Brain:
 
     def _norm(self, X):
         values = np.asarray(X, dtype=np.float64)
-        # Missing inputs are replaced with the training-only mean (z-score zero).
-        # No future/validation data is used to estimate imputation values.
-        values = np.where(np.isfinite(values), values, np.asarray(self.mu, dtype=np.float64))
-        return np.clip((values - self.mu) / self.sd, -5, 5).astype(np.float32)
+        # Impute only with means learned from the chronological fit block, and
+        # append an explicit 0/1 missingness channel for every source feature.
+        # Thus an unknown value is distinguishable from a genuine numeric zero.
+        missing = ~np.isfinite(values)
+        values = np.where(missing, np.asarray(self.mu, dtype=np.float64), values)
+        scaled = np.clip((values - self.mu) / self.sd, -5, 5).astype(np.float32)
+        return np.concatenate((scaled, missing.astype(np.float32)), axis=1)
 
     def describe(self):
         if not self.ready:
@@ -757,7 +759,9 @@ class Brain:
         try:
             with open(backup["META"], encoding="utf-8") as fh:
                 meta = json.load(fh)
-            if int(meta.get("n_in", -1)) != N_FEATURES:
+            if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
+                    or int(meta.get("raw_n_in", -1)) != N_FEATURES
+                    or int(meta.get("missing_mask_version", 0)) != 1):
                 return False
             for key, flag in (("MODEL", "has_nn"), ("GBM", "has_gbm")):
                 if meta.get(flag) and not os.path.isfile(backup[key]):
@@ -815,7 +819,8 @@ class Brain:
             meta = dict(mu=np.asarray(self.mu, dtype=float).tolist(),
                         sd=np.asarray(self.sd, dtype=float).tolist(), thrs=self.thrs, mode=self.mode,
                         auc=self.auc, has_nn=need_nn, has_gbm=need_gbm,
-                        n_in=n_in, info=self.info)
+                        n_in=n_in, raw_n_in=n_in // 2,
+                        missing_mask_version=1, info=self.info)
             with open(meta_tmp, "w", encoding="utf-8") as fh:
                 json.dump(meta, fh, allow_nan=False)
                 fh.flush()
@@ -825,7 +830,9 @@ class Brain:
             try:
                 with open(CFG["META"], encoding="utf-8") as fh:
                     old_meta = json.load(fh)
-                old_ok = (int(old_meta.get("n_in", -1)) == N_FEATURES
+                old_ok = (int(old_meta.get("n_in", -1)) == 2 * N_FEATURES
+                          and int(old_meta.get("raw_n_in", -1)) == N_FEATURES
+                          and int(old_meta.get("missing_mask_version", 0)) == 1
                           and (not old_meta.get("has_nn") or os.path.isfile(CFG["MODEL"]))
                           and (not old_meta.get("has_gbm") or os.path.isfile(CFG["GBM"])))
                 if old_ok:
@@ -876,8 +883,10 @@ class Brain:
             return
         try:
             meta = json.load(open(CFG["META"], encoding="utf-8"))
-            if meta["n_in"] != N_FEATURES:
-                log.info("saved model has %s features, expected %s -> ignored", meta["n_in"], N_FEATURES)
+            if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
+                    or int(meta.get("raw_n_in", -1)) != N_FEATURES
+                    or int(meta.get("missing_mask_version", 0)) != 1):
+                log.info("saved model schema is incompatible with missing-value encoding -> ignored")
                 return
             if meta.get("has_nn") and not os.path.exists(CFG["MODEL"]):
                 raise FileNotFoundError("committed neural model file is missing")
@@ -924,11 +933,11 @@ class Brain:
         """Return validated probabilities; invalid model output must never reach trade selection."""
         if not self.ready:
             raise RuntimeError("AI model is not ready")
-        X = np.asarray(X, dtype=np.float32)
+        X = np.asarray(X, dtype=np.float64)
         if X.ndim != 2 or X.shape[1] != N_FEATURES:
             raise ValueError(f"AI input shape invalid: {X.shape}; expected (*, {N_FEATURES})")
-        if not np.isfinite(X).all():
-            raise ValueError("AI input contains NaN or infinite features")
+        if np.isinf(X).any():
+            raise ValueError("AI input contains infinite features; only NaN is treated as unknown")
         if not feature_coverage_mask(X, 0.80).all():
             raise ValueError("AI input has more than 20% missing features in at least one row")
         out = np.asarray(self.predict_all(X)[self.mode], dtype=np.float64).reshape(-1)
@@ -1090,7 +1099,7 @@ class Brain:
             self.nn, self.gbm = models.get("nn"), models.get("gbm")
             self.mu, self.sd, self.thrs, self.mode, self.auc, self.info = mu, sd, thrs, mode, gate_auc, info
             if self.persist:
-                self.save(X.shape[1])
+                self.save(X.shape[1] * 2)
         self.last_fit = dict(info=info, pv=ps, yv=ys, gate_p=pg, gate_y=yg,
                              X_gate=np.asarray(X[gate_start:], dtype=np.float64))
         return info
@@ -1130,7 +1139,7 @@ def impact(usdt, vol24):
     return CFG["IMPACT_K"] * math.sqrt(max(usdt, 0.0) / max(vol24 or 1e6, 1.0))
 
 def feature_coverage_mask(X, min_fraction=0.80):
-    """Keep rows with enough observed features; missing values are imputed from fit-only means."""
+    """Accept rows with enough real observations; missingness is encoded separately."""
     values = np.asarray(X, dtype=np.float64)
     if values.ndim != 2 or values.shape[1] == 0:
         return np.zeros(len(values) if values.ndim else 0, dtype=bool)
@@ -1165,7 +1174,7 @@ def _eligible_closed_training_dataset(paper):
     if not len(ds["y"]):
         return ds
     valid = (
-        np.isfinite(ds["X"]).all(axis=1)
+        feature_coverage_mask(ds["X"], 0.80)
         & np.isfinite(ds["y"])
         & np.isin(ds["y"], [0, 1])
         & np.isfinite(ds["ts"])
