@@ -27,7 +27,7 @@ Env (optional):
     TELEGRAM_TOKEN, TELEGRAM_CHAT_ID   alerts + remote commands
     OKX_BASE                           e.g. https://aws.okx.com if www.okx.com is blocked
 """
-import os, sys, time, json, math, pickle, sqlite3, logging, threading, functools, datetime
+import os, sys, time, json, math, pickle, sqlite3, logging, threading, functools, datetime, shutil
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -723,6 +723,7 @@ class Brain:
         self.mu = self.sd = None
         self.thrs, self.mode, self.auc, self.info = {}, None, None, {}
         self.persist = persist
+        self._recovering_backup = False
         if persist:
             self.load()
 
@@ -750,8 +751,43 @@ class Brain:
                 f"عيّنات التدريب: {self.info.get('n', '?')}")
 
     # ---------- persistence ----------
+    def _restore_previous_model(self):
+        """Recover the last committed model after an interrupted multi-file promotion."""
+        backup = {key: CFG[key] + ".bak" for key in ("MODEL", "GBM", "META")}
+        try:
+            with open(backup["META"], encoding="utf-8") as fh:
+                meta = json.load(fh)
+            if int(meta.get("n_in", -1)) != N_FEATURES:
+                return False
+            for key, flag in (("MODEL", "has_nn"), ("GBM", "has_gbm")):
+                if meta.get(flag) and not os.path.isfile(backup[key]):
+                    return False
+            # Restore model components first and metadata last (the commit marker).
+            for key, flag in (("MODEL", "has_nn"), ("GBM", "has_gbm")):
+                target = CFG[key]
+                if meta.get(flag):
+                    tmp = target + ".restore.tmp"
+                    shutil.copy2(backup[key], tmp)
+                    os.replace(tmp, target)
+                else:
+                    try: os.remove(target)
+                    except FileNotFoundError: pass
+            tmp = CFG["META"] + ".restore.tmp"
+            shutil.copy2(backup["META"], tmp)
+            os.replace(tmp, CFG["META"])
+            log.warning("recovered last committed AI model from backup: mode=%s auc=%s",
+                        meta.get("mode"), meta.get("auc"))
+            return True
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            log.warning("previous AI model backup is unavailable or invalid: %s", exc)
+            return False
+        finally:
+            for key in ("MODEL", "GBM", "META"):
+                try: os.remove(CFG[key] + ".restore.tmp")
+                except FileNotFoundError: pass
+
     def save(self, n_in):
-        """Persist only the model selected for inference; write metadata last as commit marker."""
+        """Promote a validated model while retaining a recoverable copy of the previous champion."""
         need_nn = self.mode in ("nn", "ens")
         need_gbm = self.mode in ("gbm", "ens")
         if self.mode not in ("nn", "gbm", "ens"):
@@ -765,11 +801,11 @@ class Brain:
 
         os.makedirs(CFG["DIR"], exist_ok=True)
         model_tmp, gbm_tmp, meta_tmp = CFG["MODEL"] + ".tmp", CFG["GBM"] + ".tmp", CFG["META"] + ".tmp"
-        for path in (model_tmp, gbm_tmp, meta_tmp):
-            try:
-                os.remove(path)
-            except FileNotFoundError:
-                pass
+        backup_tmp = {key: CFG[key] + ".bak.tmp" for key in ("MODEL", "GBM", "META")}
+        backup = {key: CFG[key] + ".bak" for key in ("MODEL", "GBM", "META")}
+        for path in (model_tmp, gbm_tmp, meta_tmp, *backup_tmp.values()):
+            try: os.remove(path)
+            except FileNotFoundError: pass
         try:
             if need_nn:
                 torch.save({"state": self.nn.state_dict(), "n_in": n_in}, model_tmp)
@@ -784,63 +820,94 @@ class Brain:
                 json.dump(meta, fh, allow_nan=False)
                 fh.flush()
                 os.fsync(fh.fileno())
-            # Metadata is replaced last, so incomplete temporary files are never treated as a model.
-            if need_nn:
-                os.replace(model_tmp, CFG["MODEL"])
-            if need_gbm:
-                os.replace(gbm_tmp, CFG["GBM"])
-            os.replace(meta_tmp, CFG["META"])
-            # Remove obsolete components only after the new metadata is safely committed.
-            if not need_nn:
-                try: os.remove(CFG["MODEL"])
-                except FileNotFoundError: pass
-            if not need_gbm:
-                try: os.remove(CFG["GBM"])
-                except FileNotFoundError: pass
-            log.info("model artifacts saved: mode=%s nn=%s gbm=%s", self.mode, need_nn, need_gbm)
+
+            # Snapshot only a complete current champion; never back up a partial candidate.
+            try:
+                with open(CFG["META"], encoding="utf-8") as fh:
+                    old_meta = json.load(fh)
+                old_ok = (int(old_meta.get("n_in", -1)) == N_FEATURES
+                          and (not old_meta.get("has_nn") or os.path.isfile(CFG["MODEL"]))
+                          and (not old_meta.get("has_gbm") or os.path.isfile(CFG["GBM"])))
+                if old_ok:
+                    for key, flag in (("MODEL", "has_nn"), ("GBM", "has_gbm")):
+                        if old_meta.get(flag):
+                            shutil.copy2(CFG[key], backup_tmp[key])
+                    shutil.copy2(CFG["META"], backup_tmp["META"])
+                    for key in ("MODEL", "GBM", "META"):
+                        if os.path.exists(backup_tmp[key]):
+                            os.replace(backup_tmp[key], backup[key])
+                        elif key != "META":
+                            try: os.remove(backup[key])
+                            except FileNotFoundError: pass
+            except (OSError, ValueError, TypeError, KeyError):
+                log.warning("existing AI champion could not be snapshotted; current files remain untouched until promotion")
+
+            # Candidate components first; metadata is the final commit marker.
+            try:
+                if need_nn: os.replace(model_tmp, CFG["MODEL"])
+                if need_gbm: os.replace(gbm_tmp, CFG["GBM"])
+                os.replace(meta_tmp, CFG["META"])
+                if not need_nn:
+                    try: os.remove(CFG["MODEL"])
+                    except FileNotFoundError: pass
+                if not need_gbm:
+                    try: os.remove(CFG["GBM"])
+                    except FileNotFoundError: pass
+            except Exception:
+                self._restore_previous_model()
+                raise
+            log.info("validated AI champion saved: mode=%s nn=%s gbm=%s previous_champion_backup=%s",
+                     self.mode, need_nn, need_gbm, os.path.exists(backup["META"]))
         finally:
-            for path in (model_tmp, gbm_tmp, meta_tmp):
+            for path in (model_tmp, gbm_tmp, meta_tmp, *backup_tmp.values()):
                 try: os.remove(path)
                 except FileNotFoundError: pass
 
     def load(self):
         if not os.path.exists(CFG["META"]):
-            # Without metadata there is no trustworthy normalization, selected mode, or validation score.
-            # These model files are stale/orphaned and must not survive another state save.
+            if self._restore_previous_model():
+                return self.load()
+            # No current or recoverable champion: remove untrusted orphan components.
             for path in (CFG["MODEL"], CFG["GBM"]):
                 if os.path.exists(path):
                     log.warning("removing orphan model artifact without meta.json: %s", path)
-                    try:
-                        os.remove(path)
-                    except OSError as exc:
-                        log.error("could not remove orphan model artifact %s: %s", path, exc)
+                    try: os.remove(path)
+                    except OSError as exc: log.error("could not remove orphan model artifact %s: %s", path, exc)
             return
         try:
-            meta = json.load(open(CFG["META"]))
+            meta = json.load(open(CFG["META"], encoding="utf-8"))
             if meta["n_in"] != N_FEATURES:
                 log.info("saved model has %s features, expected %s -> ignored", meta["n_in"], N_FEATURES)
                 return
+            if meta.get("has_nn") and not os.path.exists(CFG["MODEL"]):
+                raise FileNotFoundError("committed neural model file is missing")
+            if meta.get("has_gbm") and not os.path.exists(CFG["GBM"]):
+                raise FileNotFoundError("committed GBM file is missing")
             self.mu, self.sd = np.array(meta["mu"]), np.array(meta["sd"])
             self.thrs, self.auc, self.info = meta["thrs"], meta["auc"], meta.get("info", {})
-            if meta["has_nn"] and torch is not None and os.path.exists(CFG["MODEL"]):
+            if meta["has_nn"] and torch is not None:
                 ck = torch.load(CFG["MODEL"], weights_only=True)
                 self.nn = ZiedNet(ck["n_in"]); self.nn.load_state_dict(ck["state"]); self.nn.eval()
-            if meta["has_gbm"] and os.path.exists(CFG["GBM"]):
-                with open(CFG["GBM"], "rb") as fh:
-                    self.gbm = pickle.load(fh)
+            if meta["has_gbm"]:
+                with open(CFG["GBM"], "rb") as fh: self.gbm = pickle.load(fh)
             mode = meta["mode"]
-            if mode in ("nn", "ens") and self.nn is None:        # torch missing here -> degrade gracefully
+            if mode in ("nn", "ens") and self.nn is None:
                 mode = "gbm" if self.gbm is not None else None
-            if mode == "ens" and self.gbm is None:
-                mode = "nn"
-            if mode == "gbm" and self.gbm is None:
-                mode = "nn" if self.nn is not None else None
+            if mode == "ens" and self.gbm is None: mode = "nn"
+            if mode == "gbm" and self.gbm is None: mode = "nn" if self.nn is not None else None
             self.mode = mode
             if self.ready:
                 log.info("model loaded: mode=%s auc=%.3f thr=%.3f", self.mode, self.auc, self.thr)
         except Exception as e:
             log.warning("could not load model: %s", e)
             self.nn = self.gbm = self.mode = None
+            if not self._recovering_backup:
+                self._recovering_backup = True
+                try:
+                    if self._restore_previous_model():
+                        self.load()
+                finally:
+                    self._recovering_backup = False
 
     # ---------- inference ----------
     def predict_all(self, X):
