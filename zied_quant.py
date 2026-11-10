@@ -68,6 +68,7 @@ CFG = dict(
     # historical backtest constraints only; no live or virtual portfolio
     MAX_OPEN=5, POS_FRAC=0.15, RISK_PER_TRADE=0.005, MAX_PORTFOLIO_RISK=0.02,
     MAX_OPEN_CORR=0.85,                 # reject a new paper entry if abs(correlation) to an open coin is higher
+    MAX_SIGNAL_RANK=10,                 # wider runtime pool keeps all existing quality gates
     # self-learning
     RETRAIN_SIGNALS=500,               # bootstrap cache retry interval; separate from closed-memory learning
     DIR="zied_data",
@@ -302,12 +303,28 @@ def hist_depth():
             "4H": d * 6 + 300, "1D": d + 120}
 
 def fetch_frames(inst, depth):
-    fr = {}
+    """Fetch frames independently; tolerate one missing non-base timeframe.
+
+    Missing frames remain NaN in the feature matrix. They are never fabricated
+    or copied from another timeframe. The 1H base frame remains mandatory.
+    """
+    fr, missing = {}, []
     for tf in TFS:
         d = get_candles(inst, tf, depth if isinstance(depth, int) else depth[tf])
         if d is None or len(d) < 60:
-            return None
+            missing.append(tf)
+            continue
         fr[tf] = d
+    if BASE not in fr:
+        log.info("data coverage %s: missing required base timeframe %s; skipped", inst, BASE)
+        return None
+    if len(missing) > 1:
+        log.info("data coverage %s: missing=%s; exceeds one-timeframe tolerance; skipped",
+                 inst, ",".join(missing))
+        return None
+    if missing:
+        log.info("data coverage %s: missing timeframe=%s; observed features retained",
+                 inst, ",".join(missing))
     return fr
 
 def fetch_btc(h1, h4):
@@ -432,9 +449,17 @@ def ctx_features(coin, btc):
     return out.replace([np.inf, -np.inf], np.nan)[CTX_COLS]
 
 def all_tf_features(frames):
+    """Build observed frames; unavailable timeframes stay explicitly NaN."""
     F = {}
+    base_index = pd.DatetimeIndex(frames[BASE]["avail"].values)
     for tf in TFS:
-        x = tf_features(frames[tf]); x.columns = [f"{tf}_{n}" for n in NAMES]; F[tf] = x
+        if frames.get(tf) is None:
+            F[tf] = pd.DataFrame(np.nan, index=base_index,
+                                 columns=[f"{tf}_{n}" for n in NAMES])
+            continue
+        x = tf_features(frames[tf])
+        x.columns = [f"{tf}_{n}" for n in NAMES]
+        F[tf] = x
     return F
 
 def live_vector(frames, btc):
@@ -975,6 +1000,10 @@ class Brain:
                      and np.isfinite(info["val_all_net"])
                      and info["val_top_net"] > 0.0
                      and info["val_top_net"] > info["val_all_net"])
+        # Require a useful untouched net edge and at least 30 selected examples;
+        # a tiny lucky subset must not promote a production model.
+        gate_edge = bool(gate_edge and gate_selected >= 30
+                         and info.get("val_top_net") >= info.get("val_all_net", 0.0) + 0.001)
         quality_ok = (gate_auc >= 0.52
                       and (self.auc is None or gate_auc >= self.auc - 0.03)
                       and gate_edge)
@@ -1014,6 +1043,10 @@ CREATE TABLE IF NOT EXISTS tracked_signals(
   regime TEXT, entry_score REAL, peak_price REAL, trailing_sl REAL, trail_active INTEGER DEFAULT 0,
   feature_count INTEGER, feature_names TEXT, feature_schema_version INTEGER);
 CREATE INDEX IF NOT EXISTS idx_tracked_status ON tracked_signals(status, inst);
+CREATE INDEX IF NOT EXISTS idx_signals_label_time ON signals(labeled, feature_ts, ts);
+CREATE INDEX IF NOT EXISTS idx_signals_inst_time ON signals(inst, feature_ts, ts);
+CREATE INDEX IF NOT EXISTS idx_tracked_closed_time ON tracked_signals(status, closed_ts, signal_id);
+CREATE INDEX IF NOT EXISTS idx_tracked_open_inst ON tracked_signals(status, inst);
 """
 
 def locked(f):
@@ -1085,6 +1118,18 @@ class Paper:
                 self.db.execute(f"ALTER TABLE tracked_signals ADD COLUMN {column} {declaration}")
         self.db.execute("UPDATE signals SET feature_ts=ts WHERE feature_ts IS NULL")
         self.db.execute("UPDATE tracked_signals SET peak_price=entry WHERE peak_price IS NULL")
+        # Idempotent indexes accelerate pending labels, chronological training,
+        # closed-signal joins and per-symbol open-signal checks.
+        self.db.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_signals_label_time
+                ON signals(labeled, feature_ts, ts);
+            CREATE INDEX IF NOT EXISTS idx_signals_inst_time
+                ON signals(inst, feature_ts, ts);
+            CREATE INDEX IF NOT EXISTS idx_tracked_closed_time
+                ON tracked_signals(status, closed_ts, signal_id);
+            CREATE INDEX IF NOT EXISTS idx_tracked_open_inst
+                ON tracked_signals(status, inst);
+        """)
         self.db.commit()
 
     @locked
@@ -2031,18 +2076,18 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         tg("⚠️ احتمالات النموذج غير صالحة؛ تم منع الدخول في هذه الدورة.")
         return R
     prob_min = effective_probability_threshold(brain)
-    # Entry universe is strictly the top 10 by cross-sectional rank.
-    # Do not backfill from rank 11+ when a top-10 coin is already open or fails
-    # the AI threshold; duplicates are skipped, never replaced by coin #11.
+    # Widen the ranked candidate pool without relaxing any entry-quality,
+    # validated-AI, correlation, duplicate or portfolio-risk checks.
+    max_signal_rank = max(10, int(CFG.get("MAX_SIGNAL_RANK", 10)))
     eligible_rows = []
     correlation_cache = {}
     # Explicit rejection counters make a no-entry scan diagnosable from Actions logs.
     reject = {"stretched": 0, "entry_quality": 0, "ai_probability": 0, "correlation": 0}
-    top10 = R[R["rank"] <= 10]
-    log.info("entry diagnostics: ranked=%d top10=%d model_ready=%s paused=%s prob_min=%.3f",
-             len(R), len(top10), bool(brain.ready), paper._get("paused") == "1", float(prob_min))
+    candidate_pool = R[R["rank"] <= max_signal_rank]
+    log.info("entry diagnostics: ranked=%d candidate_pool=%d model_ready=%s paused=%s prob_min=%.3f",
+             len(R), len(candidate_pool), bool(brain.ready), paper._get("paused") == "1", float(prob_min))
     for inst, rr in R.iterrows():
-        if int(rr["rank"]) > 10:
+        if int(rr["rank"]) > max_signal_rank:
             continue
         threshold, regime_stats = regime_entry_threshold(paper, rr["regime"])
         if bool(rr["stretched"]):
@@ -2067,9 +2112,9 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                 # Missing market data must not silently change signal eligibility.
                 log.warning("portfolio correlation check failed open for %s: %s", inst, exc)
         eligible_rows.append(inst)
-    log.info("entry rejection summary: top10=%d eligible=%d rejected_stretched=%d "
+    log.info("entry rejection summary: candidate_pool=%d eligible=%d rejected_stretched=%d "
              "rejected_entry_quality=%d rejected_ai_probability=%d rejected_correlation=%d",
-             len(top10), len(eligible_rows), reject["stretched"], reject["entry_quality"],
+             len(candidate_pool), len(eligible_rows), reject["stretched"], reject["entry_quality"],
              reject["ai_probability"], reject["correlation"])
     sort_columns = ["ai_probability", "ranking_score"] if brain.ready else ["ranking_score"]
     eligible = R.loc[eligible_rows].sort_values(sort_columns, ascending=False, na_position="last")
@@ -2100,9 +2145,9 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
                f"وقف الخسارة: {sig['sl']:.8g} | الهدف: {sig['tp']:.8g}\n"
                f"جودة الدخول: {sig['entry_score']:.0f}/100 | حالة السوق: {sig['regime']}\n"
                f"وقف متحرك يتفعّل بعد +1.5 ATR؛ متابعة حتى TP/SL/Trailing أو انتهاء {CFG['BARRIER_H']} ساعة. لا توجد أوامر حقيقية.")
-    log.info("paper signal creation: ranked_top10=%d eligible_top10=%d created=%d "
-             "already-open coins skipped; rank 11+ never considered; threshold=%.3f",
-             min(10, len(R)), len(eligible), len(created), float(prob_min))
+    log.info("paper signal creation: candidate_pool=%d eligible=%d created=%d "
+             "already-open coins skipped; rank_limit=%d; threshold=%.3f",
+             len(candidate_pool), len(eligible), len(created), max_signal_rank, float(prob_min))
     return R
 
 def bootstrap_training_due(paper, now=None):
