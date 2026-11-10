@@ -245,7 +245,7 @@ def run_evolution(universe, get_candles, state_dir, telegram=None, max_coins=8):
               "last_run": now, "symbols": symbols, "candidate_count": len(results), "walk_forward_folds": WF_FOLDS,
               "eligible_on_tuning": len(eligible), "candidate_audit": candidate_audit, "latest_tested": champion,
               "champion": champion_to_store,
-              "note": "Research-only: does not alter live entries. 10-fold chronological walk-forward validation; final untouched 20% holdout gate requires >=30 trades, positive net expectancy after 20 bps costs, PF > 1.05."}
+              "note": "Research-only: does not alter live entries. 10-fold chronological walk-forward validation; final untouched 20% holdout gate requires >=30 trades, positive net expectancy after a conservative 35 bps all-in round-trip cost, PF > 1.05."}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, allow_nan=False, indent=2)
     if telegram:
