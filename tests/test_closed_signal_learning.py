@@ -1,5 +1,6 @@
 """Tests for the closed-signal-only learning gate."""
 import json
+import numpy as np
 import os
 import tempfile
 import unittest
