@@ -217,6 +217,14 @@ body main .card [data-white-numeric],body main [data-white-numeric]{
 body main .chartbox svg text,body main .reference-chart-host svg text{
  fill:#ffffff!important;
 }
+</style><style id="signed-number-colors-all-dashboard">
+body main .good,body main .positive,body main .profit,body main .vp-positive,
+body main [data-signed-numeric-color="1"][style*="14, 203, 129"],
+body main [data-signed-numeric-color="1"][style*="14,203,129"]{color:#0ecb81!important;-webkit-text-fill-color:#0ecb81!important;fill:#0ecb81!important}
+body main .bad,body main .negative,body main .loss,body main .vp-negative,
+body main [data-signed-numeric-color="1"][style*="246, 70, 93"],
+body main [data-signed-numeric-color="1"][style*="246,70,93"]{color:#f6465d!important;-webkit-text-fill-color:#f6465d!important;fill:#f6465d!important}
+body main [data-signed-numeric-color="1"][style*="255, 255, 255"]{color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;fill:#ffffff!important}
 </style></head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
@@ -1560,15 +1568,27 @@ function renderReferenceDashboard(){
  const root=document.querySelector("body>main")||document.body;
  const numeric=/^[+\-−]?\s*(?:[$€£]\s*)?\d[\d\s.,]*(?:\s*(?:\/|of)\s*\d[\d\s.,]*)?(?:\s*(?:%|USDT|USD|TND|BTC|ETH|bps|x))?$/i;
  const skip=new Set(["SCRIPT","STYLE","NOSCRIPT"]);
+ function colorFor(value,node){
+  const raw=String(value||"").trim().replace(/−/g,"-");
+  if(!numeric.test(raw))return null;
+  const n=parseFloat(raw.replace(/,/g,"").replace(/[^\d.+-]/g,""));
+  if(!Number.isFinite(n)||n===0)return "#ffffff";
+  return n>0?"#0ecb81":"#f6465d";
+ }
  function paint(node){
   if(!node||node.nodeType!==1||skip.has(node.tagName))return;
   if(node.children&&node.children.length)return;
-  const text=(node.textContent||"").trim();
-  if(!text||text.length>64||!numeric.test(text))return;
-  node.style.setProperty("color","#ffffff","important");
-  node.style.setProperty("-webkit-text-fill-color","#ffffff","important");
-  if(node.namespaceURI==="http://www.w3.org/2000/svg")node.setAttribute("fill","#ffffff");
-  node.dataset.whiteNumeric="1";
+  const raw=(node.textContent||"").trim();
+  if(!raw||raw.length>64)return;
+  const color=colorFor(raw,node);
+  if(!color)return;
+  node.style.setProperty("color",color,"important");
+  node.style.setProperty("-webkit-text-fill-color",color,"important");
+  if(node.namespaceURI==="http://www.w3.org/2000/svg"){
+   node.style.setProperty("fill",color,"important");
+   node.setAttribute("fill",color);
+  }
+  node.dataset.signedNumericColor="1";
  }
  function scan(scope){
   if(!scope)return;
