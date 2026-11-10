@@ -284,7 +284,8 @@ def news_features(inst, articles=None):
         published_ts = float(item.get("published_ts") or 0.0)
         freshness = (math.exp(-max(0.0, now - published_ts) / (36 * 3600))
                      if published_ts > 0 else 0.0)
-        weight = float(item.get("credibility", 0.5)) * relevance * freshness
+        # Unknown publication times receive no freshness credit, but may still contribute by source credibility.
+        weight = float(item.get("credibility", 0.5)) * relevance * (freshness if published_ts > 0 else 1.0)
         weights.append(weight)
         sentiments.append(float(item.get("sentiment", 0.0)))
     total = max(sum(weights), 1e-9)
