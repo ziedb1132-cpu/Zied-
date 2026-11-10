@@ -558,7 +558,6 @@ def build_trainset(universe):
             # for live scanning, but never impute or train on fabricated/missing values.
             valid = (np.isfinite(D["_ret"].to_numpy(dtype=np.float64))
                      & np.isfinite(D["_hold"].to_numpy(dtype=np.float64))
-                     & np.isfinite(values).all(axis=1)
                      & feature_coverage_mask(values, 0.80))
             D = D.loc[valid]
             if D.empty:
@@ -737,10 +736,13 @@ class Brain:
 
     def _norm(self, X):
         values = np.asarray(X, dtype=np.float64)
-        # Missing inputs are replaced with the training-only mean (z-score zero).
-        # No future/validation data is used to estimate imputation values.
-        values = np.where(np.isfinite(values), values, np.asarray(self.mu, dtype=np.float64))
-        return np.clip((values - self.mu) / self.sd, -5, 5).astype(np.float32)
+        # Impute only with means learned from the chronological fit block, and
+        # append an explicit 0/1 missingness channel for every source feature.
+        # Unknown is therefore distinguishable from a genuine numeric zero.
+        missing = ~np.isfinite(values)
+        values = np.where(missing, np.asarray(self.mu, dtype=np.float64), values)
+        scaled = np.clip((values - self.mu) / self.sd, -5, 5).astype(np.float32)
+        return np.concatenate((scaled, missing.astype(np.float32)), axis=1)
 
     def describe(self):
         if not self.ready:
@@ -757,7 +759,9 @@ class Brain:
         try:
             with open(backup["META"], encoding="utf-8") as fh:
                 meta = json.load(fh)
-            if int(meta.get("n_in", -1)) != N_FEATURES:
+            if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
+                    or int(meta.get("raw_n_in", -1)) != N_FEATURES
+                    or int(meta.get("missing_mask_version", 0)) != 1):
                 return False
             for key, flag in (("MODEL", "has_nn"), ("GBM", "has_gbm")):
                 if meta.get(flag) and not os.path.isfile(backup[key]):
@@ -796,7 +800,9 @@ class Brain:
             raise RuntimeError("selected AI mode requires a neural network, but it is unavailable")
         if need_gbm and self.gbm is None:
             raise RuntimeError("selected AI mode requires GBM, but it is unavailable")
-        if self.mu is None or self.sd is None or len(self.mu) != n_in or len(self.sd) != n_in:
+        raw_n_in = int(n_in)
+        model_n_in = raw_n_in * 2
+        if self.mu is None or self.sd is None or len(self.mu) != raw_n_in or len(self.sd) != raw_n_in:
             raise RuntimeError("refusing to save model with invalid normalization vectors")
 
         os.makedirs(CFG["DIR"], exist_ok=True)
@@ -808,14 +814,15 @@ class Brain:
             except FileNotFoundError: pass
         try:
             if need_nn:
-                torch.save({"state": self.nn.state_dict(), "n_in": n_in}, model_tmp)
+                torch.save({"state": self.nn.state_dict(), "n_in": model_n_in}, model_tmp)
             if need_gbm:
                 with open(gbm_tmp, "wb") as fh:
                     pickle.dump(self.gbm, fh, protocol=pickle.HIGHEST_PROTOCOL)
             meta = dict(mu=np.asarray(self.mu, dtype=float).tolist(),
                         sd=np.asarray(self.sd, dtype=float).tolist(), thrs=self.thrs, mode=self.mode,
                         auc=self.auc, has_nn=need_nn, has_gbm=need_gbm,
-                        n_in=n_in, info=self.info)
+                        n_in=model_n_in, raw_n_in=raw_n_in,
+                        missing_mask_version=1, info=self.info)
             with open(meta_tmp, "w", encoding="utf-8") as fh:
                 json.dump(meta, fh, allow_nan=False)
                 fh.flush()
@@ -825,7 +832,9 @@ class Brain:
             try:
                 with open(CFG["META"], encoding="utf-8") as fh:
                     old_meta = json.load(fh)
-                old_ok = (int(old_meta.get("n_in", -1)) == N_FEATURES
+                old_ok = (int(old_meta.get("n_in", -1)) == 2 * N_FEATURES
+                          and int(old_meta.get("raw_n_in", -1)) == N_FEATURES
+                          and int(old_meta.get("missing_mask_version", 0)) == 1
                           and (not old_meta.get("has_nn") or os.path.isfile(CFG["MODEL"]))
                           and (not old_meta.get("has_gbm") or os.path.isfile(CFG["GBM"])))
                 if old_ok:
@@ -876,8 +885,10 @@ class Brain:
             return
         try:
             meta = json.load(open(CFG["META"], encoding="utf-8"))
-            if meta["n_in"] != N_FEATURES:
-                log.info("saved model has %s features, expected %s -> ignored", meta["n_in"], N_FEATURES)
+            if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
+                    or int(meta.get("raw_n_in", -1)) != N_FEATURES
+                    or int(meta.get("missing_mask_version", 0)) != 1):
+                log.info("saved model schema is incompatible with missing-value encoding -> ignored")
                 return
             if meta.get("has_nn") and not os.path.exists(CFG["MODEL"]):
                 raise FileNotFoundError("committed neural model file is missing")
@@ -924,11 +935,11 @@ class Brain:
         """Return validated probabilities; invalid model output must never reach trade selection."""
         if not self.ready:
             raise RuntimeError("AI model is not ready")
-        X = np.asarray(X, dtype=np.float32)
+        X = np.asarray(X, dtype=np.float64)
         if X.ndim != 2 or X.shape[1] != N_FEATURES:
             raise ValueError(f"AI input shape invalid: {X.shape}; expected (*, {N_FEATURES})")
-        if not np.isfinite(X).all():
-            raise ValueError("AI input contains NaN or infinite features")
+        if np.isinf(X).any():
+            raise ValueError("AI input contains infinite features; only NaN is treated as unknown")
         if not feature_coverage_mask(X, 0.80).all():
             raise ValueError("AI input has more than 20% missing features in at least one row")
         out = np.asarray(self.predict_all(X)[self.mode], dtype=np.float64).reshape(-1)
@@ -1130,7 +1141,7 @@ def impact(usdt, vol24):
     return CFG["IMPACT_K"] * math.sqrt(max(usdt, 0.0) / max(vol24 or 1e6, 1.0))
 
 def feature_coverage_mask(X, min_fraction=0.80):
-    """Keep rows with enough observed features; missing values are imputed from fit-only means."""
+    """Accept rows with enough real observations; missingness is encoded separately."""
     values = np.asarray(X, dtype=np.float64)
     if values.ndim != 2 or values.shape[1] == 0:
         return np.zeros(len(values) if values.ndim else 0, dtype=bool)
@@ -1141,9 +1152,12 @@ def _rows_to_ds(rows, label_key="label", ret_key="ret"):
     X, y, ts, ret, hold, coin = [], [], [], [], [], []
     for r in rows:
         f = json.loads(r["feats"])
-        if len(f) != N_FEATURES:
+        if not isinstance(f, list) or len(f) != N_FEATURES:
             continue
-        X.append(f); y.append(r[label_key]); ts.append(r["ts"])
+        vector = np.asarray([np.nan if v is None else v for v in f], dtype=np.float64)
+        if vector.shape != (N_FEATURES,):
+            continue
+        X.append(vector); y.append(r[label_key]); ts.append(r["ts"])
         ret.append(r[ret_key] if r[ret_key] is not None else np.nan)
         hold.append(r["hold"] if "hold" in r.keys() and r["hold"] is not None else np.nan)
         coin.append(r["inst"])
@@ -2241,7 +2255,7 @@ def bootstrap_training_due(paper, now=None):
             X = np.asarray(cached["X"], dtype=np.float64)
             y = np.asarray(cached["y"], dtype=np.float64)
             ts = np.asarray(cached["ts"], dtype=np.float64)
-            valid = (np.isfinite(X).all(axis=1) & np.isfinite(y)
+            valid = (feature_coverage_mask(X, 0.80) & np.isfinite(y)
                      & np.isfinite(ts) & np.isin(y, [0, 1]))
             cached_rows = int(valid.sum())
     except Exception as exc:
