@@ -397,7 +397,7 @@ def _write_intelligence(zq, articles):
         "article_count": len(articles), "fresh_48h": len(fresh),
         "market_sentiment": round(average, 4),
         "market_direction": "positive" if average > 0.12 else "negative" if average < -0.12 else "neutral",
-        "sources": sources, "articles": articles[:150],
+        "sources": sources, "articles": articles[:50],
         "model": {
             "ready": bool((_STATE.get("model") or {}).get("ready")),
             "samples": int((_STATE.get("model") or {}).get("samples", 0)),
