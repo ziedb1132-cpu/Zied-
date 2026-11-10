@@ -25,7 +25,8 @@ with tempfile.TemporaryDirectory() as d:
     feature_count = zq.N_FEATURES
     idx = zq.FEATURE_COLS.index("1H_ret1")
     payload = {
-        "feature_count": feature_count, "winning_samples": 500, "losing_samples": 500,
+        "feature_count": feature_count, "feature_names": list(zq.FEATURE_COLS),
+        "winning_samples": 500, "losing_samples": 500,
         "top_recurring_features": [{
             "feature": "1H_ret1", "winner_median": 2.0, "loser_median": -2.0,
             "winner_q25_q75": [1.0, 3.0], "loser_q25_q75": [-3.0, -1.0],
