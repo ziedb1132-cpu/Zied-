@@ -1866,9 +1866,14 @@ def stats_msg(paper, prices=None):
     worst_coins = " | ".join(
         f"{coin} ({len(vals)} خسائر، متوسط {np.mean(vals)*100:+.2f}%)"
         for coin, vals in sorted(losing_coins.items(), key=lambda kv: (-len(kv[1]), np.mean(kv[1])))[:5])
-    gate_text = (f"بيانات النموذج كافية ({closed_counts['total']}/{MIN_CLOSED_MODEL_SAMPLES})"
-                 if closed_counts["total"] >= MIN_CLOSED_MODEL_SAMPLES
-                 else f"يتعلم من الذاكرة المتاحة؛ النموذج الإشرافي ينتظر {MIN_CLOSED_MODEL_SAMPLES} عينة موثقة")
+    gate_text = (
+        f"جاهز للتدريب: {closed_counts['wins']}/{MIN_CLOSED_CLASS_SAMPLES} رابحة و"
+        f"{closed_counts['losses']}/{MIN_CLOSED_CLASS_SAMPLES} خاسرة"
+        if (closed_counts["wins"] >= MIN_CLOSED_CLASS_SAMPLES
+            and closed_counts["losses"] >= MIN_CLOSED_CLASS_SAMPLES)
+        else f"ينتظر توازن النتائج: {closed_counts['wins']}/{MIN_CLOSED_CLASS_SAMPLES} رابحة و"
+             f"{closed_counts['losses']}/{MIN_CLOSED_CLASS_SAMPLES} خاسرة"
+    )
     return (f"📊 تقييم سجل الإشارات الورقية\n"
             f"سجل التعلم: {total} | مكتملة التقييم: {labelled} | تنتظر: {pending}\n"
             f"مفتوحة: {opened} | مغلقة: {tracked} | رابحة: {tracked_wins}\n"
@@ -2035,6 +2040,11 @@ def need_retrain(paper):
     if not status["ready"]:
         return False
     previous = int(paper._get("last_learning_attempt_closed_count") or 0)
+    if status["total"] < previous:
+        # Feature-schema upgrades can make old rows ineligible; reset only this
+        # checkpoint, never the signal history or persisted memory.
+        paper._set("last_learning_attempt_closed_count", 0)
+        previous = 0
     return (previous == 0 or
             status["total"] - previous >= LEARNING_REFRESH_SAMPLES)
 
