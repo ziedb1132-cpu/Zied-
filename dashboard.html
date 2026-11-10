@@ -208,6 +208,15 @@ body main .reference-learning-lines b,body main .reference-open-pnl,
 body main .eval-progress-row .pct,body main .eval-kpi .v {
  color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;
 }
+</style><style id="white-chart-labels-and-card-figures">
+/* Numeric SVG labels and dashboard KPI figures stay white in every section */
+body main svg text[data-white-numeric],body main svg text.numeric-label,
+body main .card [data-white-numeric],body main [data-white-numeric]{
+ color:#ffffff!important;-webkit-text-fill-color:#ffffff!important;fill:#ffffff!important;
+}
+body main .chartbox svg text,body main .reference-chart-host svg text{
+ fill:#ffffff!important;
+}
 </style></head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
@@ -1549,15 +1558,16 @@ function renderReferenceDashboard(){
 <script id="force-white-numeric-text-all-sections">
 (function(){
  const root=document.querySelector("body>main")||document.body;
- const numeric=/^[+\-−]?\s*(?:[$€£]\s*)?\d[\d\s.,]*(?:\s*(?:%|USDT|USD|TND|BTC|ETH|bps|x))?$/i;
+ const numeric=/^[+\-−]?\s*(?:[$€£]\s*)?\d[\d\s.,]*(?:\s*(?:\/|of)\s*\d[\d\s.,]*)?(?:\s*(?:%|USDT|USD|TND|BTC|ETH|bps|x))?$/i;
  const skip=new Set(["SCRIPT","STYLE","NOSCRIPT"]);
  function paint(node){
   if(!node||node.nodeType!==1||skip.has(node.tagName))return;
-  const text=(node.textContent||"").trim();
-  if(!text||text.length>48||!numeric.test(text))return;
   if(node.children&&node.children.length)return;
+  const text=(node.textContent||"").trim();
+  if(!text||text.length>64||!numeric.test(text))return;
   node.style.setProperty("color","#ffffff","important");
   node.style.setProperty("-webkit-text-fill-color","#ffffff","important");
+  if(node.namespaceURI==="http://www.w3.org/2000/svg")node.setAttribute("fill","#ffffff");
   node.dataset.whiteNumeric="1";
  }
  function scan(scope){
