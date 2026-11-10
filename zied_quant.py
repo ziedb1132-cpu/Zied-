@@ -739,7 +739,7 @@ class Brain:
         # Impute only with means learned from the chronological fit block, and
         # append an explicit 0/1 missingness channel for every source feature.
         # Unknown is therefore distinguishable from a genuine numeric zero.
-        missing = ~np.isfinite(values)
+        missing = np.isnan(values)
         values = np.where(missing, np.asarray(self.mu, dtype=np.float64), values)
         scaled = np.clip((values - self.mu) / self.sd, -5, 5).astype(np.float32)
         return np.concatenate((scaled, missing.astype(np.float32)), axis=1)
@@ -1145,7 +1145,8 @@ def feature_coverage_mask(X, min_fraction=0.80):
     values = np.asarray(X, dtype=np.float64)
     if values.ndim != 2 or values.shape[1] == 0:
         return np.zeros(len(values) if values.ndim else 0, dtype=bool)
-    return np.isfinite(values).mean(axis=1) >= float(min_fraction)
+    # NaN is an explicit unknown; +/-Inf is invalid data and rejects the row.
+    return (~np.isinf(values).any(axis=1)) & (np.isfinite(values).mean(axis=1) >= float(min_fraction))
 
 
 def _rows_to_ds(rows, label_key="label", ret_key="ret"):
