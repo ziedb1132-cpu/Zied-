@@ -1462,7 +1462,7 @@ function bootDashboard(){
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bootDashboard,{once:true});
 else bootDashboard();
-const requestedPage=new URLSearchParams(window.location.search).get("page");const initialPage=requestedPage||"overview";if(!requestedPage&&location.hash){history.replaceState(null,"",location.pathname+location.search);}showDashboardPage(initialPage,false);
+const cleanUrl=new URL(window.location.href);cleanUrl.searchParams.delete("page");cleanUrl.hash="";if(cleanUrl.href!==window.location.href)history.replaceState(null,"",cleanUrl.pathname+cleanUrl.search);showDashboardPage("overview",false);
 try{render();}catch(initialRenderError){console.error("Initial dashboard render failed:",initialRenderError);}
 setLanguage();
 
