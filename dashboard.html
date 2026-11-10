@@ -87,6 +87,20 @@ main>section[id^="page-"]:not(.hide){display:block}
 .charthead h2,.card h2,.section h2{color:#ffffff}
 .chartlegend{display:flex;flex-wrap:wrap;gap:12px;margin-top:8px;color:#ffffff;font-size:9px}
 .chartlegend b{color:#ffffff}
+.news-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}
+.news-source-note{font-size:10px;color:var(--muted)}
+.news-list{display:grid;gap:10px}
+.news-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:start;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(135deg,rgba(21,33,45,.96),rgba(13,21,30,.96));transition:border-color .18s,transform .18s}
+.news-item:hover{border-color:rgba(42,190,165,.55);transform:translateY(-1px)}
+.news-item h3{margin:0 0 8px;color:#fff;font-size:14px;line-height:1.5;font-weight:750}
+.news-item p{margin:0;color:#aab8c5;font-size:11px;line-height:1.65}
+.news-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;color:#8fa2b3;font-size:10px}
+.news-source{color:#55c7b0;font-weight:800;letter-spacing:.35px}
+.news-date{white-space:nowrap}
+.news-open{display:inline-flex;align-items:center;justify-content:center;padding:8px 11px;border:1px solid rgba(42,190,165,.35);border-radius:8px;color:#fff;text-decoration:none;font-size:10px;font-weight:750;white-space:nowrap}
+.news-open:hover{background:rgba(42,190,165,.12);border-color:#2abea5}
+@media(max-width:600px){.news-item{grid-template-columns:1fr;padding:13px}.news-open{justify-self:start}.news-item h3{font-size:13px}}
+
 .legenddot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
 .section{margin-top:13px}
 .section>p.muted{margin:0 0 12px}
@@ -192,6 +206,7 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
  <div class="sidebar-label">WORKSPACE</div>
  <button type="button" data-tab="overview" class="active"><span class="nav-icon">⌂</span>Vue d’ensemble</button>
  <button type="button" data-tab="graphiques"><span class="nav-icon">▥</span>Graphiques</button>
+ <button type="button" data-tab="news"><span class="nav-icon">◉</span>Actualités</button>
  <div class="sidebar-label">TRADING</div>
  <button type="button" data-tab="portfolio"><span class="nav-icon">▤</span>Portefeuille simulé</button>
  <button type="button" data-tab="signals"><span class="nav-icon">⌁</span>Signaux ouverts</button>
@@ -234,6 +249,12 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
  <div class="cols"><div class="card"><h2>État du système</h2><div id="system"></div></div><div class="card"><h2>Évaluation des signaux</h2><div id="labelSummary"></div></div></div>
  <div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div>
 </section>
+<section id="page-news" class="hide section">
+ <div class="page-heading"><div><div class="page-eyebrow">MARKET INTELLIGENCE</div><h1>Actualités crypto</h1><p>Les 10 dernières actualités du marché, triées de la plus récente à la plus ancienne.</p></div><button type="button" class="refresh-btn" id="newsRefresh">↻ Actualiser</button></div>
+ <div class="news-toolbar"><span id="newsStatus" class="muted">Chargement des actualités…</span><span class="news-source-note">Sources : CoinDesk · Cointelegraph</span></div>
+ <div id="newsList" class="news-list"><div class="card empty">Chargement des 10 dernières actualités…</div></div>
+</section>
+
 <section id="page-graphiques" class="hide section"><h2>Graphiques</h2><p class="muted">Visualisation des performances, résultats et progression de l’apprentissage.</p><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2></div><div id="refPerformanceChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats</h2></div><div id="refOutcomeChart" class="chartbox"></div></div></div><div class="chartgrid analytics-charts"><div class="card"><div class="charthead"><h2>Progression de validation IA</h2></div><div id="refLearningChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Performance par motif de clôture</h2></div><div id="refExitChart" class="chartbox"></div></div></div></section>\n\n<section id="page-closedTrades" class="hide section"><h2>Closed Trades</h2><p class="muted">Historique des signaux suivis et clôturés. Les sorties TRAIL sont comptabilisées dans SL.</p><div id="closedKpis" class="grid closed-kpis"></div><div class="chartgrid closed-charts"><div class="card"><div class="charthead"><h2>Répartition des clôtures</h2><span class="muted">100 dernières clôtures</span></div><div id="closedReasonChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Rendement cumulé réalisé</h2><span class="muted">Ordre chronologique</span></div><div id="closedReturnChart" class="chartbox"></div></div></div><div id="trackedClosed" class="tablewrap"></div></section>
 <section id="page-signals" class="hide section"><h2>Signals</h2><div class="card section"><h2>Signaux ouverts suivis</h2><p class="muted">Signaux qui ne sont pas encore clôturés.</p><div id="trackedOpen" class="tablewrap"></div></div></section>
 <section id="page-aiIntelligence" class="hide section"><h2>AI Intelligence</h2><div id="aiMetrics" class="grid"></div><div class="card section"><h2>Toutes les clés meta enregistrées</h2><div id="metaTable" class="tablewrap"></div></div></section>
@@ -1241,6 +1262,73 @@ async function loadXrpSummary(){
   $("xrpStatus").textContent="Résumé XRP actualisé · données compactes.";
  }catch(e){$("xrpStatus").textContent="Résumé XRP indisponible : "+e.message;$("xrpPriceSource").textContent="Prix indisponible";$("xrpDataQuality").textContent="Erreur de chargement";}
 }
+
+const NEWS_CACHE_KEY="zied_quant_latest_news_v1";
+const NEWS_FEEDS=[
+ {name:"CoinDesk",url:"https://www.coindesk.com/arc/outboundfeeds/rss/"},
+ {name:"Cointelegraph",url:"https://cointelegraph.com/rss"}
+];
+function newsPlainText(value){
+ const doc=new DOMParser().parseFromString(String(value||""),"text/html");
+ return (doc.body.textContent||"").replace(/\\s+/g," ").trim();
+}
+function newsDate(value){
+ const d=new Date(value);
+ return Number.isNaN(d.getTime())?"Date indisponible":d.toLocaleString("fr-FR",{timeZone:"Africa/Tunis",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:false});
+}
+function renderNews(items,statusText){
+ const host=$("newsList"),status=$("newsStatus");
+ if(!host||!status)return;
+ status.textContent=statusText||"";
+ if(!Array.isArray(items)||!items.length){
+  host.innerHTML='<div class="card empty">Aucune actualité disponible pour le moment. Réessayez dans quelques instants.</div>';
+  return;
+ }
+ host.innerHTML=items.slice(0,10).map((item,index)=>{
+  const title=esc(item.title||"Titre indisponible");
+  const description=esc(newsPlainText(item.description||item.content||"").slice(0,360));
+  const url=/^https?:\\/\\//i.test(String(item.link||""))?String(item.link):"";
+  const source=esc(item.source||"Actualité crypto");
+  return '<article class="news-item"><div><div class="news-meta"><span class="news-source">'+source+'</span><span>·</span><time class="news-date">'+esc(newsDate(item.pubDate))+'</time><span>·</span><span>#'+(index+1)+'</span></div><h3>'+title+'</h3><p>'+description+'</p></div>'+(url?'<a class="news-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Lire l’article ↗</a>':'')+'</article>';
+ }).join("");
+}
+async function loadNews(){
+ const status=$("newsStatus"),host=$("newsList");
+ if(!status||!host)return;
+ status.textContent="Mise à jour des actualités…";
+ const refresh=$("newsRefresh");if(refresh){refresh.disabled=true;refresh.textContent="Chargement…";}
+ try{
+  const results=await Promise.allSettled(NEWS_FEEDS.map(async feed=>{
+   const endpoint="https://api.rss2json.com/v1/api.json?rss_url="+encodeURIComponent(feed.url);
+   const response=await fetch(endpoint,{cache:"no-store",headers:{Accept:"application/json"}});
+   if(!response.ok)throw new Error(feed.name+" HTTP "+response.status);
+   const payload=await response.json();
+   if(payload.status!=="ok"||!Array.isArray(payload.items))throw new Error(feed.name+" feed invalide");
+   return payload.items.map(item=>({...item,source:feed.name}));
+  }));
+  const combined=results.filter(x=>x.status==="fulfilled").flatMap(x=>x.value);
+  const unique=new Map();
+  combined.forEach(item=>{
+   const key=String(item.link||item.title||"").trim();
+   if(key&&!unique.has(key))unique.set(key,item);
+  });
+  const latest=[...unique.values()].sort((a,b)=>new Date(b.pubDate||0)-new Date(a.pubDate||0)).slice(0,10);
+  if(!latest.length)throw new Error("Les sources d’actualités sont temporairement indisponibles.");
+  localStorage.setItem(NEWS_CACHE_KEY,JSON.stringify({savedAt:Date.now(),items:latest}));
+  renderNews(latest,"10 actualités · mise à jour "+newsDate(Date.now())+" · "+results.filter(x=>x.status==="fulfilled").length+" source(s) disponible(s)");
+ }catch(error){
+  let cached=null;
+  try{cached=JSON.parse(localStorage.getItem(NEWS_CACHE_KEY)||"null");}catch(_){}
+  if(cached&&Array.isArray(cached.items)&&cached.items.length){
+   renderNews(cached.items,"Flux indisponible · dernières actualités en cache ("+newsDate(cached.savedAt)+")");
+  }else{
+   renderNews([],"Impossible de charger les actualités : "+(error&&error.message?error.message:String(error)));
+  }
+ }finally{
+  if(refresh){refresh.disabled=false;refresh.textContent="↻ Actualiser";}
+ }
+}
+
 async function connect(){
  const {owner,repo,branch}=DASHBOARD_REPOSITORY;
  $("error").style.display="none";$("error").textContent="";
@@ -1297,7 +1385,8 @@ async function connect(){
 }
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
-function showDashboardPage(page,updateHash=true){const valid=["overview","portfolio","signals","graphiques","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","evolutionLab","backtestValidation","strategyLabZ","strategyMonitor","solana","xrp","okb","bnb","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main > section[id^=\"page-\"]").forEach(x=>{const active=x.id==="page-"+key;x.classList.toggle("hide",!active);x.setAttribute("aria-hidden",String(!active));x.style.setProperty("display",active?"block":"none","important");});if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(key==="strategyMonitor")loadStrategyMonitor();if(key==="solana")loadSolanaSummary();if(key==="xrp")loadXrpSummary();if(key==="okb")loadOkbSummary();if(key==="bnb")loadBnbSummary();if(updateHash&&location.hash!=="#"+key)history.pushState({dashboardPage:key},"","#"+key);}
+function showDashboardPage(page,updateHash=true){const valid=["overview","news","portfolio","signals","graphiques","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","evolutionLab","backtestValidation","strategyLabZ","strategyMonitor","solana","xrp","okb","bnb","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main > section[id^=\"page-\"]").forEach(x=>{const active=x.id==="page-"+key;x.classList.toggle("hide",!active);x.setAttribute("aria-hidden",String(!active));x.style.setProperty("display",active?"block":"none","important");});if(key==="news")loadNews();if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(key==="strategyMonitor")loadStrategyMonitor();if(key==="solana")loadSolanaSummary();if(key==="xrp")loadXrpSummary();if(key==="okb")loadOkbSummary();if(key==="bnb")loadBnbSummary();if(updateHash&&location.hash!=="#"+key)history.pushState({dashboardPage:key},"","#"+key);}
+document.getElementById("newsRefresh")?.addEventListener("click",loadNews);
 document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showDashboardPage(b.dataset.tab);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");}});
 document.querySelector("main").addEventListener("click",e=>{const shortcut=e.target.closest("[data-open-page]");if(shortcut){showDashboardPage(shortcut.dataset.openPage);window.scrollTo({top:0,behavior:"smooth"});}});
 document.getElementById("navToggle")?.addEventListener("click",()=>{const opened=document.body.classList.toggle("nav-open");document.getElementById("navToggle").setAttribute("aria-expanded",String(opened));});
@@ -1310,6 +1399,7 @@ function bootDashboard(){
  dashboardBooted=true;
  connect();
  setInterval(connect,10*60*1000);
+ setTimeout(loadNews,900);setInterval(loadNews,10*60*1000);
  setTimeout(loadStrategyMonitor,500);setInterval(loadStrategyMonitor,15000);
  setTimeout(loadSolanaSummary,650);setInterval(loadSolanaSummary,15000);
  setTimeout(loadXrpSummary,800);setInterval(loadXrpSummary,15000);
