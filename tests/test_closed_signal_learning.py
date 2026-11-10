@@ -25,11 +25,14 @@ class ClosedSignalLearningTests(unittest.TestCase):
 
     def add_signal(self, ret, closed=True, valid_features=True):
         feats = json.dumps([0.0] * zq.N_FEATURES) if valid_features else "[]"
+        feature_names = json.dumps(list(zq.FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
         cur = self.paper.db.execute(
-            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,label,ret,hold,feature_ts) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,label,ret,hold,feature_ts,"
+            "feature_count,feature_names,feature_schema_version) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (1000.0, f"COIN{self.paper.db.execute('SELECT COUNT(*) FROM signals').fetchone()[0]}-USDT",
-             100.0, 0.01, feats, 0.6, 1, 1, int(ret > 0), ret, 1.0, 1000.0))
+             100.0, 0.01, feats, 0.6, 1, 1, int(ret > 0), ret, 1.0, 1000.0,
+             zq.N_FEATURES, feature_names, zq.DATA_VER))
         sid = cur.lastrowid
         self.paper.db.execute(
             "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,"
@@ -52,22 +55,21 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertGreater(ret, 0.0)
         self.assertEqual(outcome, "WIN")
 
-    def test_gate_uses_total_verified_samples_not_500_per_class(self):
-        # The model may start with an imbalanced but non-empty real dataset.
-        for _ in range(590):
+    def test_supervised_gate_requires_500_eligible_wins_and_losses(self):
+        for _ in range(500):
             self.add_signal(0.01)
-        for _ in range(9):
+        for _ in range(499):
             self.add_signal(-0.01)
         status = zq.learning_gate_status(self.paper)
-        self.assertEqual(status["wins"], 590)
-        self.assertEqual(status["losses"], 9)
+        self.assertEqual(status["wins"], 500)
+        self.assertEqual(status["losses"], 499)
         self.assertFalse(status["ready"])
         self.add_signal(-0.01)
         status = zq.learning_gate_status(self.paper)
-        self.assertEqual(status["wins"], 590)
-        self.assertEqual(status["losses"], 10)
+        self.assertEqual(status["wins"], 500)
+        self.assertEqual(status["losses"], 500)
         self.assertTrue(status["ready"])
-        self.assertEqual(status["total"], 600)
+        self.assertEqual(status["total"], 1000)
 
     def test_adaptive_memory_learning_starts_with_20_real_closed_outcomes(self):
         for _ in range(10):
@@ -85,7 +87,7 @@ class ClosedSignalLearningTests(unittest.TestCase):
             "atr_penalty", "overbought_penalty",
         })
 
-    def test_training_dataset_keeps_all_outcomes_above_threshold(self):
+    def test_training_dataset_keeps_all_schema_valid_outcomes_above_threshold(self):
         # The 500/500 rule is a minimum gate, not a per-class cap.
         for _ in range(501):
             self.add_signal(0.01)
