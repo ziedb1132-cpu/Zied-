@@ -1546,4 +1546,38 @@ function renderReferenceDashboard(){
  window.addEventListener("popstate",()=>{const p=new URLSearchParams(location.search).get("page")||location.hash.slice(1)||"overview";window.showDashboardPage(p,false);});
 })();
 </script>
-</body></html>
+<script id="force-white-numeric-text-all-sections">
+(function(){
+ const root=document.querySelector("body>main")||document.body;
+ const numeric=/^[+\-−]?\s*(?:[$€£]\s*)?\d[\d\s.,]*(?:\s*(?:%|USDT|USD|TND|BTC|ETH|bps|x))?$/i;
+ const skip=new Set(["SCRIPT","STYLE","NOSCRIPT"]);
+ function paint(node){
+  if(!node||node.nodeType!==1||skip.has(node.tagName))return;
+  const text=(node.textContent||"").trim();
+  if(!text||text.length>48||!numeric.test(text))return;
+  if(node.children&&node.children.length)return;
+  node.style.setProperty("color","#ffffff","important");
+  node.style.setProperty("-webkit-text-fill-color","#ffffff","important");
+  node.dataset.whiteNumeric="1";
+ }
+ function scan(scope){
+  if(!scope)return;
+  if(scope.nodeType===1)paint(scope);
+  const walker=document.createTreeWalker(scope,NodeFilter.SHOW_ELEMENT);
+  let el;while((el=walker.nextNode()))paint(el);
+ }
+ scan(root);
+ let queued=false;
+ const observer=new MutationObserver(records=>{
+  if(queued)return;queued=true;
+  requestAnimationFrame(()=>{
+   queued=false;
+   for(const record of records){
+    if(record.type==="childList")record.addedNodes.forEach(n=>{if(n.nodeType===1)scan(n);});
+    else if(record.target&&record.target.parentElement)scan(record.target.parentElement);
+   }
+  });
+ });
+ observer.observe(root,{subtree:true,childList:true,characterData:true});
+})();
+</script></body></html>
