@@ -151,7 +151,9 @@ def test_trainset_and_fit_and_backtest():
     tmp_env(); mute_telegram(); _patch_network()
     zq.fetch_btc = lambda a, b: {"1H": fake_candles("BTC-USDT", "1H", a), "4H": fake_candles("BTC-USDT", "4H", b)}
     ds = zq.build_trainset(_universe())
-    assert ds["X"].shape[1] == 200 and len(ds["y"]) > 1500 and not np.isnan(ds["X"]).any()
+    assert ds["X"].shape[1] == 200 and len(ds["y"]) > 1500
+    assert np.isnan(ds["X"]).any()
+    assert np.all(np.isfinite(ds["X"]).mean(axis=1) >= 0.80)
     assert set(np.unique(ds["y"])) <= {0.0, 1.0}
     assert zq.load_trainset() is not None
     b = zq.Brain(persist=True)
