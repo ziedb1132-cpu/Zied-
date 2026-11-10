@@ -554,8 +554,11 @@ def build_trainset(universe):
             ret, hold = barrier_batch(b["c"].values, b["h"].values, b["l"].values, M["1H_atr_pct"].values)
             D = M.assign(_ret=ret, _hold=hold)
             values = D[FEATURE_COLS].to_numpy(dtype=np.float64)
+            # Training rows must be fully observed: keep partial timeframe support
+            # for live scanning, but never impute or train on fabricated/missing values.
             valid = (np.isfinite(D["_ret"].to_numpy(dtype=np.float64))
                      & np.isfinite(D["_hold"].to_numpy(dtype=np.float64))
+                     & np.isfinite(values).all(axis=1)
                      & feature_coverage_mask(values, 0.80))
             D = D.loc[valid]
             if D.empty:
