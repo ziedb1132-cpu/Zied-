@@ -139,7 +139,21 @@ body.standalone-section pre,body.standalone-section code{background:#151c26!impo
 body.standalone-section .notice,body.standalone-section .warning{background:#302713!important;color:#f0d78a!important}
 body.standalone-section .positive,body.standalone-section .profit{color:#0ecb81!important}
 body.standalone-section .negative,body.standalone-section .loss{color:#f6465d!important}
-</style></head>
+</style><style id="okx-dark-tables-final">
+/* Remove white surfaces from every data table, including inline-styled cells and wrappers. */
+html,body{color-scheme:dark!important}
+body :is(table,thead,tbody,tfoot,tr,th,td){background-color:#10151d!important;color:#eaecef!important;border-color:#26313f!important}
+body :is(th,thead th){background-color:#171f2a!important;color:#aeb8c7!important}
+body :is(td,tbody td,tfoot td){background-color:#10151d!important;color:#eaecef!important}
+body :is(table,[role="table"],.table-wrap,.table-wrapper,.table-container,.table-scroll,.data-table,.dataTables_wrapper,.dataTables_scroll,.overflow-x-auto,.overflow-auto){background:#10151d!important;background-color:#10151d!important;color:#eaecef!important;border-color:#26313f!important}
+body :is(table,thead,tbody,tfoot,tr,th,td) [style*="background" i]{background-color:#10151d!important;color:#eaecef!important}
+body :is(table,thead,tbody,tfoot,tr,th,td)[style*="#fff" i],
+body :is(table,thead,tbody,tfoot,tr,th,td)[style*="white" i],
+body :is(table,thead,tbody,tfoot,tr,th,td)[style*="rgb(255" i]{background:#10151d!important;background-color:#10151d!important;color:#eaecef!important}
+body :is(table,th,td) :is(div,span,p){color:inherit}
+body table :is(button,select,input){background:#171f2a!important;color:#eaecef!important;border-color:#344052!important}
+</style>
+</head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
 <main>
