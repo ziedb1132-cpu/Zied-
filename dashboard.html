@@ -1270,7 +1270,7 @@ const NEWS_FEEDS=[
 ];
 function newsPlainText(value){
  const doc=new DOMParser().parseFromString(String(value||""),"text/html");
- return (doc.body.textContent||"").replace(/\\s+/g," ").trim();
+ return (doc.body.textContent||"").replace(/\s+/g," ").trim();
 }
 function newsDate(value){
  const d=new Date(value);
@@ -1287,7 +1287,7 @@ function renderNews(items,statusText){
  host.innerHTML=items.slice(0,10).map((item,index)=>{
   const title=esc(item.title||"Titre indisponible");
   const description=esc(newsPlainText(item.description||item.content||"").slice(0,360));
-  const url=/^https?:\\/\\//i.test(String(item.link||""))?String(item.link):"";
+  const url=/^https?:\/\//i.test(String(item.link||""))?String(item.link):"";
   const source=esc(item.source||"Actualité crypto");
   return '<article class="news-item"><div><div class="news-meta"><span class="news-source">'+source+'</span><span>·</span><time class="news-date">'+esc(newsDate(item.pubDate))+'</time><span>·</span><span>#'+(index+1)+'</span></div><h3>'+title+'</h3><p>'+description+'</p></div>'+(url?'<a class="news-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Lire l’article ↗</a>':'')+'</article>';
  }).join("");
