@@ -558,7 +558,6 @@ def build_trainset(universe):
             # for live scanning, but never impute or train on fabricated/missing values.
             valid = (np.isfinite(D["_ret"].to_numpy(dtype=np.float64))
                      & np.isfinite(D["_hold"].to_numpy(dtype=np.float64))
-                     & np.isfinite(values).all(axis=1)
                      & feature_coverage_mask(values, 0.80))
             D = D.loc[valid]
             if D.empty:
@@ -737,10 +736,13 @@ class Brain:
 
     def _norm(self, X):
         values = np.asarray(X, dtype=np.float64)
-        # Missing inputs are replaced with the training-only mean (z-score zero).
-        # No future/validation data is used to estimate imputation values.
-        values = np.where(np.isfinite(values), values, np.asarray(self.mu, dtype=np.float64))
-        return np.clip((values - self.mu) / self.sd, -5, 5).astype(np.float32)
+        # Impute only with means learned from the chronological fit block, and
+        # append an explicit 0/1 missingness channel for every source feature.
+        # Unknown is therefore distinguishable from a genuine numeric zero.
+        missing = np.isnan(values)
+        values = np.where(missing, np.asarray(self.mu, dtype=np.float64), values)
+        scaled = np.clip((values - self.mu) / self.sd, -5, 5).astype(np.float32)
+        return np.concatenate((scaled, missing.astype(np.float32)), axis=1)
 
     def describe(self):
         if not self.ready:
@@ -757,7 +759,9 @@ class Brain:
         try:
             with open(backup["META"], encoding="utf-8") as fh:
                 meta = json.load(fh)
-            if int(meta.get("n_in", -1)) != N_FEATURES:
+            if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
+                    or int(meta.get("raw_n_in", -1)) != N_FEATURES
+                    or int(meta.get("missing_mask_version", 0)) != 1):
                 return False
             for key, flag in (("MODEL", "has_nn"), ("GBM", "has_gbm")):
                 if meta.get(flag) and not os.path.isfile(backup[key]):
@@ -796,7 +800,9 @@ class Brain:
             raise RuntimeError("selected AI mode requires a neural network, but it is unavailable")
         if need_gbm and self.gbm is None:
             raise RuntimeError("selected AI mode requires GBM, but it is unavailable")
-        if self.mu is None or self.sd is None or len(self.mu) != n_in or len(self.sd) != n_in:
+        raw_n_in = int(n_in)
+        model_n_in = raw_n_in * 2
+        if self.mu is None or self.sd is None or len(self.mu) != raw_n_in or len(self.sd) != raw_n_in:
             raise RuntimeError("refusing to save model with invalid normalization vectors")
 
         os.makedirs(CFG["DIR"], exist_ok=True)
@@ -808,14 +814,15 @@ class Brain:
             except FileNotFoundError: pass
         try:
             if need_nn:
-                torch.save({"state": self.nn.state_dict(), "n_in": n_in}, model_tmp)
+                torch.save({"state": self.nn.state_dict(), "n_in": model_n_in}, model_tmp)
             if need_gbm:
                 with open(gbm_tmp, "wb") as fh:
                     pickle.dump(self.gbm, fh, protocol=pickle.HIGHEST_PROTOCOL)
             meta = dict(mu=np.asarray(self.mu, dtype=float).tolist(),
                         sd=np.asarray(self.sd, dtype=float).tolist(), thrs=self.thrs, mode=self.mode,
                         auc=self.auc, has_nn=need_nn, has_gbm=need_gbm,
-                        n_in=n_in, info=self.info)
+                        n_in=model_n_in, raw_n_in=raw_n_in,
+                        missing_mask_version=1, info=self.info)
             with open(meta_tmp, "w", encoding="utf-8") as fh:
                 json.dump(meta, fh, allow_nan=False)
                 fh.flush()
@@ -825,7 +832,9 @@ class Brain:
             try:
                 with open(CFG["META"], encoding="utf-8") as fh:
                     old_meta = json.load(fh)
-                old_ok = (int(old_meta.get("n_in", -1)) == N_FEATURES
+                old_ok = (int(old_meta.get("n_in", -1)) == 2 * N_FEATURES
+                          and int(old_meta.get("raw_n_in", -1)) == N_FEATURES
+                          and int(old_meta.get("missing_mask_version", 0)) == 1
                           and (not old_meta.get("has_nn") or os.path.isfile(CFG["MODEL"]))
                           and (not old_meta.get("has_gbm") or os.path.isfile(CFG["GBM"])))
                 if old_ok:
@@ -876,8 +885,10 @@ class Brain:
             return
         try:
             meta = json.load(open(CFG["META"], encoding="utf-8"))
-            if meta["n_in"] != N_FEATURES:
-                log.info("saved model has %s features, expected %s -> ignored", meta["n_in"], N_FEATURES)
+            if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
+                    or int(meta.get("raw_n_in", -1)) != N_FEATURES
+                    or int(meta.get("missing_mask_version", 0)) != 1):
+                log.info("saved model schema is incompatible with missing-value encoding -> ignored")
                 return
             if meta.get("has_nn") and not os.path.exists(CFG["MODEL"]):
                 raise FileNotFoundError("committed neural model file is missing")
@@ -924,11 +935,11 @@ class Brain:
         """Return validated probabilities; invalid model output must never reach trade selection."""
         if not self.ready:
             raise RuntimeError("AI model is not ready")
-        X = np.asarray(X, dtype=np.float32)
+        X = np.asarray(X, dtype=np.float64)
         if X.ndim != 2 or X.shape[1] != N_FEATURES:
             raise ValueError(f"AI input shape invalid: {X.shape}; expected (*, {N_FEATURES})")
-        if not np.isfinite(X).all():
-            raise ValueError("AI input contains NaN or infinite features")
+        if np.isinf(X).any():
+            raise ValueError("AI input contains infinite features; only NaN is treated as unknown")
         if not feature_coverage_mask(X, 0.80).all():
             raise ValueError("AI input has more than 20% missing features in at least one row")
         out = np.asarray(self.predict_all(X)[self.mode], dtype=np.float64).reshape(-1)
@@ -1130,20 +1141,24 @@ def impact(usdt, vol24):
     return CFG["IMPACT_K"] * math.sqrt(max(usdt, 0.0) / max(vol24 or 1e6, 1.0))
 
 def feature_coverage_mask(X, min_fraction=0.80):
-    """Keep rows with enough observed features; missing values are imputed from fit-only means."""
+    """Accept rows with enough real observations; missingness is encoded separately."""
     values = np.asarray(X, dtype=np.float64)
     if values.ndim != 2 or values.shape[1] == 0:
         return np.zeros(len(values) if values.ndim else 0, dtype=bool)
-    return np.isfinite(values).mean(axis=1) >= float(min_fraction)
+    # NaN is an explicit unknown; +/-Inf is invalid data and rejects the row.
+    return (~np.isinf(values).any(axis=1)) & (np.isfinite(values).mean(axis=1) >= float(min_fraction))
 
 
 def _rows_to_ds(rows, label_key="label", ret_key="ret"):
     X, y, ts, ret, hold, coin = [], [], [], [], [], []
     for r in rows:
         f = json.loads(r["feats"])
-        if len(f) != N_FEATURES:
+        if not isinstance(f, list) or len(f) != N_FEATURES:
             continue
-        X.append(f); y.append(r[label_key]); ts.append(r["ts"])
+        vector = np.asarray([np.nan if v is None else v for v in f], dtype=np.float64)
+        if vector.shape != (N_FEATURES,):
+            continue
+        X.append(vector); y.append(r[label_key]); ts.append(r["ts"])
         ret.append(r[ret_key] if r[ret_key] is not None else np.nan)
         hold.append(r["hold"] if "hold" in r.keys() and r["hold"] is not None else np.nan)
         coin.append(r["inst"])
@@ -1230,11 +1245,14 @@ class Paper:
         prepared = []
         for r in rows:
             vector = np.asarray(r["feats"], dtype=np.float64).reshape(-1)
-            if vector.size != expected_count or not np.isfinite(vector).all():
-                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected {expected_count} finite values, got {vector.size}")
+            if (vector.size != expected_count or np.isinf(vector).any()
+                    or not feature_coverage_mask(vector.reshape(1, -1), 0.80)[0]):
+                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected {expected_count} values with >=80% known")
+            encoded_vector = json.dumps([float(v) if np.isfinite(v) else None for v in vector],
+                                        allow_nan=False, separators=(",", ":"))
             prepared.append((
                 float(r.get("ts", now)), r["inst"], float(r["price"]), float(r["atr"]),
-                json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":")),
+                encoded_vector,
                 None if r.get("prob") is None or np.isnan(r["prob"]) else float(r["prob"]),
                 int(r["rank"]), float(r.get("feature_ts", r.get("ts", now))),
                 str(r.get("prob_source") or "ranking_exploration"),
@@ -1276,14 +1294,18 @@ class Paper:
 
     @locked
     def closed_outcome_counts(self):
-        row = self.db.execute(
-            "SELECT SUM(CASE WHEN s.ret>0 THEN 1 ELSE 0 END) AS wins,"
-            "SUM(CASE WHEN s.ret<0 THEN 1 ELSE 0 END) AS losses,"
-            "COUNT(*) AS total "
-            "FROM tracked_signals t JOIN signals s ON s.id=t.signal_id "
-            "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL").fetchone()
-        return dict(wins=int(row["wins"] or 0), losses=int(row["losses"] or 0),
-                    total=int(row["total"] or 0))
+        # Count only outcomes whose feature snapshots are usable by the trainer.
+        # A row with too little source data cannot open the supervised model gate.
+        ds = self.closed_signal_dataset()
+        if not len(ds["y"]):
+            return dict(wins=0, losses=0, total=0)
+        valid = (feature_coverage_mask(ds["X"], 0.80)
+                 & np.isfinite(ds["y"]) & np.isin(ds["y"], [0, 1])
+                 & np.isfinite(ds["ts"]) & np.isfinite(ds["ret"]) & (ds["ret"] != 0))
+        labels = ds["y"][valid]
+        wins = int(np.sum(labels == 1))
+        losses = int(np.sum(labels == 0))
+        return dict(wins=wins, losses=losses, total=wins + losses)
 
     @locked
     def adaptive_ranking_weights(self, regime, min_samples=20, lookback=500):
@@ -1394,9 +1416,11 @@ class Paper:
         if int(N_FEATURES) != required_count:
             raise RuntimeError(f"Tracked signals require {required_count} runtime features; got {N_FEATURES}")
         vector = np.asarray(row["feats"], dtype=np.float64).reshape(-1)
-        if vector.size != required_count or not np.isfinite(vector).all():
-            raise ValueError(f"Invalid feature snapshot for {inst}: expected {required_count} finite values, got {vector.size}")
-        feats = json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":"))
+        if (vector.size != required_count or np.isinf(vector).any()
+                or not feature_coverage_mask(vector.reshape(1, -1), 0.80)[0]):
+            raise ValueError(f"Invalid feature snapshot for {inst}: expected {required_count} values with >=80% known")
+        feats = json.dumps([float(v) if np.isfinite(v) else None for v in vector],
+                           allow_nan=False, separators=(",", ":"))
         feature_names = json.dumps(list(FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
         schema_version = int(DATA_VER)
         cur = self.db.execute(
@@ -1626,7 +1650,15 @@ def rank_universe(X, vol24, paper=None, regimes=None, spread24=None):
         coins = regime_series.index[regime_series == regime]
         weights, samples, adaptive = (paper.adaptive_ranking_weights(regime)
                                       if paper is not None else (base, 0, False))
-        part = sum(weights.get(k, base[k]) * factors[k].loc[coins] for k in base)
+        # Sum observed evidence only; missing factors are not treated as zero.
+        local_weights = {k: float(weights.get(k, base[k])) for k in base}
+        weighted = pd.DataFrame({k: factors[k].loc[coins] * local_weights[k] for k in base}, index=coins)
+        observed_weight = pd.DataFrame({
+            k: factors[k].loc[coins].notna().astype(float) * abs(local_weights[k])
+            for k in base
+        }, index=coins).sum(axis=1)
+        part = weighted.sum(axis=1, min_count=1)
+        part = part * sum(abs(v) for v in local_weights.values()) / observed_weight.replace(0.0, np.nan)
         score.loc[coins] = part
         diagnostics[str(regime)] = {"samples": int(samples), "adaptive": bool(adaptive),
                                     "weights": weights}
@@ -1636,9 +1668,11 @@ def rank_universe(X, vol24, paper=None, regimes=None, spread24=None):
 
 def classify_market_regime(features):
     """Classify the broad market using only information available at signal time."""
-    btc = float(features.get("ctx_btc_regime", 0.0))
-    adx = float(features.get("1H_adx14", 0.0))
-    atr = float(features.get("1H_atr_pct", 0.0))
+    btc = float(features.get("ctx_btc_regime", np.nan))
+    adx = float(features.get("1H_adx14", np.nan))
+    atr = float(features.get("1H_atr_pct", np.nan))
+    if not np.isfinite([btc, adx, atr]).all():
+        return "UNKNOWN"
     if atr >= 0.035:
         return "HIGH_VOL"
     if btc >= 0.015 and adx >= 18:
@@ -1714,6 +1748,8 @@ def simulate(idx, ds):
     open_, taken, events = [], [], []
     for i in np.argsort(ts, kind="stable"):
         t = ts[i]
+        if not np.isfinite([ret[i], hold[i], atr[i]]).all():
+            continue
         open_ = [p for p in open_ if p[0] > t]
         if len(open_) >= CFG["MAX_OPEN"] or any(p[1] == coin[i] for p in open_):
             continue
@@ -2065,18 +2101,19 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     valid = {k: v for k, v in res.items() if v is not None}
     X_raw = pd.DataFrame({k: v[0] for k, v in valid.items()}).T
     feature_ts = {k: v[1] for k, v in valid.items()}
-    X = X_raw.dropna()
+    coverage = feature_coverage_mask(X_raw.to_numpy(dtype=np.float64), 0.80) if not X_raw.empty else np.zeros(0, dtype=bool)
+    X = X_raw.loc[coverage].copy()
     failed_frames = len(uni) - len(valid)
     rows_before_dropna = len(X_raw)
     rows_after_dropna = len(X)
     log.info("scan data diagnostics: universe=%d frame_failures=%d frame_success=%d feature_rows=%d "
-             "complete_feature_rows=%d dropped_nan_rows=%d feature_columns=%d",
+             "usable_feature_rows=%d dropped_low_coverage=%d feature_columns=%d",
              len(uni), failed_frames, len(valid), rows_before_dropna, rows_after_dropna,
              rows_before_dropna - rows_after_dropna, X_raw.shape[1] if not X_raw.empty else 0)
     if X.empty:
         if not X_raw.empty:
             nan_counts = X_raw.isna().sum().sort_values(ascending=False)
-            log.warning("no data: all %d feature rows dropped; top_nan_features=%s",
+            log.warning("no data: no feature rows reached 80%% coverage; top_unknown_features=%s",
                         rows_before_dropna,
                         json.dumps({str(k): int(v) for k, v in nan_counts.head(12).items()}, ensure_ascii=False))
         else:
@@ -2160,6 +2197,15 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         if int(rr["rank"]) > max_signal_rank:
             continue
         threshold, regime_stats = regime_entry_threshold(paper, rr["regime"])
+        # Unknown optional features can be learned, but execution still requires
+        # every field used by entry-quality and ATR risk calculations.
+        required_entry_features = (
+            "1H_rsi14", "1H_atr_pct", "1H_ema_dist21", "15m_ret20",
+            "1H_lower_wick", "1H_body_ratio", "1H_adx14",
+        )
+        if not np.isfinite(X.loc[inst, list(required_entry_features)].to_numpy(dtype=float)).all():
+            reject["entry_quality"] += 1
+            continue
         if bool(rr["stretched"]):
             reject["stretched"] += 1
             continue
@@ -2241,7 +2287,7 @@ def bootstrap_training_due(paper, now=None):
             X = np.asarray(cached["X"], dtype=np.float64)
             y = np.asarray(cached["y"], dtype=np.float64)
             ts = np.asarray(cached["ts"], dtype=np.float64)
-            valid = (np.isfinite(X).all(axis=1) & np.isfinite(y)
+            valid = (feature_coverage_mask(X, 0.80) & np.isfinite(y)
                      & np.isfinite(ts) & np.isin(y, [0, 1]))
             cached_rows = int(valid.sum())
     except Exception as exc:

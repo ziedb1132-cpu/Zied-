@@ -14,9 +14,9 @@ class FeatureCoverageTests(unittest.TestCase):
         mask = feature_coverage_mask(X, 0.80)
         self.assertEqual(mask.tolist(), [True, True, False])
 
-    def test_rejects_infinite_values_as_missing(self):
+    def test_rejects_rows_containing_infinite_values(self):
         X = np.array([[1.0, 2.0, np.inf, 4.0, 5.0]])
-        self.assertEqual(feature_coverage_mask(X, 0.80).tolist(), [True])
+        self.assertEqual(feature_coverage_mask(X, 0.80).tolist(), [False])
 
 
 if __name__ == "__main__":
