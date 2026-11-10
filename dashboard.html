@@ -1462,7 +1462,7 @@ function bootDashboard(){
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bootDashboard,{once:true});
 else bootDashboard();
-const initialPage=new URLSearchParams(window.location.search).get("page")||location.hash.slice(1)||"overview";showDashboardPage(initialPage,false);
+const requestedPage=new URLSearchParams(window.location.search).get("page");const initialPage=requestedPage||"overview";if(!requestedPage&&location.hash){history.replaceState(null,"",location.pathname+location.search);}showDashboardPage(initialPage,false);
 try{render();}catch(initialRenderError){console.error("Initial dashboard render failed:",initialRenderError);}
 setLanguage();
 
