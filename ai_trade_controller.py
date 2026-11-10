@@ -20,9 +20,13 @@ def _load_pattern_memory(zq):
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        if int(data.get("winning_samples", 0)) < 500 or int(data.get("losing_samples", 0)) < 500:
+        minimum = int(getattr(zq, "MIN_CLOSED_CLASS_SAMPLES", 500))
+        if (int(data.get("winning_samples", 0)) < minimum
+                or int(data.get("losing_samples", 0)) < minimum):
             return []
         if int(data.get("feature_count", 0)) != int(zq.N_FEATURES):
+            return []
+        if data.get("feature_names") != list(zq.FEATURE_COLS):
             return []
         known = {name: i for i, name in enumerate(zq.FEATURE_COLS)}
         patterns = []
