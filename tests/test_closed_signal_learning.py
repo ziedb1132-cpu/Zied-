@@ -44,6 +44,20 @@ class ClosedSignalLearningTests(unittest.TestCase):
              ret, 1.0, "TP" if ret > 0 else "SL"))
         self.paper.db.commit()
 
+    def test_nan_is_retained_as_unknown_and_encoded_separately_from_zero(self):
+        values = np.zeros((1, zq.N_FEATURES), dtype=np.float64)
+        values[0, 0] = np.nan
+        self.assertTrue(zq.feature_coverage_mask(values, 0.80)[0])
+
+        brain = zq.Brain(persist=False)
+        brain.mu = np.zeros(zq.N_FEATURES, dtype=np.float64)
+        brain.sd = np.ones(zq.N_FEATURES, dtype=np.float64)
+        encoded = brain._norm(values)
+        self.assertEqual(encoded.shape, (1, zq.N_FEATURES * 2))
+        self.assertEqual(encoded[0, 0], 0.0)  # fit-only mean imputation
+        self.assertEqual(encoded[0, zq.N_FEATURES], 1.0)  # explicit unknown flag
+        self.assertEqual(encoded[0, zq.N_FEATURES + 1], 0.0)  # real numeric zero
+
     def test_timeout_exit_is_classified_by_net_return_after_costs(self):
         # A small gross gain below the assumed costs is a net loss.
         ret, outcome = zq.classify_exit_return(100.0, 100.2)
