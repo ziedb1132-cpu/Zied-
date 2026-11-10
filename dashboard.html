@@ -1316,14 +1316,14 @@ function renderGlobalNews(report){
  const online=Number(report.online_sources)||0,total=Number(report.source_count)||50;
  const model=report.model||{};
  const direction=String(report.market_direction||"neutral");
- const directionLabel=direction==="positive"?"إيجابي":direction==="negative"?"سلبي":"محايد";
+ const directionLabel=direction==="positive"?"Positif":direction==="negative"?"Négatif":"Neutre";
  const sentiment=Number(report.market_sentiment)||0;
- status.textContent=(items.length+" خبر · "+online+"/"+total+" مصدر متاح · تحديث "+newsDate(Number(report.updated_at||0)*1000));
+ status.textContent=(items.length+" actualités · "+online+"/"+total+" sources disponibles · mise à jour "+newsDate(Number(report.updated_at||0)*1000))+(report.stale_cache?" · dernière copie en cache":"");
  if(summary)summary.innerHTML=
-  '<div class="news-intel-kpi"><span>مصادر متاحة</span><b>'+online+'/'+total+'</b></div>'+
-  '<div class="news-intel-kpi"><span>الأخبار المجموعة</span><b>'+Number(report.article_count||items.length)+'</b></div>'+
-  '<div class="news-intel-kpi"><span>اتجاه السوق</span><b class="'+(direction==='positive'?'positive':direction==='negative'?'negative':'')+'">'+directionLabel+' · '+(sentiment*100).toFixed(1)+'%</b></div>'+
-  '<div class="news-intel-kpi"><span>نموذج أخبار مساعد</span><b>'+(model.ready?'ACTIF':'APPRENTISSAGE')+'</b><small>'+Number(model.samples||0)+' إشارة مغلقة'+(model.validation_auc!==null&&model.validation_auc!==undefined?' · AUC '+Number(model.validation_auc).toFixed(3):'')+'</small></div>';
+  '<div class="news-intel-kpi"><span>Sources disponibles</span><b>'+online+'/'+total+'</b></div>'+
+  '<div class="news-intel-kpi"><span>Articles collectés</span><b>'+Number(report.article_count||items.length)+'</b></div>'+
+  '<div class="news-intel-kpi"><span>Sentiment du marché</span><b class="'+(direction==='positive'?'positive':direction==='negative'?'negative':'')+'">'+directionLabel+' · '+(sentiment*100).toFixed(1)+'%</b></div>'+
+  '<div class="news-intel-kpi"><span>Modèle auxiliaire actualités</span><b>'+(model.ready?'ACTIF':'APPRENTISSAGE')+'</b><small>'+Number(model.samples||0)+' إشارة مغلقة'+(model.validation_auc!==null&&model.validation_auc!==undefined?' · AUC '+Number(model.validation_auc).toFixed(3):'')+'</small></div>';
  if(!items.length)host.innerHTML='<div class="card empty">لم تصل أخبار صالحة من المصادر بعد. ستظهر النتائج بعد نجاح جلب RSS في دورة GitHub Actions التالية.</div>';
  else host.innerHTML=items.slice(0,10).map((item,index)=>{
   const title=esc(item.title||"Titre indisponible"),description=esc(newsPlainText(item.summary||"").slice(0,420));
@@ -1336,7 +1336,7 @@ function renderGlobalNews(report){
  }).join("");
  if(sourcesHost){
   const list=Array.isArray(report.sources)?report.sources:[];
-  sourcesHost.innerHTML=list.map(source=>'<div class="news-source-chip"><div><b>'+esc(source.name||"Source")+'</b><br><small>'+esc(source.category||"news")+' · '+Number(source.articles||0)+' خبر</small></div><span class="'+(source.status==="online"?'online':'offline')+'">'+(source.status==="online"?'● متاح':'● متوقف')+'</span></div>').join("");
+  sourcesHost.innerHTML=list.map(source=>'<div class="news-source-chip"><div><b>'+esc(source.name||"Source")+'</b><br><small>'+esc(source.category||"news")+' · '+Number(source.articles||0)+' خبر</small></div><span class="'+(source.status==="online"?'online':'offline')+'">'+(source.status==="online"?'● En ligne':'● Hors ligne')+'</span></div>').join("");
  }
 }
 async function loadNews(){
