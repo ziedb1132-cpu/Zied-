@@ -4,6 +4,8 @@ import os
 import tempfile
 import unittest
 
+import numpy as np
+
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import zied_quant as zq
@@ -40,6 +42,19 @@ class ClosedSignalLearningTests(unittest.TestCase):
              101.0 if ret > 0 else 99.0, "WIN" if ret > 0 else "LOSS",
              ret, 1.0, "TP" if ret > 0 else "SL"))
         self.paper.db.commit()
+
+    def test_nan_is_retained_as_unknown_and_encoded_separately_from_zero(self):
+        values = np.zeros((1, zq.N_FEATURES), dtype=np.float64)
+        values[0, 0] = np.nan
+        self.assertTrue(zq.feature_coverage_mask(values, 0.80)[0])
+        brain = zq.Brain(persist=False)
+        brain.mu = np.zeros(zq.N_FEATURES, dtype=np.float64)
+        brain.sd = np.ones(zq.N_FEATURES, dtype=np.float64)
+        encoded = brain._norm(values)
+        self.assertEqual(encoded.shape, (1, zq.N_FEATURES * 2))
+        self.assertEqual(encoded[0, 0], 0.0)
+        self.assertEqual(encoded[0, zq.N_FEATURES], 1.0)
+        self.assertEqual(encoded[0, zq.N_FEATURES + 1], 0.0)
 
     def test_timeout_exit_is_classified_by_net_return_after_costs(self):
         # A small gross gain below the assumed costs is a net loss.
