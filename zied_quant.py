@@ -1244,11 +1244,14 @@ class Paper:
         prepared = []
         for r in rows:
             vector = np.asarray(r["feats"], dtype=np.float64).reshape(-1)
-            if vector.size != expected_count or not np.isfinite(vector).all():
-                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected {expected_count} finite values, got {vector.size}")
+            if (vector.size != expected_count or np.isinf(vector).any()
+                    or not feature_coverage_mask(vector.reshape(1, -1), 0.80)[0]):
+                raise ValueError(f"Invalid feature snapshot for {r.get('inst')}: expected {expected_count} values with >=80% known")
+            encoded_vector = json.dumps([float(v) if np.isfinite(v) else None for v in vector],
+                                        allow_nan=False, separators=(",", ":"))
             prepared.append((
                 float(r.get("ts", now)), r["inst"], float(r["price"]), float(r["atr"]),
-                json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":")),
+                encoded_vector,
                 None if r.get("prob") is None or np.isnan(r["prob"]) else float(r["prob"]),
                 int(r["rank"]), float(r.get("feature_ts", r.get("ts", now))),
                 str(r.get("prob_source") or "ranking_exploration"),
@@ -1408,9 +1411,11 @@ class Paper:
         if int(N_FEATURES) != required_count:
             raise RuntimeError(f"Tracked signals require {required_count} runtime features; got {N_FEATURES}")
         vector = np.asarray(row["feats"], dtype=np.float64).reshape(-1)
-        if vector.size != required_count or not np.isfinite(vector).all():
-            raise ValueError(f"Invalid feature snapshot for {inst}: expected {required_count} finite values, got {vector.size}")
-        feats = json.dumps(vector.tolist(), allow_nan=False, separators=(",", ":"))
+        if (vector.size != required_count or np.isinf(vector).any()
+                or not feature_coverage_mask(vector.reshape(1, -1), 0.80)[0]):
+            raise ValueError(f"Invalid feature snapshot for {inst}: expected {required_count} values with >=80% known")
+        feats = json.dumps([float(v) if np.isfinite(v) else None for v in vector],
+                           allow_nan=False, separators=(",", ":"))
         feature_names = json.dumps(list(FEATURE_COLS), ensure_ascii=False, separators=(",", ":"))
         schema_version = int(DATA_VER)
         cur = self.db.execute(
@@ -1640,7 +1645,15 @@ def rank_universe(X, vol24, paper=None, regimes=None, spread24=None):
         coins = regime_series.index[regime_series == regime]
         weights, samples, adaptive = (paper.adaptive_ranking_weights(regime)
                                       if paper is not None else (base, 0, False))
-        part = sum(weights.get(k, base[k]) * factors[k].loc[coins] for k in base)
+        # Sum observed evidence only; missing factors are not treated as zero.
+        local_weights = {k: float(weights.get(k, base[k])) for k in base}
+        weighted = pd.DataFrame({k: factors[k].loc[coins] * local_weights[k] for k in base}, index=coins)
+        observed_weight = pd.DataFrame({
+            k: factors[k].loc[coins].notna().astype(float) * abs(local_weights[k])
+            for k in base
+        }, index=coins).sum(axis=1)
+        part = weighted.sum(axis=1, min_count=1)
+        part = part * sum(abs(v) for v in local_weights.values()) / observed_weight.replace(0.0, np.nan)
         score.loc[coins] = part
         diagnostics[str(regime)] = {"samples": int(samples), "adaptive": bool(adaptive),
                                     "weights": weights}
@@ -2079,18 +2092,19 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     valid = {k: v for k, v in res.items() if v is not None}
     X_raw = pd.DataFrame({k: v[0] for k, v in valid.items()}).T
     feature_ts = {k: v[1] for k, v in valid.items()}
-    X = X_raw.dropna()
+    coverage = feature_coverage_mask(X_raw.to_numpy(dtype=np.float64), 0.80) if not X_raw.empty else np.zeros(0, dtype=bool)
+    X = X_raw.loc[coverage].copy()
     failed_frames = len(uni) - len(valid)
     rows_before_dropna = len(X_raw)
     rows_after_dropna = len(X)
     log.info("scan data diagnostics: universe=%d frame_failures=%d frame_success=%d feature_rows=%d "
-             "complete_feature_rows=%d dropped_nan_rows=%d feature_columns=%d",
+             "usable_feature_rows=%d dropped_low_coverage=%d feature_columns=%d",
              len(uni), failed_frames, len(valid), rows_before_dropna, rows_after_dropna,
              rows_before_dropna - rows_after_dropna, X_raw.shape[1] if not X_raw.empty else 0)
     if X.empty:
         if not X_raw.empty:
             nan_counts = X_raw.isna().sum().sort_values(ascending=False)
-            log.warning("no data: all %d feature rows dropped; top_nan_features=%s",
+            log.warning("no data: no feature rows reached 80%% coverage; top_unknown_features=%s",
                         rows_before_dropna,
                         json.dumps({str(k): int(v) for k, v in nan_counts.head(12).items()}, ensure_ascii=False))
         else:
@@ -2174,6 +2188,15 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
         if int(rr["rank"]) > max_signal_rank:
             continue
         threshold, regime_stats = regime_entry_threshold(paper, rr["regime"])
+        # Unknown optional features can be learned, but execution still requires
+        # every field used by entry-quality and ATR risk calculations.
+        required_entry_features = (
+            "1H_rsi14", "1H_atr_pct", "1H_ema_dist21", "15m_ret20",
+            "1H_lower_wick", "1H_body_ratio", "1H_adx14",
+        )
+        if not np.isfinite(X.loc[inst, list(required_entry_features)].to_numpy(dtype=float)).all():
+            reject["entry_quality"] += 1
+            continue
         if bool(rr["stretched"]):
             reject["stretched"] += 1
             continue
