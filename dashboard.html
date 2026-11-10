@@ -166,7 +166,13 @@ body .tablewrap table tbody tr:nth-child(even),body .tablewrap table tbody tr:nt
 body .tablewrap table th{background:#171f2a!important;color:#aeb8c7!important}
 body .tablewrap table td{background:#10151d!important;color:#eaecef!important}
 </style>
-</head>
+<style id="okx-positive-negative-colors">
+/* Positive and negative figures across tables, KPIs and signal panels */
+body .good,body .positive,body .profit,body .vp-positive,body .reference-open-pnl.positive{color:#0ecb81!important;font-weight:750!important}
+body .bad,body .negative,body .loss,body .vp-negative{color:#f6465d!important;font-weight:750!important}
+body td.good,body td.positive{color:#0ecb81!important}
+body td.bad,body td.negative{color:#f6465d!important}
+</style></head>
 <body>
 <header><div class="top"><div class="brand"><div class="logo">ZQ</div><div><h1>Zied Quant — Centre de pilotage</h1><div class="muted">Plateforme de suivi quantitatif · Marché Spot USDT</div></div></div><span class="status"><i id="dot" class="dot"></i><span id="status">Non connecté</span></span></div></header>
 <main>
@@ -311,7 +317,7 @@ const DASHBOARD_REPOSITORY={owner:"ziedb1132-cpu",repo:"Zied-",branch:"state-dat
 let state={db:null,manifest:null,files:[],contents:{},meta:{},signals:[],tracked:[],summary:{total:0,labeled:0,wins:0,losses:0,avgRet:null,openTracked:0,closedTracked:0,trackedTotal:0,gateWins:0,gateLosses:0,gateTotal:0},ranking:[],errors:[],schema:[],strategy_lab:null,evolution:null};
 
 
-function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table class="'+(cols.length===2?'kv-table':'data-table')+'"><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>{const value=typeof c[1]==="function"?c[1](r):r[c[1]];const retClass=c[0]==="Rendement réalisé"&&r.ret!==null&&r.ret!==undefined&&r.ret!==""?(Number(r.ret)>0?"good":Number(r.ret)<0?"bad":""):"";return '<td'+(retClass?' class="'+retClass+'"':'')+' title="'+esc(value)+'">'+esc(value)+'</td>'}).join("")+'</tr>').join("")+'</tbody></table>'}
+function table(rows,cols){if(!rows||!rows.length)return '<div class="empty">Aucune donnée enregistrée pour cette section.</div>';return '<table class="'+(cols.length===2?'kv-table':'data-table')+'"><thead><tr>'+cols.map(c=>'<th>'+esc(c[0])+'</th>').join("")+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+cols.map(c=>{const raw=typeof c[1]==="function"?c[1](r):r[c[1]];const value=raw;const numeric=typeof raw==="number"?raw:(typeof raw==="string"&&/^[+−-]?\\s*\\d[\\d,.]*(?:\\s*(?:%|USDT|bps))?$/i.test(raw.trim())?Number(raw.trim().replace(/[% ,]|USDT|bps/gi,"").replace(",", ".")):NaN);const valueClass=Number.isFinite(numeric)&&numeric>0?"good":Number.isFinite(numeric)&&numeric<0?"bad":"";return '<td'+(valueClass?' class="'+valueClass+'"':'')+' title="'+esc(value)+'">'+esc(value)+'</td>'}).join("")+'</tr>').join("")+'</tbody></table>'}
 function metric(label,value,sub){return '<div class="card"><div class="label">'+esc(label)+'</div><div class="value">'+esc(value)+'</div><div class="sub">'+esc(sub||"")+'</div></div>'}
 function showRows(obj){return Object.entries(obj||{}).map(([k,v])=>'<div class="row"><span class="muted">'+esc(k)+'</span><b>'+esc(typeof v==="string"?v:JSON.stringify(v))+'</b></div>').join("")||'<div class="empty">Aucune donnée meta disponible.</div>'}
 function dbQuery(sql){try{if(!state.db)return [];let r=state.db.exec(sql);if(!r.length)return [];return r[0].values.map(row=>Object.fromEntries(r[0].columns.map((c,i)=>[c,row[i]])))}catch(e){return []}}
