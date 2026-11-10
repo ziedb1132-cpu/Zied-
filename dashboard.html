@@ -1323,20 +1323,20 @@ function renderGlobalNews(report){
   '<div class="news-intel-kpi"><span>Sources disponibles</span><b>'+online+'/'+total+'</b></div>'+
   '<div class="news-intel-kpi"><span>Articles collectés</span><b>'+Number(report.article_count||items.length)+'</b></div>'+
   '<div class="news-intel-kpi"><span>Sentiment du marché</span><b class="'+(direction==='positive'?'positive':direction==='negative'?'negative':'')+'">'+directionLabel+' · '+(sentiment*100).toFixed(1)+'%</b></div>'+
-  '<div class="news-intel-kpi"><span>Modèle auxiliaire actualités</span><b>'+(model.ready?'ACTIF':'APPRENTISSAGE')+'</b><small>'+Number(model.samples||0)+' إشارة مغلقة'+(model.validation_auc!==null&&model.validation_auc!==undefined?' · AUC '+Number(model.validation_auc).toFixed(3):'')+'</small></div>';
- if(!items.length)host.innerHTML='<div class="card empty">لم تصل أخبار صالحة من المصادر بعد. ستظهر النتائج بعد نجاح جلب RSS في دورة GitHub Actions التالية.</div>';
+  '<div class="news-intel-kpi"><span>Modèle auxiliaire actualités</span><b>'+(model.ready?'ACTIF':'APPRENTISSAGE')+'</b><small>'+Number(model.samples||0)+' signaux clôturés'+(model.validation_auc!==null&&model.validation_auc!==undefined?' · AUC '+Number(model.validation_auc).toFixed(3):'')+'</small></div>';
+ if(!items.length)host.innerHTML='<div class="card empty">Aucun article disponible. Les résultats apparaîtront après une collecte RSS réussie lors du prochain cycle GitHub Actions.</div>';
  else host.innerHTML=items.slice(0,10).map((item,index)=>{
   const title=esc(item.title||"Titre indisponible"),description=esc(newsPlainText(item.summary||"").slice(0,420));
   const url=/^https?:\/\//i.test(String(item.link||""))?String(item.link):"";
-  const dir=String(item.direction||"neutral"),dirLabel=dir==="positive"?"إيجابي":dir==="negative"?"سلبي":"محايد";
-  const coins=Array.isArray(item.coins)&&item.coins.length?item.coins.join(" · "):"السوق العام";
+  const dir=String(item.direction||"neutral"),dirLabel=dir==="positive"?"Positif":dir==="negative"?"Négatif":"Neutre";
+  const coins=Array.isArray(item.coins)&&item.coins.length?item.coins.join(" · "):"Marché global";
   const date=Number(item.published_ts)>0?newsDate(Number(item.published_ts)*1000):newsDate(item.published);
   const impact=Number(item.impact_score)||0,confidence=Number(item.confidence)||0;
-  return '<article class="news-item"><div><div class="news-meta"><span class="news-source">'+esc(item.source||"Global source")+'</span><span>·</span><time class="news-date">'+esc(date)+'</time><span>·</span><span>#'+(index+1)+'</span></div><h3>'+title+'</h3><p>'+description+'</p><div class="news-analysis"><span class="'+(dir==='positive'?'positive':dir==='negative'?'negative':'')+'">الاتجاه: '+dirLabel+'</span><span>التأثير: '+impact.toFixed(0)+'/100</span><span>الثقة: '+(confidence*100).toFixed(0)+'%</span><span>المخاطر: '+esc(item.risk_level||"غير محدد")+'</span><span>العملات: '+esc(coins)+'</span></div></div>'+(url?'<a class="news-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Lire l’article ↗</a>':'')+'</article>';
+  return '<article class="news-item"><div><div class="news-meta"><span class="news-source">'+esc(item.source||"Global source")+'</span><span>·</span><time class="news-date">'+esc(date)+'</time><span>·</span><span>#'+(index+1)+'</span></div><h3>'+title+'</h3><p>'+description+'</p><div class="news-analysis"><span class="'+(dir==='positive'?'positive':dir==='negative'?'negative':'')+'">Sentiment : '+dirLabel+'</span><span>Impact : '+impact.toFixed(0)+'/100</span><span>Confiance : '+(confidence*100).toFixed(0)+'%</span><span>Risque : '+esc(item.risk_level||"N/D")+'</span><span>Actifs : '+esc(coins)+'</span></div></div>'+(url?'<a class="news-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Lire l’article ↗</a>':'')+'</article>';
  }).join("");
  if(sourcesHost){
   const list=Array.isArray(report.sources)?report.sources:[];
-  sourcesHost.innerHTML=list.map(source=>'<div class="news-source-chip"><div><b>'+esc(source.name||"Source")+'</b><br><small>'+esc(source.category||"news")+' · '+Number(source.articles||0)+' خبر</small></div><span class="'+(source.status==="online"?'online':'offline')+'">'+(source.status==="online"?'● En ligne':'● Hors ligne')+'</span></div>').join("");
+  sourcesHost.innerHTML=list.map(source=>'<div class="news-source-chip"><div><b>'+esc(source.name||"Source")+'</b><br><small>'+esc(source.category||"news")+' · '+Number(source.articles||0)+' article(s)</small></div><span class="'+(source.status==="online"?'online':'offline')+'">'+(source.status==="online"?'● En ligne':'● Hors ligne')+'</span></div>').join("");
  }
 }
 async function loadNews(){
