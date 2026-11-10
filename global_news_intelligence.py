@@ -373,12 +373,26 @@ def _load_model(zq):
 def _write_intelligence(zq, articles):
     sources = list(_STATE.get("sources", []))
     now = time.time()
+    stale_cache = False
+    if not articles:
+        # Preserve the last successful report for display during a temporary
+        # publisher outage. Stale items are never used as fresh signal features.
+        previous_path = os.path.join(_state_dir(zq), "news_intelligence.json")
+        try:
+            with open(previous_path, encoding="utf-8") as handle:
+                previous = json.load(handle)
+            previous_articles = previous.get("articles", [])
+            if isinstance(previous_articles, list) and previous_articles:
+                articles = previous_articles
+                stale_cache = True
+        except (OSError, ValueError, TypeError):
+            pass
     online = sum(1 for s in sources if s.get("status") == "online")
     fresh = [x for x in articles if now - float(x.get("published_ts") or 0) <= 48*3600]
     sentiment_values = [float(x.get("sentiment", 0)) for x in fresh]
     average = float(np.mean(sentiment_values)) if sentiment_values else 0.0
     report = {
-        "schema": 2, "updated_at": now, "source_count": len(NEWS_FEEDS),
+        "schema": 2, "updated_at": now, "stale_cache": stale_cache, "source_count": len(NEWS_FEEDS),
         "online_sources": online, "offline_sources": len(NEWS_FEEDS)-online,
         "article_count": len(articles), "fresh_48h": len(fresh),
         "market_sentiment": round(average, 4),
@@ -392,7 +406,8 @@ def _write_intelligence(zq, articles):
             "features": list(MODEL_FEATURES),
             "role": "bounded auxiliary news intelligence; primary AI and risk gates unchanged"
         },
-        "method": "RSS/Atom headline and summary analysis; source-weighted lexicon; timestamp decay; exact URL/title deduplication. No missing facts are inferred."
+        "method": "RSS/Atom headline and summary analysis; source-weighted lexicon; timestamp decay; exact URL/title deduplication. No missing facts are inferred.",
+        "cache_note": "Displaying the last successful feed snapshot because all current feeds returned no items." if stale_cache else None
     }
     _write_json(os.path.join(_state_dir(zq), "news_intelligence.json"), report)
 
