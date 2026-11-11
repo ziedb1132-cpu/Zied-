@@ -25,8 +25,11 @@ class ClosedSignalLearningTests(unittest.TestCase):
             zq.CFG[k] = v
         self.tmp.cleanup()
 
-    def add_signal(self, ret, closed=True, valid_features=True):
-        feats = json.dumps([0.0] * zq.N_FEATURES) if valid_features else "[]"
+    def add_signal(self, ret, closed=True, valid_features=True, unknown_feature=False):
+        values = [0.0] * zq.N_FEATURES
+        if unknown_feature and valid_features:
+            values[0] = None
+        feats = json.dumps(values) if valid_features else "[]"
         cur = self.paper.db.execute(
             "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,label,ret,hold,feature_ts) "
             "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -102,7 +105,8 @@ class ClosedSignalLearningTests(unittest.TestCase):
 
     def test_training_dataset_keeps_all_outcomes_above_threshold(self):
         # The 500/500 rule is a minimum gate, not a per-class cap.
-        for _ in range(501):
+        self.add_signal(0.01, unknown_feature=True)
+        for _ in range(500):
             self.add_signal(0.01)
         for _ in range(503):
             self.add_signal(-0.01)
@@ -112,6 +116,9 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertEqual(len(ds["y"]), 1004)
         self.assertEqual(int((ds["y"] == 1).sum()), 501)
         self.assertEqual(int((ds["y"] == 0).sum()), 503)
+        train = zq.collect_training_data(self.paper)
+        self.assertEqual(len(train["y"]), 1004)
+        self.assertTrue(np.isnan(train["X"][0, 0]))
 
     def test_training_dataset_excludes_open_signals(self):
         self.add_signal(0.01, closed=True)
