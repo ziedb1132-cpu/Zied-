@@ -31,6 +31,10 @@ MODEL_FEATURES = (
     "source_diversity", "risk_ratio", "urgency", "freshness", "coverage", "available"
 )
 
+# These ten columns are appended to the primary Zied Quant model schema.
+# The final availability flag distinguishes missing news from neutral sentiment.
+NEWS_FEATURE_COLS = tuple("global_news_" + name for name in MODEL_FEATURES)
+
 # Curated publisher feeds and primary institutional sources. A failed source is
 # isolated and reported; it never blocks scanning or causes invented headlines.
 NEWS_FEEDS = (
@@ -490,35 +494,110 @@ def _train_news_model(zq, paper, force=False):
 
 
 def install(zq):
-    """Install global news aggregation, outcome-linked learning and bounded ranking context."""
+    """Install global news aggregation, primary-model features and outcome-linked learning."""
     _load_model(zq)
+
+    # Extend the active primary model schema after deep_learning_evolution has
+    # installed its full technical/research feature library. Historical candle
+    # rows receive NaN for news: current headlines are never backfilled into the past.
+    existing = list(zq.FEATURE_COLS)
+    missing = [name for name in NEWS_FEATURE_COLS if name not in existing]
+    if missing:
+        old_aligned_matrix = zq.aligned_matrix
+        zq.FEATURE_COLS = existing + list(NEWS_FEATURE_COLS)
+        zq.N_FEATURES = len(zq.FEATURE_COLS)
+        zq.CFG["REQUIRED_SIGNAL_FEATURES"] = zq.N_FEATURES
+
+        def aligned_matrix_with_unknown_news(frames, btc):
+            matrix = old_aligned_matrix(frames, btc)
+            for name in NEWS_FEATURE_COLS:
+                matrix[name] = np.nan
+            return matrix.reindex(columns=zq.FEATURE_COLS)
+
+        zq.aligned_matrix = aligned_matrix_with_unknown_news
+
+        # Keep prior closed outcomes usable without inventing historical news:
+        # zero-valued news fields plus available=0 explicitly mean "not recorded".
+        old_rows_to_ds = zq._rows_to_ds
+        legacy_feature_count = zq.N_FEATURES - len(NEWS_FEATURE_COLS)
+
+        def rows_to_ds_with_legacy_news(rows, label_key="label", ret_key="ret"):
+            adapted = []
+            for row in rows:
+                try:
+                    item = dict(row)
+                    values = json.loads(item["feats"])
+                    if isinstance(values, list) and len(values) == legacy_feature_count:
+                        item["feats"] = json.dumps(
+                            values + [0.0] * len(NEWS_FEATURE_COLS),
+                            separators=(",", ":"), allow_nan=False
+                        )
+                    adapted.append(item)
+                except (TypeError, ValueError, KeyError):
+                    adapted.append(row)
+            return old_rows_to_ds(adapted, label_key, ret_key)
+
+        zq._rows_to_ds = rows_to_ds_with_legacy_news
+
+        # Invalidate only feature-schema-dependent caches/models via the existing
+        # schema-version mechanism; trading rules and risk settings are untouched.
+        import hashlib
+        schema = "|".join(zq.FEATURE_COLS).encode("utf-8")
+        zq.DATA_VER = 4 + int(hashlib.sha256(schema).hexdigest()[:8], 16)
+        zq.log.info("primary model news features installed: added=%d total_features=%d schema=%d",
+                    len(NEWS_FEATURE_COLS), zq.N_FEATURES, zq.DATA_VER)
+    elif zq.N_FEATURES != len(zq.FEATURE_COLS):
+        raise RuntimeError("Primary model news feature schema is inconsistent")
+
     old_rank = zq.rank_universe
 
     def rank_with_global_news(X, vol24, *args, **kwargs):
-        base = old_rank(X, vol24, *args, **kwargs)
         if X is None or X.empty:
-            return base
+            return old_rank(X, vol24, *args, **kwargs)
         try:
             articles = fetch_news()
+        except Exception as exc:
+            zq.log.warning("global news fetch unavailable; primary news features marked unknown: %s", exc)
+            articles = []
+
+        # Populate the exact same ten news columns consumed by training/inference.
+        # Every coin gets an explicit availability value, including coins with no
+        # relevant headlines or temporary feed outages.
+        feature_map = {}
+        vectors = []
+        for inst in X.index:
+            try:
+                vector, _ = news_features(inst, articles)
+            except Exception as exc:
+                zq.log.debug("news feature extraction unavailable for %s: %s", inst, exc)
+                vector = [0.0] * len(NEWS_FEATURE_COLS)
+            vector = np.asarray(vector, dtype=np.float64)
+            if vector.shape != (len(NEWS_FEATURE_COLS),) or not np.isfinite(vector).all():
+                vector = np.zeros(len(NEWS_FEATURE_COLS), dtype=np.float64)
+            feature_map[str(inst)] = vector.tolist()
+            vectors.append(vector)
+        X.loc[:, list(NEWS_FEATURE_COLS)] = np.vstack(vectors)
+
+        base = old_rank(X, vol24, *args, **kwargs)
+        try:
             adjusted = base.copy()
-            feature_map = {}
             model = _STATE.get("model")
             for inst in list(base.head(100).index):
-                vector, _ = news_features(inst, articles)
-                feature_map[str(inst)] = vector
+                vector = feature_map.get(str(inst), [0.0] * len(NEWS_FEATURE_COLS))
                 probability = _predict(vector, model)
                 if probability is not None:
-                    # Maximum adjustment is +/-0.10 ranking points. It cannot
-                    # bypass entry quality, primary model validation or risk rules.
+                    # Existing bounded news-ranking adjustment is preserved.
                     adjusted.loc[inst] = float(base.loc[inst]) + 0.10 * (probability - 0.5) * 2.0
             _STATE["features"] = feature_map
             _write_intelligence(zq, articles)
-            zq.log.info("global news intelligence: sources=%d online=%d articles=%d learner=%s",
+            zq.log.info("global news intelligence: sources=%d online=%d articles=%d learner=%s primary_features=%d",
                         len(NEWS_FEEDS), sum(s.get("status") == "online" for s in _STATE["sources"]),
-                        len(articles), "ACTIVE" if (model or {}).get("ready") else "COLLECTING")
+                        len(articles), "ACTIVE" if (model or {}).get("ready") else "COLLECTING",
+                        len(NEWS_FEATURE_COLS))
             return adjusted.sort_values(ascending=False)
         except Exception as exc:
-            zq.log.warning("global news intelligence skipped safely: %s", exc)
+            # Do not remove the primary-model feature columns on a reporting error.
+            zq.log.warning("global news ranking adjustment skipped safely: %s", exc)
             return base
 
     zq.rank_universe = rank_with_global_news
