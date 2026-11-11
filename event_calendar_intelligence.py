@@ -103,24 +103,178 @@ def _normalise_cmc(item):
     }
 
 
+
+def _impact_value(value):
+    text = str(value or "").strip().lower()
+    if text in _HIGH:
+        return 1.0
+    if text in _MEDIUM:
+        return 0.55
+    return 0.25
+
+
+def _normalise_smt(item):
+    title = str(item.get("title") or "").strip()
+    stamp = _parse_time(item.get("ts") or item.get("time"))
+    if not title or not stamp:
+        return None
+    impact_text = str(item.get("impact") or "").strip().lower()
+    confidence_text = str(item.get("confidence") or "").strip().lower()
+    confidence = {
+        "official": 0.98, "sources_agree": 0.92,
+        "single_source": 0.72, "sources_disagree": 0.42,
+    }.get(confidence_text, 0.72)
+    if str(item.get("status") or "").lower() == "tentative":
+        confidence = min(confidence, 0.45)
+    return {
+        "title": title[:300], "timestamp": stamp, "source": "ShowMyTrades",
+        "type": "macro", "currency": str(item.get("currency") or "").upper(),
+        "impact": _impact_value(impact_text), "confidence": confidence,
+        "url": "https://showmytrades.com/tools/economic-calendar",
+        "source_id": str(item.get("id") or "")[:160],
+        "status": str(item.get("status") or "scheduled")[:40],
+    }
+
+
+def _normalise_compass(item):
+    title = str(item.get("title") or "").strip()
+    stamp = _parse_time(item.get("start_utc") or item.get("start"))
+    if not title or not stamp:
+        return None
+    impact_text = str(item.get("market_impact") or item.get("impact") or "").lower()
+    approximate = bool(item.get("approximate")) or "approximate" in title.lower()
+    return {
+        "title": title[:300], "timestamp": stamp, "source": "Compass",
+        "type": "macro", "currency": "USD",
+        "impact": _impact_value(impact_text),
+        "confidence": 0.62 if approximate else 0.86,
+        "url": str(item.get("source_url") or "https://compasseconomiccalendar.github.io/")[:500],
+        "status": "approximate" if approximate else "scheduled",
+    }
+
+
+def _normalise_pipatlas(item):
+    title = str(item.get("name") or item.get("title") or "").strip()
+    stamp = _parse_time(item.get("date") or item.get("timestamp"))
+    if not title or not stamp:
+        return None
+    return {
+        "title": title[:300], "timestamp": stamp,
+        "currency": str(item.get("currency") or "").upper(),
+        "impact": _impact_value(item.get("impact")),
+    }
+
+
+def _merge_duplicate_events(events):
+    # Merge same event across feeds (within five minutes), retaining all sources.
+    merged = {}
+    for event in sorted(events, key=lambda x: (x["timestamp"], -x.get("confidence", 0.0))):
+        title_key = re.sub(r"[^a-z0-9]+", " ", event["title"].lower()).strip()
+        key = (title_key, str(event.get("currency") or ""), int(event["timestamp"] // 300))
+        if key not in merged:
+            item = dict(event)
+            item["sources"] = [event["source"]]
+            merged[key] = item
+            continue
+        current = merged[key]
+        if event["source"] not in current["sources"]:
+            current["sources"].append(event["source"])
+        if event.get("confidence", 0) > current.get("confidence", 0):
+            keep_sources = current["sources"]
+            current.update(event)
+            current["sources"] = keep_sources
+        current["confidence"] = min(1.0, max(
+            current.get("confidence", 0), event.get("confidence", 0)) +
+            (0.04 if len(current["sources"]) > 1 else 0.0))
+        current["impact"] = max(current.get("impact", 0), event.get("impact", 0))
+    return sorted(merged.values(), key=lambda x: x["timestamp"])
+
 def fetch_events(force=False):
     now = time.time()
     if not force and now - _STATE["fetched_at"] < CACHE_SECONDS:
         return list(_STATE["events"])
     events, sources = [], []
+    # Primary no-key feed: ForexFactory.
     try:
         response = _SESSION.get(FF_URL, timeout=(4, 9))
         response.raise_for_status()
         payload = response.json()
         rows = payload if isinstance(payload, list) else payload.get("events", [])
+        count = 0
         for item in rows:
             event = _normalise_ff(item)
             if event and now <= event["timestamp"] <= now + WINDOW_SECONDS:
                 events.append(event)
-        sources.append({"name": "ForexFactory", "status": "online", "events": len(events)})
+                count += 1
+        sources.append({"name": "ForexFactory", "status": "online", "events": count})
     except Exception as exc:
         sources.append({"name": "ForexFactory", "status": "offline", "events": 0,
                         "error": str(exc)[:160]})
+
+    # Secondary no-key feed with explicit UTC timestamps and confidence metadata.
+    try:
+        response = _SESSION.get(
+            "https://showmytrades.com/api/public/calendar/v1",
+            params={"impact": "high,medium", "days": 2}, timeout=(4, 9))
+        response.raise_for_status()
+        payload = response.json()
+        count = 0
+        for item in payload.get("events", []) if isinstance(payload, dict) else []:
+            event = _normalise_smt(item)
+            if event and now <= event["timestamp"] <= now + WINDOW_SECONDS:
+                events.append(event)
+                count += 1
+        sources.append({"name": "ShowMyTrades", "status": "online", "events": count,
+                        "generated_at": payload.get("generated_at") if isinstance(payload, dict) else None})
+    except Exception as exc:
+        sources.append({"name": "ShowMyTrades", "status": "offline", "events": 0,
+                        "error": str(exc)[:160]})
+
+    # Compass provides additional U.S. macro/FOMC/market-structure context.
+    try:
+        response = _SESSION.get(
+            "https://compasseconomiccalendar.github.io/calendar.json", timeout=(4, 9))
+        response.raise_for_status()
+        payload = response.json()
+        updated = _parse_time(payload.get("generated_at") or payload.get("updated_at"))
+        fresh = bool(updated and 0 <= now - updated <= 9 * 86400)
+        rows = payload.get("events", []) if isinstance(payload, dict) else []
+        count = 0
+        if fresh:
+            for item in rows if isinstance(rows, list) else []:
+                event = _normalise_compass(item)
+                if event and now <= event["timestamp"] <= now + WINDOW_SECONDS:
+                    events.append(event)
+                    count += 1
+        sources.append({"name": "Compass", "status": "online" if fresh else "stale",
+                        "events": count, "updated_at": payload.get("generated_at") or payload.get("updated_at")})
+    except Exception as exc:
+        sources.append({"name": "Compass", "status": "offline", "events": 0,
+                        "error": str(exc)[:160]})
+
+    # PipAtlas is deliberately validation-only: its published terms prohibit
+    # automated/signal-trading integration. Never feed its events to the model.
+    try:
+        response = _SESSION.get(
+            "https://pipatlas.com/api/calendar?v=10.8", timeout=(4, 9))
+        response.raise_for_status()
+        payload = response.json()
+        updated = _parse_time(payload.get("updated"))
+        fresh = (not payload.get("stale") and updated and 0 <= now - updated <= 48 * 3600)
+        check_rows = payload.get("events", []) if isinstance(payload, dict) else []
+        checked = 0
+        if fresh:
+            for item in check_rows if isinstance(check_rows, list) else []:
+                event = _normalise_pipatlas(item)
+                if event and now <= event["timestamp"] <= now + WINDOW_SECONDS:
+                    checked += 1
+        sources.append({"name": "PipAtlas_validation_only",
+                        "status": "online" if fresh else "stale",
+                        "events_checked": checked, "updated_at": payload.get("updated")})
+    except Exception as exc:
+        sources.append({"name": "PipAtlas_validation_only", "status": "offline",
+                        "events_checked": 0, "error": str(exc)[:160]})
+
 
     # CoinMarketCal is optional: use it only when the owner has configured its
     # official API credentials. No API key is embedded in source code.
@@ -149,11 +303,7 @@ def fetch_events(force=False):
     else:
         sources.append({"name": "CoinMarketCal", "status": "not_configured", "events": 0})
 
-    unique = {}
-    for event in events:
-        key = (event["source"], event["title"].lower(), int(event["timestamp"] // 60))
-        unique[key] = event
-    events = sorted(unique.values(), key=lambda x: x["timestamp"])
+    events = _merge_duplicate_events(events)
     _STATE.update({"fetched_at": now, "events": events, "sources": sources})
     return list(events)
 
