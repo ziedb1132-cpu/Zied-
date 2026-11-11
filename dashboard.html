@@ -267,6 +267,7 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
 <section id="page-news" class="hide section">
  <div class="page-heading"><div><div class="page-eyebrow">GLOBAL NEWS INTELLIGENCE</div><h1>Actualités & analyse mondiale</h1><p>50 sources internationales · analyse du sentiment, du risque et de l’impact sur les crypto-actifs.</p></div><button type="button" class="refresh-btn" id="newsRefresh">↻ Actualiser</button></div>
  <div class="news-toolbar"><span id="newsStatus" class="muted">Chargement de l’intelligence mondiale…</span><span class="news-source-note">50 flux RSS / Atom · analyse IA supervisée par les clôtures</span></div>
+ <div class="card section upcoming-events-card"><div class="charthead"><h2>Événements importants · prochaines 24 heures</h2><span id="eventCalendarStatus" class="muted">Chargement du calendrier…</span></div><div id="upcomingEventsList" class="news-list"><div class="card empty">Chargement des événements…</div></div></div>
  <div id="newsSummary" class="news-intel-summary"></div>
  <div id="newsList" class="news-list"><div class="card empty">Chargement des actualités et de leur analyse…</div></div>
  <div class="card section news-sources-card"><h2>Les 50 sources mondiales</h2><div id="newsSources" class="news-source-grid"></div></div>
@@ -1309,6 +1310,30 @@ function renderNews(items,statusText){
   return '<article class="news-item"><div><div class="news-meta"><span class="news-source">'+source+'</span><span>·</span><time class="news-date">'+esc(newsDate(item.pubDate))+'</time><span>·</span><span>#'+(index+1)+'</span></div><h3>'+title+'</h3><p>'+description+'</p></div>'+(url?'<a class="news-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Lire l’article ↗</a>':'')+'</article>';
  }).join("");
 }
+function renderUpcomingEvents(report){
+ const host=$("upcomingEventsList"),status=$("eventCalendarStatus");
+ if(!host||!status)return;
+ const events=Array.isArray(report&&report.events)?report.events:[];
+ const sources=Array.isArray(report&&report.sources)?report.sources:[];
+ const online=sources.filter(x=>x&&x.status==="online").length;
+ status.textContent=events.length+" événement(s) · "+online+"/"+sources.length+" sources actives · fenêtre 24h";
+ if(!events.length){
+  host.innerHTML='<div class="card empty">Aucun événement futur confirmé dans les prochaines 24 heures. Les flux indisponibles restent signalés dans le statut des sources.</div>';
+  return;
+ }
+ host.innerHTML=events.slice(0,30).map((event,index)=>{
+  const impact=Number(event.impact)||0,confidence=Number(event.confidence)||0;
+  const impactLabel=impact>=0.85?"Élevé":impact>=0.5?"Moyen":"Faible";
+  const when=Number(event.hours_until);
+  const timeLabel=Number.isFinite(when)?(when<1?Math.max(1,Math.round(when*60))+" min":when.toFixed(1)+" h"):"—";
+  const sourceNames=Array.isArray(event.sources)&&event.sources.length?event.sources.join(" · "):(event.source||"Source inconnue");
+  const url=/^https?:\/\//i.test(String(event.url||""))?String(event.url):"";
+  const coins=Array.isArray(event.coins)&&event.coins.length?event.coins.join(" · "):(event.currency||"Marché global");
+  const title=esc(event.title||"Événement sans titre");
+  const eventDate=Number(event.timestamp)>0?newsDate(Number(event.timestamp)*1000):"Date indisponible";
+  return '<article class="news-item"><div><div class="news-meta"><span class="news-source">'+esc(sourceNames)+'</span><span>·</span><time class="news-date">'+esc(eventDate)+'</time><span>·</span><span>#'+(index+1)+'</span></div><h3>'+title+'</h3><div class="news-analysis"><span>Dans : '+esc(timeLabel)+'</span><span>Impact : '+impactLabel+' ('+(impact*100).toFixed(0)+'%)</span><span>Confiance : '+(confidence*100).toFixed(0)+'%</span><span>Actifs : '+esc(coins)+'</span></div></div>'+(url?'<a class="news-open" href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">Source ↗</a>':'')+'</article>';
+ }).join("");
+}
 function renderGlobalNews(report){
  const items=Array.isArray(report.articles)?report.articles:[];
  const host=$("newsList"),status=$("newsStatus"),summary=$("newsSummary"),sourcesHost=$("newsSources");
@@ -1424,6 +1449,7 @@ async function connect(){
   
   state.contents=data.contents||{};
   if(state.contents["news_intelligence.json"])renderGlobalNews(state.contents["news_intelligence.json"]);
+  if(state.contents["upcoming_events.json"])renderUpcomingEvents(state.contents["upcoming_events.json"]);
   state.strategy_lab=data.strategy_lab||null;
   state.evolution=data.evolution||null;
   state.manifest={generated_at:data.generated_at};
