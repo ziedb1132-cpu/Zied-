@@ -11,6 +11,7 @@ import evolution_engine
 import strategy_evolver
 import candle_news_intelligence
 import global_news_intelligence
+import event_calendar_intelligence
 import ai_trade_controller
 import exit_evolution
 import strategy_discovery_lab
@@ -23,6 +24,7 @@ import evolution_governance
 deep_learning_evolution.install(zied_quant)
 candle_news_intelligence.install(zied_quant)
 global_news_intelligence.install(zied_quant)
+event_calendar_intelligence.install(zied_quant)
 ai_trade_controller.install(zied_quant)
 
 _original_hist_depth = zied_quant.hist_depth
