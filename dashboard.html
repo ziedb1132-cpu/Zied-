@@ -192,6 +192,28 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
  th,td{padding:8px}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Actualités: dedicated sub-pages */
+.news-subnav{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 10px;padding:7px;border:1px solid var(--line);border-radius:11px;background:#0d151e}
+.news-subnav button{padding:9px 13px;border-color:transparent;background:transparent;color:#9aabba;font-size:10px}
+.news-subnav button.active{border-color:#28574e;background:#17302d;color:#8de0ca}
+.news-view{min-width:0;animation:pageIn .16s ease}
+.news-view-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:18px 0 12px}
+.news-view-heading h2{margin:0;color:#f0f4f7;font-size:17px}
+.news-view-heading p{margin:5px 0 0;color:var(--muted);font-size:10px}
+.news-overview-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;margin-top:13px}
+.news-overview-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-height:142px;padding:16px;text-align:left;border:1px solid var(--line);border-radius:12px;background:linear-gradient(135deg,#15212d,#101923)}
+.news-overview-card:hover{border-color:#347c70;background:#17272d}
+.news-overview-icon{display:grid;place-items:center;width:29px;height:29px;border-radius:8px;background:#17302d;color:#7de0c9;font-size:16px}
+.news-overview-card b{color:#edf3f7;font-size:12px}
+.news-overview-card small{color:var(--muted);font-size:10px;line-height:1.5}
+.news-overview-link{margin-top:auto;color:#76d7c2;font-size:9px;font-weight:750}
+.news-ai-analysis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.news-ai-card{padding:15px;border:1px solid var(--line);border-radius:11px;background:var(--surface)}
+.news-ai-card span{display:block;color:var(--muted);font-size:9px}
+.news-ai-card b{display:block;margin-top:6px;color:#f0f4f7;font-size:17px}
+.news-ai-card small{display:block;margin-top:5px;color:#91a2b1;font-size:9px;line-height:1.5}
+@media(max-width:600px){.news-overview-grid,.news-ai-analysis{grid-template-columns:1fr}.news-subnav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.news-subnav button{padding:10px 7px}.news-overview-card{min-height:125px}}
 </style>
 <style id="global-news-intelligence-style">
 .news-intel-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
@@ -265,12 +287,40 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
  <div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div>
 </section>
 <section id="page-news" class="hide section">
- <div class="page-heading"><div><div class="page-eyebrow">GLOBAL NEWS INTELLIGENCE</div><h1>Actualités & analyse mondiale</h1><p>50 sources internationales · analyse du sentiment, du risque et de l’impact sur les crypto-actifs.</p></div><button type="button" class="refresh-btn" id="newsRefresh">↻ Actualiser</button></div>
- <div class="news-toolbar"><span id="newsStatus" class="muted">Chargement de l’intelligence mondiale…</span><span class="news-source-note">50 flux RSS / Atom · analyse IA supervisée par les clôtures</span></div>
- <div class="card section upcoming-events-card"><div class="charthead"><h2>Événements importants · prochaines 24 heures</h2><span id="eventCalendarStatus" class="muted">Chargement du calendrier…</span></div><div id="upcomingEventsList" class="news-list"><div class="card empty">Chargement des événements…</div></div></div>
- <div id="newsSummary" class="news-intel-summary"></div>
- <div id="newsList" class="news-list"><div class="card empty">Chargement des actualités et de leur analyse…</div></div>
- <div class="card section news-sources-card"><h2>Les 50 sources mondiales</h2><div id="newsSources" class="news-source-grid"></div></div>
+ <div class="page-heading"><div><div class="page-eyebrow">GLOBAL NEWS INTELLIGENCE</div><h1>Actualités & analyse mondiale</h1><p>Actualités, calendrier économique et intelligence de marché réunis dans un espace dédié.</p></div><button type="button" class="refresh-btn" id="newsRefresh">↻ Actualiser</button></div>
+ <div class="news-subnav" role="tablist" aria-label="Navigation Actualités">
+  <button type="button" class="active" data-news-view="overview" role="tab" aria-selected="true">Vue d’ensemble</button>
+  <button type="button" data-news-view="articles" role="tab" aria-selected="false">Actualités</button>
+  <button type="button" data-news-view="events" role="tab" aria-selected="false">Événements économiques</button>
+  <button type="button" data-news-view="analysis" role="tab" aria-selected="false">Analyse IA</button>
+  <button type="button" data-news-view="sources" role="tab" aria-selected="false">Sources</button>
+ </div>
+ <div class="news-toolbar"><span id="newsStatus" class="muted">Chargement de l’intelligence mondiale…</span><span class="news-source-note">50 flux RSS / Atom · données intégrées dans dashboard_data.json</span></div>
+ <div id="news-view-overview" class="news-view">
+  <div id="newsSummary" class="news-intel-summary"></div>
+  <div class="news-overview-grid">
+   <button type="button" class="news-overview-card" data-news-view="articles"><span class="news-overview-icon">◉</span><b>Actualités</b><small>Consulter les 10 dernières actualités et leur sentiment</small><span class="news-overview-link">Ouvrir les actualités ↗</span></button>
+   <button type="button" class="news-overview-card" data-news-view="events"><span class="news-overview-icon">▦</span><b>Événements économiques</b><small>Calendrier des événements importants et leur impact potentiel</small><span class="news-overview-link">Ouvrir le calendrier ↗</span></button>
+   <button type="button" class="news-overview-card" data-news-view="analysis"><span class="news-overview-icon">✧</span><b>Analyse IA</b><small>Sentiment global, risque et état du modèle auxiliaire</small><span class="news-overview-link">Voir l’analyse ↗</span></button>
+   <button type="button" class="news-overview-card" data-news-view="sources"><span class="news-overview-icon">◎</span><b>Sources mondiales</b><small>État de disponibilité des 50 sources configurées</small><span class="news-overview-link">Voir les sources ↗</span></button>
+  </div>
+ </div>
+ <div id="news-view-articles" class="news-view hide">
+  <div class="news-view-heading"><div><h2>Dernières actualités</h2><p>Les 10 articles les plus récents, avec sentiment, impact, confiance et actifs concernés.</p></div></div>
+  <div id="newsList" class="news-list"><div class="card empty">Chargement des actualités et de leur analyse…</div></div>
+ </div>
+ <div id="news-view-events" class="news-view hide">
+  <div class="news-view-heading"><div><h2>Calendrier économique</h2><p>Événements importants prévus dans les prochaines 24 heures, classés par heure et niveau d’impact.</p></div><span id="eventCalendarStatus" class="muted">Chargement du calendrier…</span></div>
+  <div id="upcomingEventsList" class="news-list"><div class="card empty">Chargement des événements…</div></div>
+ </div>
+ <div id="news-view-analysis" class="news-view hide">
+  <div class="news-view-heading"><div><h2>Analyse de l’intelligence artificielle</h2><p>Indicateurs calculés à partir des articles et de la mémoire des signaux clôturés.</p></div></div>
+  <div id="newsAIAnalysis" class="news-ai-analysis"><div class="card empty">En attente des données d’analyse…</div></div>
+ </div>
+ <div id="news-view-sources" class="news-view hide">
+  <div class="news-view-heading"><div><h2>Les 50 sources mondiales</h2><p>Disponibilité des flux et volume d’articles collectés par source.</p></div></div>
+  <div id="newsSources" class="news-source-grid"></div>
+ </div>
 </section>
 
 <section id="page-graphiques" class="hide section"><h2>Graphiques</h2><p class="muted">Visualisation des performances, résultats et progression de l’apprentissage.</p><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2></div><div id="refPerformanceChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats</h2></div><div id="refOutcomeChart" class="chartbox"></div></div></div><div class="chartgrid analytics-charts"><div class="card"><div class="charthead"><h2>Progression de validation IA</h2></div><div id="refLearningChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Performance par motif de clôture</h2></div><div id="refExitChart" class="chartbox"></div></div></div></section>\n\n<section id="page-closedTrades" class="hide section"><h2>Closed Trades</h2><p class="muted">Historique des signaux suivis et clôturés. Les sorties TRAIL sont comptabilisées dans SL.</p><div id="closedKpis" class="grid closed-kpis"></div><div class="chartgrid closed-charts"><div class="card"><div class="charthead"><h2>Répartition des clôtures</h2><span class="muted">100 dernières clôtures</span></div><div id="closedReasonChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Rendement cumulé réalisé</h2><span class="muted">Ordre chronologique</span></div><div id="closedReturnChart" class="chartbox"></div></div></div><div id="trackedClosed" class="tablewrap"></div></section>
@@ -1349,6 +1399,19 @@ function renderGlobalNews(report){
   '<div class="news-intel-kpi"><span>Articles collectés</span><b>'+Number(report.article_count||items.length)+'</b></div>'+
   '<div class="news-intel-kpi"><span>Sentiment du marché</span><b class="'+(direction==='positive'?'positive':direction==='negative'?'negative':'')+'">'+directionLabel+' · '+(sentiment*100).toFixed(1)+'%</b></div>'+
   '<div class="news-intel-kpi"><span>Modèle auxiliaire actualités</span><b>'+(model.ready?'ACTIF':'EN APPRENTISSAGE')+'</b><small>'+Number(model.samples||0)+' signaux clôturés'+(model.validation_auc!==null&&model.validation_auc!==undefined?' · AUC '+Number(model.validation_auc).toFixed(3):'')+'</small></div>';
+ const aiHost=$("newsAIAnalysis");
+ if(aiHost){
+  const auc=model.validation_auc!==null&&model.validation_auc!==undefined?Number(model.validation_auc).toFixed(3):"—";
+  const modelState=model.ready?"ACTIF":"EN APPRENTISSAGE";
+  const modelReason=esc(model.reason||"Validation chronologique requise avant toute influence sur le classement.");
+  const risk=Number(report.market_risk||report.event_risk||0);
+  aiHost.innerHTML=
+   '<div class="news-ai-card"><span>Orientation du marché</span><b class="'+(direction==="positive"?"positive":direction==="negative"?"negative":"")+'">'+directionLabel+'</b><small>Sentiment agrégé : '+(sentiment*100).toFixed(1)+'%</small></div>'+
+   '<div class="news-ai-card"><span>Modèle auxiliaire</span><b>'+modelState+'</b><small>'+Number(model.samples||0)+' signaux clôturés · AUC validation : '+auc+'</small></div>'+
+   '<div class="news-ai-card"><span>Sources disponibles</span><b>'+online+' / '+total+'</b><small>'+Number(report.article_count||items.length)+' articles collectés</small></div>'+
+   '<div class="news-ai-card"><span>Risque informationnel</span><b>'+(Number.isFinite(risk)?(risk*100).toFixed(1)+"%":"—")+'</b><small>Indicateur issu du rapport d’intelligence, si disponible</small></div>'+
+   '<div class="news-ai-card" style="grid-column:1/-1"><span>État et garde-fous du modèle</span><b style="font-size:12px">'+(model.ready?"Validation réussie":"Apprentissage / validation en attente")+'</b><small>'+modelReason+' Les actualités restent auxiliaires et ne remplacent pas les contrôles principaux de risque et de validation.</small></div>';
+ }
  if(!items.length)host.innerHTML='<div class="card empty">Aucun article disponible. Les résultats apparaîtront après une collecte RSS réussie lors du prochain cycle GitHub Actions.</div>';
  else host.innerHTML=items.slice(0,10).map((item,index)=>{
   const title=esc(item.title||"Titre indisponible"),description=esc(newsPlainText(item.summary||"").slice(0,420));
@@ -1465,7 +1528,20 @@ async function connect(){
 }
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
-function showDashboardPage(page,updateHash=true){const valid=["overview","news","portfolio","signals","graphiques","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","evolutionLab","backtestValidation","strategyLabZ","strategyMonitor","solana","xrp","okb","bnb","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main > section[id^=\"page-\"]").forEach(x=>{const active=x.id==="page-"+key;x.classList.toggle("hide",!active);x.setAttribute("aria-hidden",String(!active));x.style.setProperty("display",active?"block":"none","important");});if(key==="news")loadNews();if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(key==="strategyMonitor")loadStrategyMonitor();if(key==="solana")loadSolanaSummary();if(key==="xrp")loadXrpSummary();if(key==="okb")loadOkbSummary();if(key==="bnb")loadBnbSummary();if(updateHash&&location.hash!=="#"+key)history.pushState({dashboardPage:key},"","#"+key);}
+function showNewsView(view){
+ const valid=["overview","articles","events","analysis","sources"];
+ const key=valid.includes(view)?view:"overview";
+ document.querySelectorAll("[data-news-view]").forEach(button=>{
+  const active=button.dataset.newsView===key;
+  if(button.closest(".news-subnav")){button.classList.toggle("active",active);button.setAttribute("aria-selected",String(active));}
+ });
+ document.querySelectorAll(".news-view").forEach(panel=>panel.classList.toggle("hide",panel.id!=="news-view-"+key));
+}
+document.getElementById("page-news")?.addEventListener("click",event=>{
+ const button=event.target.closest("[data-news-view]");
+ if(button){showNewsView(button.dataset.newsView);event.preventDefault();}
+});
+function showDashboardPage(page,updateHash=true){const valid=["overview","news","portfolio","signals","graphiques","closedTrades","aiIntelligence","featureAnalysis","marketRegime","exitIntelligence","modelHealth","learningHistory","evolutionLab","backtestValidation","strategyLabZ","strategyMonitor","solana","xrp","okb","bnb","systemLogs"];const key=valid.includes(page)?page:"overview";document.querySelectorAll(".page-nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===key));document.querySelectorAll("main > section[id^=\"page-\"]").forEach(x=>{const active=x.id==="page-"+key;x.classList.toggle("hide",!active);x.setAttribute("aria-hidden",String(!active));x.style.setProperty("display",active?"block":"none","important");});if(key==="news"){showNewsView("overview");loadNews();}if(key==="strategyLabZ")setTimeout(mountStrategyLabTradingView,80);if(key==="strategyMonitor")loadStrategyMonitor();if(key==="solana")loadSolanaSummary();if(key==="xrp")loadXrpSummary();if(key==="okb")loadOkbSummary();if(key==="bnb")loadBnbSummary();if(updateHash&&location.hash!=="#"+key)history.pushState({dashboardPage:key},"","#"+key);}
 document.getElementById("newsRefresh")?.addEventListener("click",()=>{if(state.contents&&state.contents["news_intelligence.json"])connect();else loadNews();});
 document.querySelector(".page-nav").addEventListener("click",e=>{const b=e.target.closest("[data-tab]");if(b){showDashboardPage(b.dataset.tab);document.body.classList.remove("nav-open");document.getElementById("navToggle")?.setAttribute("aria-expanded","false");}});
 document.querySelector("main").addEventListener("click",e=>{const shortcut=e.target.closest("[data-open-page]");if(shortcut){showDashboardPage(shortcut.dataset.openPage);window.scrollTo({top:0,behavior:"smooth"});}});
