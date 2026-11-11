@@ -58,6 +58,24 @@ class DataCoverageAndIndexTests(unittest.TestCase):
         self.assertEqual(len(features["5m"]), len(frame))
         self.assertTrue(features["1H"].notna().any().any())
 
+    def test_live_vector_keeps_appended_news_and_event_columns_as_unknown(self):
+        original_features = list(zq.FEATURE_COLS)
+        extra = ["global_news_sentiment", "upcoming_event_impact"]
+        expanded_features = original_features + extra
+        frames = {"1H": candles()}
+        frame_features = {
+            tf: pd.DataFrame([{name: 0.25 for name in zq.TF_COLS
+                               if name.startswith(f"{tf}_")}])
+            for tf in zq.TFS
+        }
+        context = pd.DataFrame([{name: 0.0 for name in zq.CTX_COLS}])
+        with patch.object(zq, "FEATURE_COLS", expanded_features):
+            with patch.object(zq, "all_tf_features", return_value=frame_features):
+                with patch.object(zq, "ctx_features", return_value=context):
+                    vector = zq.live_vector(frames, {"1H": candles(), "4H": candles()})
+        self.assertEqual(list(vector.index), expanded_features)
+        self.assertTrue(np.isnan(vector[extra].to_numpy(dtype=float)).all())
+
     def test_required_sqlite_indexes_are_created_on_existing_schema(self):
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, "paper.db")
