@@ -576,7 +576,7 @@ def install(zq):
                 vector = np.zeros(len(NEWS_FEATURE_COLS), dtype=np.float64)
             feature_map[str(inst)] = vector.tolist()
             vectors.append(vector)
-        X.loc[:, list(NEWS_FEATURE_COLS)] = np.vstack(vectors)
+        X[list(NEWS_FEATURE_COLS)] = np.vstack(vectors)
 
         base = old_rank(X, vol24, *args, **kwargs)
         try:
