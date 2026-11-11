@@ -466,7 +466,10 @@ def live_vector(frames, btc):
     """Latest closed-candle features of every timeframe + context -> 150 values."""
     F = all_tf_features(frames)
     parts = [F[tf].iloc[-1] for tf in TFS] + [ctx_features(frames[BASE], btc).iloc[-1]]
-    return pd.concat(parts)[FEATURE_COLS]
+    # Runtime intelligence features are appended by installed news/event layers after scanning.
+    # Reindex instead of strict column selection so their not-yet-enriched values
+    # remain explicit NaN and can be filled by rank wrappers without dropping the coin.
+    return pd.concat(parts).reindex(FEATURE_COLS)
 
 def aligned_matrix(frames, btc):
     """Historical rows on BASE_TF; other TFs use the last candle already closed (no look-ahead)."""
@@ -1992,7 +1995,10 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=False
     ds = paper.closed_signal_dataset()
     # Do not manufacture missing feature values for closed-signal learning.
     # A row is used only when its entire recorded feature vector is present and finite.
-    valid = (np.isfinite(ds["X"]).all(axis=1)
+    # Keep NaN as an explicit unknown: Brain._norm encodes both the normalized
+    # value and a separate missingness indicator. Reject only infinities, rows
+    # below the established 80% observed-feature threshold, or invalid labels.
+    valid = (feature_coverage_mask(ds["X"], 0.80)
              & np.isfinite(ds["y"])
              & np.isin(ds["y"], [0, 1])
              & np.isfinite(ds["ts"])
@@ -2000,7 +2006,7 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=False
     excluded_incomplete = int(len(valid) - np.sum(valid))
     ds = {k: v[valid] for k, v in ds.items()}
     if excluded_incomplete:
-        log.info("closed-signal memory: excluded %d rows with missing/non-finite recorded features (no imputation)",
+        log.info("closed-signal memory: excluded %d rows below 80%% feature coverage or with invalid labels/timestamps/returns (NaN retained as unknown)",
                  excluded_incomplete)
     wins = int(np.sum(ds["y"] == 1))
     losses = int(np.sum(ds["y"] == 0))
