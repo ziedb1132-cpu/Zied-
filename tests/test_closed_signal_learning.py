@@ -218,5 +218,47 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertEqual(float(ds["ret"][0]), 0.01)
 
 
+    def test_only_opened_entries_are_persisted_and_exact_snapshot_is_not_reopened(self):
+        old_required = zq.CFG.get("REQUIRED_SIGNAL_FEATURES")
+        zq.CFG["REQUIRED_SIGNAL_FEATURES"] = zq.N_FEATURES
+        try:
+            row = {
+                "ts": 1000.0, "feature_ts": 1000.0, "inst": "DEDUP-USDT",
+                "price": 100.0, "atr": 0.01, "feats": np.zeros(zq.N_FEATURES),
+                "prob": None, "rank": 1, "regime": "UNKNOWN", "entry_score": 80.0,
+            }
+            first = self.paper.create_tracked_signal(row)
+            self.assertIsNotNone(first)
+            self.assertEqual(self.paper.count("signals"), 1)
+
+            # Repeating the same candle/signal while open cannot create another row.
+            self.assertIsNone(self.paper.create_tracked_signal(row))
+            self.assertEqual(self.paper.count("signals"), 1)
+
+            # Closing the trade does not make that same market snapshot reusable.
+            self.assertTrue(self.paper.close_tracked_signal(
+                first["id"], 1100.0, 101.0, "WIN", 0.01, 1.0, "TP"))
+            self.assertIsNone(self.paper.create_tracked_signal(row))
+            self.assertEqual(self.paper.count("signals"), 1)
+
+            # A later feature timestamp is a genuinely new opportunity, even
+            # for the same coin and within the old one-hour cooldown window.
+            next_row = dict(row, ts=1300.0, feature_ts=1300.0)
+            second = self.paper.create_tracked_signal(next_row)
+            self.assertIsNotNone(second)
+            self.assertNotEqual(first["id"], second["id"])
+            self.assertEqual(self.paper.count("signals"), 2)
+        finally:
+            if old_required is None:
+                zq.CFG.pop("REQUIRED_SIGNAL_FEATURES", None)
+            else:
+                zq.CFG["REQUIRED_SIGNAL_FEATURES"] = old_required
+
+    def test_rejected_ranking_candidates_are_not_persisted(self):
+        # Ranking itself must not create rows; only create_tracked_signal does.
+        self.assertEqual(self.paper.count("signals"), 0)
+        self.assertEqual(self.paper.tracked_count(), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
