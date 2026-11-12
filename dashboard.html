@@ -1398,7 +1398,7 @@ function renderGlobalNews(report){
   '<div class="news-intel-kpi"><span>Sources disponibles</span><b>'+online+'/'+total+'</b></div>'+
   '<div class="news-intel-kpi"><span>Articles collectés</span><b>'+Number(report.article_count||items.length)+'</b></div>'+
   '<div class="news-intel-kpi"><span>Sentiment du marché</span><b class="'+(direction==='positive'?'positive':direction==='negative'?'negative':'')+'">'+directionLabel+' · '+(sentiment*100).toFixed(1)+'%</b></div>'+
-  '<div class="news-intel-kpi"><span>Modèle auxiliaire actualités</span><b>'+(model.ready?'ACTIF':'EN APPRENTISSAGE')+'</b><small>'+Number(model.samples||0)+' signaux clôturés'+(model.validation_auc!==null&&model.validation_auc!==undefined?' · AUC '+Number(model.validation_auc).toFixed(3):'')+'</small></div>';
+  '<div class="news-intel-kpi"><span>Modèle auxiliaire actualités</span><b>'+(model.ready?'ACTIF':'EN APPRENTISSAGE')+'</b><small>'+Number(model.samples||0)+' échantillons valides · '+Number((model.diagnostics||{}).closed_with_articles||0)+' clôturés avec actualités'+(model.validation_auc!==null&&model.validation_auc!==undefined?' · AUC '+Number(model.validation_auc).toFixed(3):'')+'</small></div>';
  const aiHost=$("newsAIAnalysis");
  if(aiHost){
   const auc=model.validation_auc!==null&&model.validation_auc!==undefined?Number(model.validation_auc).toFixed(3):"—";
@@ -1407,9 +1407,10 @@ function renderGlobalNews(report){
   const risk=Number(report.market_risk||report.event_risk||0);
   aiHost.innerHTML=
    '<div class="news-ai-card"><span>Orientation du marché</span><b class="'+(direction==="positive"?"positive":direction==="negative"?"negative":"")+'">'+directionLabel+'</b><small>Sentiment agrégé : '+(sentiment*100).toFixed(1)+'%</small></div>'+
-   '<div class="news-ai-card"><span>Modèle auxiliaire</span><b>'+modelState+'</b><small>'+Number(model.samples||0)+' signaux clôturés · AUC validation : '+auc+'</small></div>'+
+   '<div class="news-ai-card"><span>Modèle auxiliaire</span><b>'+modelState+'</b><small>'+Number(model.samples||0)+' échantillons valides · AUC validation : '+auc+'</small></div>'+
    '<div class="news-ai-card"><span>Sources disponibles</span><b>'+online+' / '+total+'</b><small>'+Number(report.article_count||items.length)+' articles collectés</small></div>'+
-   '<div class="news-ai-card"><span>Risque informationnel</span><b>'+(Number.isFinite(risk)?(risk*100).toFixed(1)+"%":"—")+'</b><small>Indicateur issu du rapport d’intelligence, si disponible</small></div>'+
+   '<div class="news-ai-card"><span>Risque informationnel</span><b>'+(Number.isFinite(risk)?(risk*100).toFixed(1)+"%":"—")+'</b><small>Indicateur issu du rapport d’intelligence, si disponible</small></div>'+ 
+    '<div class="news-ai-card" style="grid-column:1/-1"><span>Suivi des signaux et des données d’actualités</span><b>'+Number((model.diagnostics||{}).closed_with_articles||0)+' clôturés avec articles · '+Number((model.diagnostics||{}).closed_without_articles||0)+' sans articles</b><small>'+Number((model.diagnostics||{}).closed_total||0)+' clôturés au total · '+Number((model.diagnostics||{}).closed_without_snapshot||0)+' sans capture · '+Number((model.diagnostics||{}).snapshots_total||0)+' captures enregistrées · '+Number((model.diagnostics||{}).open_with_snapshot||0)+' ouvertes avec capture. '+esc(model.reason||"En attente de diagnostic.")+'</small></div>'+
    '<div class="news-ai-card" style="grid-column:1/-1"><span>État et garde-fous du modèle</span><b style="font-size:12px">'+(model.ready?"Validation réussie":"Apprentissage / validation en attente")+'</b><small>'+modelReason+' Les actualités restent auxiliaires et ne remplacent pas les contrôles principaux de risque et de validation.</small></div>';
  }
  if(!items.length)host.innerHTML='<div class="card empty">Aucun article disponible. Les résultats apparaîtront après une collecte RSS réussie lors du prochain cycle GitHub Actions.</div>';
