@@ -280,7 +280,7 @@ def _promote(paper, zq):
 def _evaluate(paper, zq):
     _ensure(paper)
     # IMPORTANT: collect counterfactual TP/SL/TRAIL/TIME outcomes from day one.
-    # The 500-win + 500-loss gate controls promotion only, never data collection.
+    # The shared verified-sample gate controls promotion only, never data collection.
     horizon = max(p[5] for p in POLICIES)
     # Keep a 25-hour grace window so hourly / two-hour Actions schedules can
     # still replay the complete 24-hour path from the retained 5m candles.
@@ -414,7 +414,7 @@ def _exit_learning_report(paper):
         lines.append("السياسات المعتمدة: " + " | ".join(
             f"{r['regime']}={r['policy']}" for r in champions))
     else:
-        lines.append("السياسة الحالية لم تتغير؛ انتظار 500 رابحة و500 خاسرة واختبار مستقل.")
+        lines.append("السياسة الحالية لم تتغير؛ انتظار اكتمال عينات التعلم المؤهلة والتحقق المستقل.")
     return "\n".join(lines)
 
 
