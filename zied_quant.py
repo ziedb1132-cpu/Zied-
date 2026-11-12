@@ -486,7 +486,10 @@ def aligned_matrix(frames, btc):
     idx = F[BASE].index
     parts = [F[BASE]] + [F[tf].reindex(idx, method="ffill") for tf in TFS if tf != BASE]
     parts.append(ctx_features(frames[BASE], btc))
-    return pd.concat(parts, axis=1)[FEATURE_COLS]
+    # Dynamic intelligence layers append columns after this module is imported.
+    # Reindex keeps the active schema stable and represents unavailable historical
+    # features as NaN (unknown), rather than raising KeyError or fabricating values.
+    return pd.concat(parts, axis=1).reindex(columns=FEATURE_COLS)
 
 # =====================================================================
 # TRIPLE-BARRIER LABELS (same SL/TP logic as paper trading)
