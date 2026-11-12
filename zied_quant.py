@@ -2531,7 +2531,7 @@ def run():
                 log.exception("scan failed: %s", e)
                 tg(f"⚠️ خطأ في المسح: {e}")
             status = learning_gate_status(paper)
-            if status["ready"] and need_retrain(paper):
+            if status["ready"] and need_retrain(paper, brain):
                 try:
                     retrain(brain, paper, None, "تحديث بعد إشارة مغلقة")
                 except Exception as e:
