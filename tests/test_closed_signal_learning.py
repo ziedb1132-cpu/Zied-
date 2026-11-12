@@ -73,33 +73,33 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertGreater(ret, 0.0)
         self.assertEqual(outcome, "WIN")
 
-    def test_gate_uses_total_verified_samples_not_500_per_class(self):
+    def test_gate_opens_at_100_verified_samples_with_10_per_class(self):
         # The model may start with an imbalanced but non-empty real dataset.
-        for _ in range(590):
+        for _ in range(90):
             self.add_signal(0.01)
         for _ in range(9):
             self.add_signal(-0.01)
         status = zq.learning_gate_status(self.paper)
-        self.assertEqual(status["wins"], 590)
+        self.assertEqual(status["wins"], 90)
         self.assertEqual(status["losses"], 9)
         self.assertFalse(status["ready"])
         self.add_signal(-0.01)
         status = zq.learning_gate_status(self.paper)
-        self.assertEqual(status["wins"], 590)
+        self.assertEqual(status["wins"], 90)
         self.assertEqual(status["losses"], 10)
         self.assertTrue(status["ready"])
-        self.assertEqual(status["total"], 600)
+        self.assertEqual(status["total"], 100)
 
     def test_new_schema_mismatch_forces_one_immediate_rebuild(self):
         class GatePaper:
-            def __init__(self, schema_hash=None, total=600):
+            def __init__(self, schema_hash=None, total=100):
                 self.schema_hash = schema_hash
                 self.total = total
             def closed_outcome_counts(self):
                 return {"wins": 300, "losses": 300, "total": self.total}
             def _get(self, key):
                 if key == "last_learning_attempt_closed_count":
-                    return "600"
+                    return "100"
                 if key == "last_learning_attempt_schema_hash":
                     return self.schema_hash
                 return None
@@ -109,7 +109,7 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertTrue(zq.need_retrain(GatePaper(), brain))
         self.assertFalse(zq.need_retrain(GatePaper(zq.feature_schema_fingerprint()), brain))
         self.assertTrue(zq.need_retrain(
-            GatePaper(zq.feature_schema_fingerprint(), total=601), brain))
+            GatePaper(zq.feature_schema_fingerprint(), total=101), brain))
 
     def test_learning_refreshes_after_each_new_verified_closed_signal(self):
         class GatePaper:
@@ -119,14 +119,14 @@ class ClosedSignalLearningTests(unittest.TestCase):
                 return {"wins": self.total // 2, "losses": self.total - self.total // 2, "total": self.total}
             def _get(self, key):
                 if key == "last_learning_attempt_closed_count":
-                    return "600"
+                    return "100"
                 if key == "last_learning_attempt_schema_hash":
                     return zq.feature_schema_fingerprint()
                 return None
 
         brain = zq.Brain(persist=False)
-        self.assertFalse(zq.need_retrain(GatePaper(600), brain))
-        self.assertTrue(zq.need_retrain(GatePaper(601), brain))
+        self.assertFalse(zq.need_retrain(GatePaper(100), brain))
+        self.assertTrue(zq.need_retrain(GatePaper(101), brain))
 
     def test_adaptive_memory_learning_starts_with_20_real_closed_outcomes(self):
         for _ in range(10):
@@ -176,7 +176,7 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertEqual(len(ds["y"]), 0)
 
     def test_training_dataset_keeps_all_outcomes_above_threshold(self):
-        # The 500/500 rule is a minimum gate, not a per-class cap.
+        # All valid closed outcomes are retained; 100 is a minimum, not a per-class cap.
         self.add_signal(0.01, unknown_feature=True)
         for _ in range(500):
             self.add_signal(0.01)
