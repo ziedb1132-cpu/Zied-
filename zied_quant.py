@@ -1203,18 +1203,45 @@ def feature_coverage_mask(X, min_fraction=0.80):
 
 
 def _rows_to_ds(rows, label_key="label", ret_key="ret"):
+    """Build current-schema rows by feature name, preserving unknowns as NaN.
+
+    Historical snapshots may have a different feature count/order. When their
+    stored feature_names manifest is valid, map only exact name matches into the
+    active schema. Newly introduced features remain unknown and are handled by
+    Brain._norm's missingness channel; removed/renamed features are never guessed.
+    Snapshots without a trustworthy name manifest are excluded rather than
+    silently interpreting old vector positions as current features.
+    """
     X, y, ts, ret, hold, coin = [], [], [], [], [], []
+    current_names = list(FEATURE_COLS)
+    current_index = {name: i for i, name in enumerate(current_names)}
     for r in rows:
-        f = json.loads(r["feats"])
-        if not isinstance(f, list) or len(f) != N_FEATURES:
+        try:
+            values = json.loads(r["feats"])
+            raw_names = r["feature_names"] if "feature_names" in r.keys() else None
+            names = json.loads(raw_names) if isinstance(raw_names, str) else raw_names
+            if (not isinstance(values, list) or not isinstance(names, list)
+                    or len(values) != len(names) or not names
+                    or not all(isinstance(name, str) and name for name in names)
+                    or len(set(names)) != len(names)):
+                continue
+            feature_count = r["feature_count"] if "feature_count" in r.keys() else None
+            if feature_count is not None and int(feature_count) != len(values):
+                continue
+            vector = np.full(N_FEATURES, np.nan, dtype=np.float64)
+            for name, value in zip(names, values):
+                target = current_index.get(name)
+                if target is None:
+                    continue
+                vector[target] = np.nan if value is None else float(value)
+            if vector.shape != (N_FEATURES,):
+                continue
+            X.append(vector); y.append(r[label_key]); ts.append(r["ts"])
+            ret.append(r[ret_key] if r[ret_key] is not None else np.nan)
+            hold.append(r["hold"] if "hold" in r.keys() and r["hold"] is not None else np.nan)
+            coin.append(r["inst"])
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
             continue
-        vector = np.asarray([np.nan if v is None else v for v in f], dtype=np.float64)
-        if vector.shape != (N_FEATURES,):
-            continue
-        X.append(vector); y.append(r[label_key]); ts.append(r["ts"])
-        ret.append(r[ret_key] if r[ret_key] is not None else np.nan)
-        hold.append(r["hold"] if "hold" in r.keys() and r["hold"] is not None else np.nan)
-        coin.append(r["inst"])
     if not X:
         return empty_ds()
     return dict(X=np.array(X, dtype=np.float32), y=np.array(y, dtype=np.float32), ts=np.array(ts, dtype=np.float64),
@@ -1332,14 +1359,14 @@ class Paper:
     @locked
     def signal_dataset(self):
         return _rows_to_ds(self.db.execute(
-            "SELECT COALESCE(feature_ts,ts) AS ts,inst,feats,label,ret,hold "
+            "SELECT COALESCE(feature_ts,ts) AS ts,inst,feats,label,ret,hold,feature_names,feature_count "
             "FROM signals WHERE labeled=1 ORDER BY feature_ts,ts").fetchall())
 
     @locked
     def closed_signal_dataset(self):
         """Training rows from tracked signals only, and only after their closure."""
         return _rows_to_ds(self.db.execute(
-            "SELECT COALESCE(s.feature_ts,s.ts) AS ts,s.inst,s.feats,"
+            "SELECT COALESCE(s.feature_ts,s.ts) AS ts,s.inst,s.feats,s.feature_names,s.feature_count,"
             "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label,s.ret,s.hold "
             "FROM signals s JOIN tracked_signals t ON t.signal_id=s.id "
             "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL "
@@ -2103,13 +2130,24 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
        + f"\n{'تم اعتماد النموذج ✅' if info['accepted'] else 'لم يُعتمد (أسوأ من السابق أو ضعيف) ⚠️'}")
     return info
 
-def need_retrain(paper):
+def need_retrain(paper, brain=None):
+    """Retry schema rebuilds on fresh outcomes, not on every scan cycle.
+
+    An incompatible/missing model remains unavailable until a candidate passes
+    the untouched net-performance gate. While no compatible champion exists,
+    retry after each small batch of new verified closes; a healthy champion uses
+    the normal refresh cadence.
+    """
     status = learning_gate_status(paper)
     if not status["ready"]:
         return False
     previous = int(paper._get("last_learning_attempt_closed_count") or 0)
-    return (previous == 0 or
-            status["total"] - previous >= LEARNING_REFRESH_SAMPLES)
+    if previous <= 0:
+        return True
+    retry_samples = LEARNING_REFRESH_SAMPLES
+    if brain is not None and not brain.ready:
+        retry_samples = max(5, min(LEARNING_REFRESH_SAMPLES, 10))
+    return status["total"] - previous >= retry_samples
 
 def _hourly_returns(inst):
     d = get_candles(inst, "1H", 100)
@@ -2424,7 +2462,7 @@ def once():
     monitor_tracked_signals(paper)
     label_signals(paper)
     status = enforce_closed_outcome_gate(brain, paper)
-    if status["ready"] and (not brain.ready or need_retrain(paper)):
+    if status["ready"] and need_retrain(paper, brain):
         try:
             retrain(brain, paper, uni, "تعلّم من الإشارات المغلقة")
         except Exception as e:
@@ -2441,7 +2479,7 @@ def once():
     run_cycle_backtest(uni, paper)
     paper._set("cycle", cycle + 1)
     status = learning_gate_status(paper)
-    if status["ready"] and need_retrain(paper):
+    if status["ready"] and need_retrain(paper, brain):
         try:
             retrain(brain, paper, uni, "تحديث بعد إشارة مغلقة")
         except Exception as e:
@@ -2475,7 +2513,7 @@ def run():
                 monitor_tracked_signals(paper)
                 label_signals(paper)
                 status = enforce_closed_outcome_gate(brain, paper)
-                if status["ready"] and (not brain.ready or need_retrain(paper)):
+                if status["ready"] and need_retrain(paper, brain):
                     try:
                         retrain(brain, paper, None, "تعلّم من الإشارات المغلقة")
                     except Exception as e:
