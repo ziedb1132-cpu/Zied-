@@ -30,11 +30,14 @@ class ClosedSignalLearningTests(unittest.TestCase):
         if unknown_feature and valid_features:
             values[0] = None
         feats = json.dumps(values) if valid_features else "[]"
+        feature_names = json.dumps(list(zq.FEATURE_COLS), separators=(",", ":")) if valid_features else "[]"
         cur = self.paper.db.execute(
-            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,label,ret,hold,feature_ts) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,label,ret,hold,feature_ts,"
+            "feature_count,feature_names,feature_schema_version) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (1000.0, f"COIN{self.paper.db.execute('SELECT COUNT(*) FROM signals').fetchone()[0]}-USDT",
-             100.0, 0.01, feats, 0.6, 1, 1, int(ret > 0), ret, 1.0, 1000.0))
+             100.0, 0.01, feats, 0.6, 1, 1, int(ret > 0), ret, 1.0, 1000.0,
+             zq.N_FEATURES if valid_features else 0, feature_names, zq.DATA_VER))
         sid = cur.lastrowid
         self.paper.db.execute(
             "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,"
@@ -102,6 +105,37 @@ class ClosedSignalLearningTests(unittest.TestCase):
             "volume_ratio", "adx", "obv", "liquidity",
             "atr_penalty", "overbought_penalty",
         })
+
+    def test_old_feature_schema_is_aligned_by_name_and_new_features_remain_unknown(self):
+        old_names = list(zq.FEATURE_COLS[:-3])
+        old_values = [float(i + 1) for i in range(len(old_names))]
+        row = {
+            "feats": json.dumps(old_values),
+            "feature_names": json.dumps(old_names),
+            "feature_count": len(old_names),
+            "ts": 1000.0,
+            "inst": "LEGACY-USDT",
+            "label": 1,
+            "ret": 0.01,
+            "hold": 1.0,
+        }
+        ds = zq._rows_to_ds([row])
+        self.assertEqual(ds["X"].shape, (1, zq.N_FEATURES))
+        self.assertTrue(np.allclose(ds["X"][0, :-3], old_values))
+        self.assertTrue(np.isnan(ds["X"][0, -3:]).all())
+        self.assertTrue(zq.feature_coverage_mask(ds["X"], 0.80)[0])
+
+    def test_legacy_feature_vectors_without_name_manifest_are_not_misinterpreted(self):
+        row = {
+            "feats": json.dumps([0.0] * zq.N_FEATURES),
+            "ts": 1000.0,
+            "inst": "UNKNOWN-SCHEMA-USDT",
+            "label": 1,
+            "ret": 0.01,
+            "hold": 1.0,
+        }
+        ds = zq._rows_to_ds([row])
+        self.assertEqual(len(ds["y"]), 0)
 
     def test_training_dataset_keeps_all_outcomes_above_threshold(self):
         # The 500/500 rule is a minimum gate, not a per-class cap.
