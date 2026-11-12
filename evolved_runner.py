@@ -142,7 +142,7 @@ def run_comprehensive_backtest(universe=None, paper=None):
             "policy_count": len(exit_evolution.POLICIES),
             "policy_names": [p[0] for p in exit_evolution.POLICIES],
             "feedback": exit_evolution._exit_learning_report(exit_paper),
-            "promotion_gate": "500 wins + 500 losses plus independent holdout",
+            "promotion_gate": "shared verified-sample gate plus independent holdout",
             "live_integration": False,
         }
     except Exception as exc:
@@ -224,7 +224,7 @@ def run_comprehensive_backtest(universe=None, paper=None):
         report["layers"]["evolution_governance"] = {
             "status": "error", "error": str(exc),
             "production_promotion": {"enabled": False,
-                "gate": "500 closed winners + 500 closed losers + independent model holdout"},
+                "gate": "shared verified-sample gate plus independent model holdout"},
         }
 
     # Include the core model walk-forward result produced by zied_quant.py backtest.
