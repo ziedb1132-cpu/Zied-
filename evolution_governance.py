@@ -320,7 +320,7 @@ def update_governance(state_dir, discovery=None, strategy=None,
         "opportunity_quality": opportunities,
         "production_promotion": {
             "enabled": False,
-            "gate": "500 closed winners + 500 closed losers + independent model holdout",
+            "gate": "independent model holdout and net-performance validation; no fixed win/loss quota",
         },
         "note": "Research Champion/Challenger selection uses tune/validation only. Reused chronological holdout is diagnostic only and never affects ranking or promotion. No production weights, live signals, orders, portfolio or risk settings are changed.",
     }
