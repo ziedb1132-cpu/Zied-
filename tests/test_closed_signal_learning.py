@@ -90,6 +90,27 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertTrue(status["ready"])
         self.assertEqual(status["total"], 600)
 
+    def test_new_schema_mismatch_forces_one_immediate_rebuild(self):
+        class GatePaper:
+            def __init__(self, schema_hash=None, total=600):
+                self.schema_hash = schema_hash
+                self.total = total
+            def closed_outcome_counts(self):
+                return {"wins": 300, "losses": 300, "total": self.total}
+            def _get(self, key):
+                if key == "last_learning_attempt_closed_count":
+                    return "600"
+                if key == "last_learning_attempt_schema_hash":
+                    return self.schema_hash
+                return None
+
+        brain = zq.Brain(persist=False)
+        brain.load_issue = {"reason": "incompatible_feature_or_missing_value_schema"}
+        self.assertTrue(zq.need_retrain(GatePaper(), brain))
+        self.assertFalse(zq.need_retrain(GatePaper(zq.feature_schema_fingerprint()), brain))
+        self.assertTrue(zq.need_retrain(
+            GatePaper(zq.feature_schema_fingerprint(), total=610), brain))
+
     def test_adaptive_memory_learning_starts_with_20_real_closed_outcomes(self):
         for _ in range(10):
             self.add_signal(0.01)
