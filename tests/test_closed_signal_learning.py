@@ -192,6 +192,23 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertEqual(len(train["y"]), 1004)
         self.assertTrue(np.isnan(train["X"][0, 0]))
 
+    def test_closed_signal_diagnostics_reports_exclusion_reasons(self):
+        self.add_signal(0.01)
+        self.add_signal(-0.01)
+        self.add_signal(0.02)
+        ids = [r[0] for r in self.paper.db.execute("SELECT id FROM signals ORDER BY id")]
+        self.paper.db.execute("UPDATE signals SET feature_names=NULL WHERE id=?", (ids[0],))
+        self.paper.db.execute("UPDATE signals SET feature_count=1 WHERE id=?", (ids[1],))
+        self.paper.db.execute("UPDATE signals SET feats='not-json' WHERE id=?", (ids[2],))
+        self.paper.db.commit()
+        stats = self.paper.closed_signal_diagnostics()
+        self.assertEqual(stats["closed_tracked"], 3)
+        self.assertEqual(stats["missing_feature_names"], 1)
+        self.assertEqual(stats["feature_count_mismatch"], 1)
+        self.assertEqual(stats["malformed_feature_vector"], 1)
+        self.assertEqual(stats["valid_training_samples"], 0)
+        self.assertEqual(stats["excluded_total"], 3)
+
     def test_training_dataset_excludes_open_signals(self):
         self.add_signal(0.01, closed=True)
         self.add_signal(-0.01, closed=False)
