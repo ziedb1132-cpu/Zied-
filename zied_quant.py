@@ -774,6 +774,7 @@ class Brain:
             if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
                     or int(meta.get("raw_n_in", -1)) != N_FEATURES
                     or int(meta.get("missing_mask_version", 0)) != 1
+                    or int(meta.get("feature_schema_version", 0)) != 2
                     or meta.get("feature_schema_hash") != feature_schema_fingerprint()):
                 return False
             for key, flag in (("MODEL", "has_nn"), ("GBM", "has_gbm")):
@@ -937,7 +938,13 @@ class Brain:
                 raise FileNotFoundError("committed neural model file is missing")
             if meta.get("has_gbm") and not os.path.exists(CFG["GBM"]):
                 raise FileNotFoundError("committed GBM file is missing")
-            self.mu, self.sd = np.array(meta["mu"]), np.array(meta["sd"])
+            mu = np.asarray(meta["mu"], dtype=np.float64)
+            sd = np.asarray(meta["sd"], dtype=np.float64)
+            if (mu.shape != (N_FEATURES,) or sd.shape != (N_FEATURES,)
+                    or not np.isfinite(mu).all() or not np.isfinite(sd).all()
+                    or (sd <= 0).any()):
+                raise ValueError("saved model normalization vectors are invalid for the current feature schema")
+            self.mu, self.sd = mu, sd
             self.thrs, self.auc, self.info = meta["thrs"], meta["auc"], meta.get("info", {})
             if meta["has_nn"] and torch is not None:
                 ck = torch.load(CFG["MODEL"], weights_only=True)
