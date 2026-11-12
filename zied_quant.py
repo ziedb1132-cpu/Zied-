@@ -1273,6 +1273,8 @@ class Paper:
             self.db.execute("ALTER TABLE signals ADD COLUMN feature_ts REAL")
         if "prob_source" not in signal_columns:
             self.db.execute("ALTER TABLE signals ADD COLUMN prob_source TEXT NOT NULL DEFAULT 'legacy_unknown'")
+        if "signal_key" not in signal_columns:
+            self.db.execute("ALTER TABLE signals ADD COLUMN signal_key TEXT")
         for column, declaration in (
             ("feature_count", "INTEGER"), ("feature_names", "TEXT"),
             ("feature_schema_version", "INTEGER")
@@ -1296,6 +1298,8 @@ class Paper:
         # Idempotent indexes accelerate pending labels, chronological training,
         # closed-signal joins and per-symbol open-signal checks.
         self.db.executescript("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_signals_unique_opened_signal
+                ON signals(signal_key) WHERE signal_key IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_signals_label_time
                 ON signals(labeled, feature_ts, ts);
             CREATE INDEX IF NOT EXISTS idx_signals_inst_time
@@ -1603,10 +1607,14 @@ class Paper:
     def create_tracked_signal(self, row):
         now = float(row.get("ts", time.time()))
         inst = str(row["inst"])
-        if self.db.execute("SELECT 1 FROM tracked_signals WHERE inst=? AND status='OPEN'", (inst,)).fetchone():
+        # One accepted entry per exact market snapshot. Re-scans of the same
+        # candle cannot duplicate a trade, but a later snapshot may open a new
+        # trade after the previous position has closed.
+        feature_ts = float(row.get("feature_ts", now))
+        signal_key = f"{inst}|BUY|{feature_ts:.6f}"
+        if self.db.execute("SELECT 1 FROM signals WHERE signal_key=?", (signal_key,)).fetchone():
             return None
-        if self.db.execute("SELECT 1 FROM tracked_signals WHERE inst=? AND opened_ts>=?",
-                           (inst, now - CFG["TF_SEC"]["1H"])).fetchone():
+        if self.db.execute("SELECT 1 FROM tracked_signals WHERE inst=? AND status='OPEN'", (inst,)).fetchone():
             return None
         entry = float(row["price"])
         atr_pct = min(max(float(row["atr"]), 0.004), 0.06)
@@ -1628,11 +1636,12 @@ class Paper:
         schema_version = int(DATA_VER)
         cur = self.db.execute(
             "INSERT INTO signals(ts,inst,price,atr,feats,prob,rank,labeled,feature_ts,prob_source,"
-            "feature_count,feature_names,feature_schema_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "feature_count,feature_names,feature_schema_version,signal_key) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (now, inst, entry, atr_pct, feats, None if row.get("prob") is None else float(row["prob"]),
-             int(row["rank"]), 0, float(row.get("feature_ts", now)),
+             int(row["rank"]), 0, feature_ts,
              str(row.get("prob_source") or "ranking_exploration"),
-             required_count, feature_names, schema_version))
+             required_count, feature_names, schema_version, signal_key))
         sid = int(cur.lastrowid)
         self.db.execute(
             "INSERT INTO tracked_signals(signal_id,inst,opened_ts,entry,sl,tp,atr_pct,prob,rank,feats,regime,entry_score,peak_price,trailing_sl,trail_active,prob_source,"
@@ -2395,10 +2404,8 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
     monitor_tracked_signals(paper)
     if paper._get("paused") == "1":
         return R
-    paper.log_signals([dict(inst=i, price=float(uni.loc[i, "last"]), atr=float(X.loc[i, "1H_atr_pct"]),
-                            feats=X.loc[i, FEATURE_COLS].values, prob=R.loc[i, "prob"], rank=int(R.loc[i, "rank"]),
-                            prob_source=str(R.loc[i, "prediction_source"]), feature_ts=feature_ts[i])
-                       for i in R.index[:CFG["LOG_TOP"]]])
+    # Do not persist ranking candidates. A database row is created only
+    # inside create_tracked_signal after all entry gates accept and open it.
     if ai_prediction_error is not None:
         log.error("AI prediction failed (%s); entries blocked for this cycle", ai_prediction_error)
         tg("⚠️ تعذر حساب احتمال النموذج؛ تم منع الدخول في هذه الدورة.")
