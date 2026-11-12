@@ -85,8 +85,8 @@ def run_comprehensive_backtest(universe=None, paper=None):
     if universe is None or universe.empty:
         raise RuntimeError("Comprehensive backtest: OKX returned an empty universe")
 
-    # This audit uses recent matured signal snapshots and is independent of the
-    # 500-win + 500-loss model activation gate.
+    # This audit uses recent matured signal snapshots and is independent of
+    # the supervised model's 100-sample activation gate.
     try:
         quality_paper = paper if paper is not None else zied_quant.Paper()
         quality = advanced_intelligence.feature_quality_report_from_db(
