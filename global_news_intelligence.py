@@ -525,7 +525,8 @@ def _train_news_model(zq, paper, force=False):
     net_returns = np.asarray(net_returns, dtype=np.float64)
     n = len(y)
     old = _STATE.get("model") or {}
-    if not force and old.get("ready") and n - int(old.get("samples", 0)) < 10:
+    if (not force and old.get("ready") and "fusion_validation" in old
+            and n - int(old.get("samples", 0)) < 10):
         updated = dict(old)
         updated["diagnostics"] = diagnostics
         _STATE["model"] = updated
