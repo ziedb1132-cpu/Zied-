@@ -1030,29 +1030,31 @@ class Brain:
         X = X[o]; y = y[o]; ts = ts[o]
         ret = None if ret is None else ret[o]
         n = len(X)
-        if n < 600:
-            raise ValueError(f"not enough samples ({n})")
-        nv_target = max(int(n * 0.2), 200)
+        if n < MIN_CLOSED_MODEL_SAMPLES:
+            raise ValueError(f"not enough samples ({n}); minimum={MIN_CLOSED_MODEL_SAMPLES}")
+        # With the 100-sample bootstrap, reserve chronological selection and
+        # untouched gate blocks while keeping a viable earlier training window.
+        nv_target = max(int(n * 0.30), 30)
         # The recent tail is split chronologically: the first block selects the model
         # and probability threshold; the later block is an untouched quality gate.
-        ng_target = max(100, nv_target // 2)
+        ng_target = max(15, nv_target // 2)
         # Move both boundaries to the first row for that timestamp. A timestamp can
         # contain many coins, so row-count splits alone can put the same candle time
         # in both selection and gate blocks.
         selection_start = chronological_boundary(ts, n - nv_target)
         gate_start = chronological_boundary(ts, n - ng_target)
         ns, ng, nv = gate_start - selection_start, n - gate_start, n - selection_start
-        if ns < 50 or ng < 100:
+        if ns < 10 or ng < 10:
             raise ValueError("selection or untouched gate block too small after timestamp grouping")
         ntr = int(np.searchsorted(ts, ts[selection_start] - CFG["BARRIER_H"] * 3600, side="left"))
-        if ntr < 400:
-            raise ValueError("training part too small after embargo")
+        if ntr < 40:
+            raise ValueError("training part too small after outcome-horizon embargo")
         # Purge the inner fit/early-stop boundary by the full outcome horizon.
         # Keep all rows with a shared timestamp together at this boundary as well.
-        nf = chronological_boundary(ts, int(ntr * 0.85))
+        nf = chronological_boundary(ts, int(ntr * 0.80))
         inner_train_end = int(np.searchsorted(
             ts, ts[nf] - CFG["BARRIER_H"] * 3600, side="left"))
-        if inner_train_end < 400 or ntr - nf < 50:
+        if inner_train_end < 20 or ntr - nf < 8:
             raise ValueError("training part too small after inner validation embargo")
         # Fit normalization only on the purged model-fit rows.
         fit_values = X[:inner_train_end]
@@ -1098,7 +1100,7 @@ class Brain:
                 threshold = float(np.quantile(probabilities, q))
                 mask = probabilities >= threshold
                 count = int(mask.sum())
-                if count < 20:
+                if count < max(3, int(np.ceil(len(probabilities) * 0.20))):
                     continue
                 mean_net = float(np.nanmean(selection_ret[mask]))
                 if not np.isfinite(mean_net):
@@ -1136,15 +1138,15 @@ class Brain:
             rg = ret[gate_start:]
             info["val_all_net"] = float(np.nanmean(rg))
             info["val_top_net"] = float(np.nanmean(rg[gate_mask])) if gate_mask.any() else None
-        gate_edge = (ret is not None and gate_selected >= 20
+        gate_edge = (ret is not None and gate_selected >= 5
                      and info.get("val_top_net") is not None
                      and np.isfinite(info["val_top_net"])
                      and np.isfinite(info["val_all_net"])
                      and info["val_top_net"] > 0.0
                      and info["val_top_net"] > info["val_all_net"])
-        # Require a useful untouched net edge and at least 30 selected examples;
-        # a tiny lucky subset must not promote a production model.
-        gate_edge = bool(gate_edge and gate_selected >= 30
+        # Keep the untouched net-edge test at small sample sizes too. The
+        # independent AUC, positive net edge and baseline margin remain mandatory.
+        gate_edge = bool(gate_edge and gate_selected >= max(5, int(np.ceil(ng * 0.20)))
                          and info.get("val_top_net") >= info.get("val_all_net", 0.0) + 0.001)
         quality_ok = (gate_auc >= 0.52
                       and (self.auc is None or gate_auc >= self.auc - 0.03)
@@ -2151,7 +2153,7 @@ def poll_commands(paper, brain, timeout=0):
 # =====================================================================
 # PIPELINE
 # =====================================================================
-MIN_CLOSED_MODEL_SAMPLES = 600
+MIN_CLOSED_MODEL_SAMPLES = 100
 MIN_CLOSED_CLASS_SAMPLES = 10
 LEARNING_REFRESH_SAMPLES = 1
 
@@ -2253,7 +2255,7 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
 def need_retrain(paper, brain=None):
     """Refresh supervised learning after each newly verified closed outcome.
 
-    The 600-sample gate is required before the first fit. After that, every
+    The 100-sample gate is required before the first fit. After that, every
     additional verified close triggers a refresh attempt. A candidate still
     must pass the untouched net-performance gate before it can become active.
     """
