@@ -83,6 +83,7 @@ CFG["TRAINSET"] = os.path.join(CFG["DIR"], "train.npz")
 TFS, BASE = CFG["TFS"], CFG["BASE_TF"]
 EPS = 1e-12
 FEATURE_DRIFT_HOOK = None
+PRIMARY_PREDICTION_HOOK = None
 PORTFOLIO_CORRELATION_HOOK = None
 DATA_VER = 3
 
@@ -2211,6 +2212,11 @@ def scan(brain, paper, universe=None, cycle=0, trade=True):
             predictions = np.asarray(brain.predict(X.loc[top, FEATURE_COLS].values), dtype=float)
             if len(predictions) != len(top) or not np.isfinite(predictions).all():
                 raise ValueError("model returned invalid probability vector")
+            if callable(PRIMARY_PREDICTION_HOOK):
+                predictions = np.asarray(
+                    PRIMARY_PREDICTION_HOOK(brain, X.loc[top], predictions), dtype=float)
+                if len(predictions) != len(top) or not np.isfinite(predictions).all():
+                    raise ValueError("primary news-fusion hook returned invalid probabilities")
             R.loc[top, "ai_probability"] = predictions
             R.loc[top, "prob"] = predictions
             R.loc[top, "prediction_source"] = "VALIDATED_AI"
