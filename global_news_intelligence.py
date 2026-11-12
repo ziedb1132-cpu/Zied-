@@ -407,6 +407,8 @@ def _write_intelligence(zq, articles):
             "samples": int((_STATE.get("model") or {}).get("samples", 0)),
             "validation_auc": (_STATE.get("model") or {}).get("validation_auc"),
             "last_trained_at": (_STATE.get("model") or {}).get("trained_at"),
+            "reason": (_STATE.get("model") or {}).get("reason", "awaiting_news_outcomes"),
+            "diagnostics": (_STATE.get("model") or {}).get("diagnostics", {}),
             "features": list(MODEL_FEATURES),
             "role": "bounded auxiliary news intelligence; primary AI and risk gates unchanged"
         },
@@ -435,25 +437,50 @@ def _persist_signal_snapshot(zq, paper, signal_id, inst):
     _STATE["features"][str(inst)] = vector
 
 
-def _train_news_model(zq, paper, force=False):
+def _news_learning_diagnostics(paper):
+    """Count news snapshots against the actual signal foreign key, without inventing history."""
     with paper.lock:
         paper.db.execute(
             "CREATE TABLE IF NOT EXISTS news_signal_memory ("
             "signal_id INTEGER PRIMARY KEY, inst TEXT NOT NULL, captured_ts REAL NOT NULL, "
             "features TEXT NOT NULL, article_count INTEGER NOT NULL, sources TEXT NOT NULL)"
         )
+        row = paper.db.execute(
+            "SELECT COUNT(*) AS closed_total, "
+            "SUM(CASE WHEN n.signal_id IS NOT NULL THEN 1 ELSE 0 END) AS closed_with_snapshot, "
+            "SUM(CASE WHEN n.signal_id IS NOT NULL AND n.article_count>0 THEN 1 ELSE 0 END) AS closed_with_articles, "
+            "SUM(CASE WHEN n.signal_id IS NOT NULL AND n.article_count=0 THEN 1 ELSE 0 END) AS closed_without_articles, "
+            "SUM(CASE WHEN n.signal_id IS NULL THEN 1 ELSE 0 END) AS closed_without_snapshot "
+            "FROM tracked_signals t LEFT JOIN news_signal_memory n ON n.signal_id=t.signal_id "
+            "WHERE t.status='CLOSED'"
+        ).fetchone()
+        snapshots = paper.db.execute(
+            "SELECT COUNT(*) FROM news_signal_memory"
+        ).fetchone()[0]
+        open_snapshots = paper.db.execute(
+            "SELECT COUNT(*) FROM tracked_signals t JOIN news_signal_memory n "
+            "ON n.signal_id=t.signal_id WHERE t.status='OPEN'"
+        ).fetchone()[0]
+    return {
+        "closed_total": int(row["closed_total"] or 0),
+        "closed_with_snapshot": int(row["closed_with_snapshot"] or 0),
+        "closed_with_articles": int(row["closed_with_articles"] or 0),
+        "closed_without_articles": int(row["closed_without_articles"] or 0),
+        "closed_without_snapshot": int(row["closed_without_snapshot"] or 0),
+        "snapshots_total": int(snapshots or 0),
+        "open_with_snapshot": int(open_snapshots or 0)
+    }
+
+
+def _train_news_model(zq, paper, force=False):
+    diagnostics = _news_learning_diagnostics(paper)
+    with paper.lock:
         rows = paper.db.execute(
             "SELECT n.features,t.ret,t.closed_ts FROM news_signal_memory n "
-            "JOIN tracked_signals t ON t.id=n.signal_id "
+            "JOIN tracked_signals t ON t.signal_id=n.signal_id "
             "WHERE t.status='CLOSED' AND t.ret IS NOT NULL AND t.ret != 0 "
             "AND n.article_count > 0 ORDER BY t.closed_ts,n.signal_id"
         ).fetchall()
-    if not rows:
-        return {"ready": False, "samples": 0, "reason": "no_closed_news_linked_signals"}
-    count = len(rows)
-    old = _STATE.get("model") or {}
-    if not force and count - int(old.get("samples", 0)) < 10 and old.get("ready"):
-        return old
     X, y = [], []
     for row in rows:
         try:
@@ -465,10 +492,22 @@ def _train_news_model(zq, paper, force=False):
             y.append(1.0 if ret > 0 else 0.0)
         except (TypeError, ValueError, KeyError):
             continue
-    X, y = np.asarray(X, dtype=np.float64), np.asarray(y, dtype=np.float64)
+    X, y = np.asarray(X, dtype=np.float64).reshape((-1, len(MODEL_FEATURES))), np.asarray(y, dtype=np.float64)
     n = len(y)
-    result = {"ready": False, "samples": n, "reason": "insufficient_or_unvalidated_news_samples",
-              "feature_names": list(MODEL_FEATURES), "trained_at": time.time()}
+    old = _STATE.get("model") or {}
+    if not force and old.get("ready") and n - int(old.get("samples", 0)) < 10:
+        updated = dict(old)
+        updated["diagnostics"] = diagnostics
+        _STATE["model"] = updated
+        _write_json(os.path.join(_state_dir(zq), "news_model.json"), updated)
+        return updated
+    reason = ("no_closed_news_linked_signals" if diagnostics["closed_with_articles"] == 0
+              else "no_valid_news_training_samples")
+    result = {"ready": False, "samples": n, "reason": reason,
+              "feature_names": list(MODEL_FEATURES), "trained_at": time.time(),
+              "diagnostics": diagnostics}
+    if n:
+        result["reason"] = "insufficient_or_unvalidated_news_samples"
     if n >= 60 and min(int((y == 1).sum()), int((y == 0).sum())) >= 10:
         split = max(40, int(n * 0.8))
         if n - split >= 15 and min(int((y[split:] == 1).sum()), int((y[split:] == 0).sum())) >= 3:
@@ -479,8 +518,7 @@ def _train_news_model(zq, paper, force=False):
             auc = _auc(y[split:], val_p)
             result.update({"validation_auc": round(auc, 4), "validation_samples": int(n-split)})
             if auc >= 0.52:
-                final = _fit_logistic(X, y)
-                result.update(final)
+                result.update(_fit_logistic(X, y))
                 result.update({"ready": True, "reason": "chronological_holdout_passed",
                                "validation_auc": round(auc, 4)})
             else:
@@ -488,8 +526,9 @@ def _train_news_model(zq, paper, force=False):
     _STATE["model"] = result
     _STATE["last_model_fit"] = time.time()
     _write_json(os.path.join(_state_dir(zq), "news_model.json"), result)
-    zq.log.info("global news learner: ready=%s samples=%d auc=%s reason=%s",
-                result.get("ready"), n, result.get("validation_auc"), result.get("reason"))
+    zq.log.info("global news learner: ready=%s samples=%d linked_closed=%d snapshots=%d auc=%s reason=%s",
+                result.get("ready"), n, diagnostics["closed_with_articles"],
+                diagnostics["snapshots_total"], result.get("validation_auc"), result.get("reason"))
     return result
 
 
