@@ -3,8 +3,7 @@
 """Conservative walk-forward shadow learner for the complete paper exit policy.
 
 It compares SL, TP, trailing activation/distance and time-exit horizons on the
-same matured 5m candle paths. Promotion is blocked until the main 500-win /
-500-loss closed-outcome gate is satisfied. Existing open signals are untouched.
+same matured 5m candle paths. Promotion is blocked until the shared verified closed-outcome gate is satisfied. Existing open signals are untouched.
 """
 import time
 import numpy as np
@@ -190,8 +189,8 @@ def _holdout_passes(metrics):
 def _promote(paper, zq):
     gate = zq.learning_gate_status(paper)
     if not gate["ready"]:
-        zq.log.info("AI exit-policy gate closed: wins=%d/500 losses=%d/500",
-                    gate["wins"], gate["losses"])
+        zq.log.info("AI exit-policy gate closed: verified samples=%d/100 wins=%d losses=%d",
+                    gate["total"], gate["wins"], gate["losses"])
         return []
     promoted = []
     with paper.lock:
@@ -351,7 +350,7 @@ def _evaluate(paper, zq):
     if evaluated:
         zq.log.info("AI exit-policy shadow evaluation: signals=%d policies=%d",
                     evaluated, len(POLICIES))
-    # Retry promotion on every cycle: the 500/500 gate may have become ready
+    # Retry promotion on every cycle: the shared 100-sample gate may have become ready
     # after the last shadow sample was collected.
     _promote(paper, zq)
     return evaluated
