@@ -2071,7 +2071,6 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=False
     status = learning_gate_status(paper)
     ds = paper.closed_signal_dataset()
     # Do not manufacture missing feature values for closed-signal learning.
-    # A row is used only when its entire recorded feature vector is present and finite.
     # Keep NaN as an explicit unknown: Brain._norm encodes both the normalized
     # value and a separate missingness indicator. Reject only infinities, rows
     # below the established 80% observed-feature threshold, or invalid labels.
@@ -2131,12 +2130,11 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     return info
 
 def need_retrain(paper, brain=None):
-    """Retry schema rebuilds on fresh outcomes, not on every scan cycle.
+    """Refresh supervised learning after each newly verified closed outcome.
 
-    An incompatible/missing model remains unavailable until a candidate passes
-    the untouched net-performance gate. While no compatible champion exists,
-    retry after every new verified close; a healthy champion also refreshes on each new close.
-    the normal refresh cadence.
+    The 600-sample gate is required before the first fit. After that, every
+    additional verified close triggers a refresh attempt. A candidate still
+    must pass the untouched net-performance gate before it can become active.
     """
     status = learning_gate_status(paper)
     if not status["ready"]:
