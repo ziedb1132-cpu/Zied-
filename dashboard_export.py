@@ -42,6 +42,9 @@ if db_path.exists():
       AVG(CASE WHEN labeled=1 THEN ret END) AS avgRet FROM signals""") or [{}])[0]
     data["summary"]["openTracked"] = (rows(conn, "SELECT COUNT(*) n FROM tracked_signals WHERE status='OPEN'") or [{"n":0}])[0]["n"]
     data["summary"]["closedTracked"] = (rows(conn, "SELECT COUNT(*) n FROM tracked_signals WHERE status='CLOSED'") or [{"n":0}])[0]["n"]
+    diagnostics = safe_json(root / "closed_signal_diagnostics.json")
+    if isinstance(diagnostics, dict):
+        data["summary"]["closedSignalDiagnostics"] = diagnostics
     gate = (rows(conn, """SELECT SUM(CASE WHEN s.ret>0 THEN 1 ELSE 0 END) wins,
       SUM(CASE WHEN s.ret<0 THEN 1 ELSE 0 END) losses, COUNT(*) total
       FROM tracked_signals t JOIN signals s ON s.id=t.signal_id
@@ -65,7 +68,7 @@ if db_path.exists():
 # Publish one canonical research report. Its layers contain the strategy,
 # discovery-lab, regime-selector, exit-policy and model walk-forward results.
 for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json", "news_intelligence.json", "news_model.json",
-             "upcoming_events.json", "feature_quality.json", "feature_importance.json", "feature_drift.json",
+             "upcoming_events.json", "closed_signal_diagnostics.json", "feature_quality.json", "feature_importance.json", "feature_drift.json",
              "model_calibration.json", "regime_performance.json"):
     value = safe_json(root / name)
     if value is not None:
