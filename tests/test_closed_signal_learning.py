@@ -109,7 +109,24 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertTrue(zq.need_retrain(GatePaper(), brain))
         self.assertFalse(zq.need_retrain(GatePaper(zq.feature_schema_fingerprint()), brain))
         self.assertTrue(zq.need_retrain(
-            GatePaper(zq.feature_schema_fingerprint(), total=610), brain))
+            GatePaper(zq.feature_schema_fingerprint(), total=601), brain))
+
+    def test_learning_refreshes_after_each_new_verified_closed_signal(self):
+        class GatePaper:
+            def __init__(self, total):
+                self.total = total
+            def closed_outcome_counts(self):
+                return {"wins": self.total // 2, "losses": self.total - self.total // 2, "total": self.total}
+            def _get(self, key):
+                if key == "last_learning_attempt_closed_count":
+                    return "600"
+                if key == "last_learning_attempt_schema_hash":
+                    return zq.feature_schema_fingerprint()
+                return None
+
+        brain = zq.Brain(persist=False)
+        self.assertFalse(zq.need_retrain(GatePaper(600), brain))
+        self.assertTrue(zq.need_retrain(GatePaper(601), brain))
 
     def test_adaptive_memory_learning_starts_with_20_real_closed_outcomes(self):
         for _ in range(10):
