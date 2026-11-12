@@ -565,6 +565,9 @@ def build_trainset(universe):
             if fr is None:
                 return None
             M = aligned_matrix(fr, btc)
+            # Always materialize the active dynamic schema. Historical news/event
+            # fields remain NaN (unknown); they are never fabricated as zeroes.
+            M = M.reindex(columns=FEATURE_COLS)
             b = fr[BASE]
             ret, hold = barrier_batch(b["c"].values, b["h"].values, b["l"].values, M["1H_atr_pct"].values)
             D = M.assign(_ret=ret, _hold=hold)
@@ -843,6 +846,7 @@ class Brain:
                         missing_mask_version=1,
                         feature_schema_version=2,
                         feature_schema_hash=feature_schema_fingerprint(),
+                        feature_names=list(FEATURE_COLS),
                         info=self.info)
             with open(meta_tmp, "w", encoding="utf-8") as fh:
                 json.dump(meta, fh, allow_nan=False)
@@ -914,6 +918,7 @@ class Brain:
                 and int(meta.get("missing_mask_version", 0)) == 1
                 and int(meta.get("feature_schema_version", 0)) == 2
                 and meta.get("feature_schema_hash") == expected_hash
+                and meta.get("feature_names") == list(FEATURE_COLS)
             )
             if not schema_ok:
                 self.nn = self.gbm = self.mode = None
@@ -1371,24 +1376,137 @@ class Paper:
         return _rows_to_ds(self.db.execute(
             "SELECT COALESCE(s.feature_ts,s.ts) AS ts,s.inst,s.feats,s.feature_names,s.feature_count,"
             "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label,s.ret,s.hold "
-            "FROM signals s JOIN tracked_signals t ON t.signal_id=s.id "
-            "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL "
-            "AND s.ret != 0 ORDER BY t.closed_ts,s.id").fetchall())
+            "FROM signals s WHERE EXISTS (SELECT 1 FROM tracked_signals t "
+            "WHERE t.signal_id=s.id AND t.status='CLOSED') "
+            "AND s.labeled=1 AND s.ret IS NOT NULL AND s.ret != 0 "
+            "ORDER BY s.feature_ts,s.ts,s.id").fetchall())
+
+    def closed_signal_diagnostics(self):
+        """Audit all closed signals and explain every exclusion from supervised training."""
+        raw = self.db.execute(
+            "SELECT s.id,s.labeled,s.ret,s.feats,s.feature_names,s.feature_count,"
+            "COALESCE(s.feature_ts,s.ts) AS ts FROM signals s "
+            "WHERE EXISTS (SELECT 1 FROM tracked_signals t "
+            "WHERE t.signal_id=s.id AND t.status='CLOSED') ORDER BY s.id"
+        ).fetchall()
+        tracked = self.db.execute(
+            "SELECT COUNT(*) FROM tracked_signals WHERE status='CLOSED'").fetchone()[0] or 0
+        duplicate_links = self.db.execute(
+            "SELECT COUNT(*) FROM (SELECT signal_id FROM tracked_signals WHERE status='CLOSED' "
+            "GROUP BY signal_id HAVING COUNT(*)>1)").fetchone()[0] or 0
+        stats = {
+            "closed_tracked": int(tracked), "unique_closed_signals": len(raw),
+            "duplicate_signal_links": int(duplicate_links), "unlabelled": 0,
+            "invalid_return": 0, "missing_feature_names": 0, "invalid_feature_names": 0,
+            "feature_count_mismatch": 0, "duplicate_feature_names": 0,
+            "malformed_feature_vector": 0, "invalid_feature_values": 0,
+            "infinite_feature_values": 0, "unknown_feature_names": 0,
+            "below_80_percent_coverage": 0, "invalid_timestamp": 0,
+            "valid_training_samples": 0, "wins": 0, "losses": 0,
+            "coverage_threshold": 0.80, "active_feature_count": int(N_FEATURES),
+        }
+        current = set(FEATURE_COLS)
+        positions = {name: i for i, name in enumerate(FEATURE_COLS)}
+        for row in raw:
+            if int(row["labeled"] or 0) != 1:
+                stats["unlabelled"] += 1
+                continue
+            try:
+                ret_value = float(row["ret"])
+                if not np.isfinite(ret_value) or ret_value == 0:
+                    stats["invalid_return"] += 1
+                    continue
+            except (TypeError, ValueError):
+                stats["invalid_return"] += 1
+                continue
+            try:
+                if not np.isfinite(float(row["ts"])):
+                    stats["invalid_timestamp"] += 1
+                    continue
+            except (TypeError, ValueError):
+                stats["invalid_timestamp"] += 1
+                continue
+            if row["feature_names"] in (None, ""):
+                stats["missing_feature_names"] += 1
+                continue
+            try:
+                names = json.loads(row["feature_names"]) if isinstance(row["feature_names"], str) else row["feature_names"]
+            except (TypeError, ValueError):
+                stats["invalid_feature_names"] += 1
+                continue
+            if (not isinstance(names, list) or not names
+                    or not all(isinstance(name, str) and name for name in names)):
+                stats["invalid_feature_names"] += 1
+                continue
+            if len(set(names)) != len(names):
+                stats["duplicate_feature_names"] += 1
+                continue
+            try:
+                values = json.loads(row["feats"]) if isinstance(row["feats"], str) else row["feats"]
+            except (TypeError, ValueError):
+                stats["malformed_feature_vector"] += 1
+                continue
+            if not isinstance(values, list) or len(values) != len(names):
+                stats["malformed_feature_vector"] += 1
+                continue
+            try:
+                if row["feature_count"] is not None and int(row["feature_count"]) != len(values):
+                    stats["feature_count_mismatch"] += 1
+                    continue
+            except (TypeError, ValueError):
+                stats["feature_count_mismatch"] += 1
+                continue
+            vector = np.full(N_FEATURES, np.nan, dtype=np.float64)
+            bad_value = False
+            for name, value in zip(names, values):
+                if name not in current:
+                    stats["unknown_feature_names"] += 1
+                    continue
+                if value is None:
+                    continue
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    bad_value = True
+                    break
+                if np.isinf(number):
+                    stats["infinite_feature_values"] += 1
+                    bad_value = True
+                    break
+                vector[positions[name]] = number
+            if bad_value:
+                stats["invalid_feature_values"] += 1
+                continue
+            if np.isfinite(vector).mean() < 0.80:
+                stats["below_80_percent_coverage"] += 1
+                continue
+            stats["valid_training_samples"] += 1
+            stats["wins" if ret_value > 0 else "losses"] += 1
+        stats["excluded_total"] = max(0, stats["unique_closed_signals"] - stats["valid_training_samples"])
+        stats["diagnostic_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        try:
+            path = os.path.join(CFG["DIR"], "closed_signal_diagnostics.json")
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as handle:
+                json.dump(stats, handle, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+        except OSError as exc:
+            log.warning("closed-signal diagnostics could not be saved: %s", exc)
+        return stats
 
     @locked
     def closed_outcome_counts(self):
-        # Count only outcomes whose feature snapshots are usable by the trainer.
-        # A row with too little source data cannot open the supervised model gate.
-        ds = self.closed_signal_dataset()
-        if not len(ds["y"]):
-            return dict(wins=0, losses=0, total=0)
-        valid = (feature_coverage_mask(ds["X"], 0.80)
-                 & np.isfinite(ds["y"]) & np.isin(ds["y"], [0, 1])
-                 & np.isfinite(ds["ts"]) & np.isfinite(ds["ret"]) & (ds["ret"] != 0))
-        labels = ds["y"][valid]
-        wins = int(np.sum(labels == 1))
-        losses = int(np.sum(labels == 0))
-        return dict(wins=wins, losses=losses, total=wins + losses)
+        stats = self.closed_signal_diagnostics()
+        log.info("closed-signal audit: closed=%d eligible=%d excluded=%d wins=%d losses=%d "
+                 "missing_names=%d bad_schema=%d below_80%%=%d",
+                 stats["closed_tracked"], stats["valid_training_samples"], stats["excluded_total"],
+                 stats["wins"], stats["losses"], stats["missing_feature_names"],
+                 stats["feature_count_mismatch"] + stats["invalid_feature_names"],
+                 stats["below_80_percent_coverage"])
+        return dict(wins=stats["wins"], losses=stats["losses"],
+                    total=stats["valid_training_samples"])
 
     @locked
     def adaptive_ranking_weights(self, regime, min_samples=20, lookback=500):
