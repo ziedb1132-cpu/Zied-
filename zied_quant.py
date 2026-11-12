@@ -2144,6 +2144,13 @@ def need_retrain(paper, brain=None):
     previous = int(paper._get("last_learning_attempt_closed_count") or 0)
     if previous <= 0:
         return True
+    if (brain is not None and not brain.ready
+            and isinstance(brain.load_issue, dict)
+            and brain.load_issue.get("reason") == "incompatible_feature_or_missing_value_schema"
+            and paper._get("last_learning_attempt_schema_hash") != feature_schema_fingerprint()):
+        # A newly observed schema mismatch must trigger one rebuild immediately,
+        # even when the previous code already recorded an attempt at this sample count.
+        return True
     retry_samples = LEARNING_REFRESH_SAMPLES
     if brain is not None and not brain.ready:
         retry_samples = max(5, min(LEARNING_REFRESH_SAMPLES, 10))
@@ -2470,6 +2477,7 @@ def once():
             tg(f"⚠️ فشل تحديث التعلم من الإشارات المغلقة: {e}")
         finally:
             paper._set("last_learning_attempt_closed_count", status["total"])
+            paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
     elif not status["ready"]:
         log.info("AI memory learning active; supervised model waiting for verified samples=%d/%d (wins=%d losses=%d)",
                  status["total"], MIN_CLOSED_MODEL_SAMPLES, status["wins"], status["losses"])
@@ -2486,6 +2494,7 @@ def once():
             log.exception("post-closure learning failed: %s", e)
         finally:
             paper._set("last_learning_attempt_closed_count", status["total"])
+            paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
     # Statistics are available on demand via /stats; no wallet or exchange orders.
 
 def telegram_loop(paper, brain, stop):
@@ -2521,6 +2530,7 @@ def run():
                         tg(f"⚠️ فشل تحديث التعلم: {e}")
                     finally:
                         paper._set("last_learning_attempt_closed_count", status["total"])
+                    paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
                 elif not status["ready"]:
                     log.info("AI memory learning active; supervised model waiting: samples=%d/%d wins=%d losses=%d",
                              status["total"], MIN_CLOSED_MODEL_SAMPLES, status["wins"], status["losses"])
@@ -2538,6 +2548,7 @@ def run():
                     log.exception("post-closure learning failed: %s", e)
                 finally:
                     paper._set("last_learning_attempt_closed_count", status["total"])
+                paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
             time.sleep(max(5, CFG["SCAN_EVERY_SEC"] - (time.time() - t0)))
     except KeyboardInterrupt:
         stop.set()
