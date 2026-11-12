@@ -472,6 +472,29 @@ def _news_learning_diagnostics(paper):
     }
 
 
+def _publish_news_model_status(zq, model):
+    """Keep the dashboard's canonical news report in sync with the learner state."""
+    path = os.path.join(_state_dir(zq), "news_intelligence.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            report = json.load(handle)
+        if not isinstance(report, dict):
+            return
+        report["model"] = {
+            "ready": bool(model.get("ready")),
+            "samples": int(model.get("samples", 0)),
+            "validation_auc": model.get("validation_auc"),
+            "last_trained_at": model.get("trained_at"),
+            "reason": model.get("reason", "awaiting_news_outcomes"),
+            "diagnostics": model.get("diagnostics", {}),
+            "features": list(MODEL_FEATURES),
+            "role": "bounded auxiliary news intelligence; primary AI and risk gates unchanged"
+        }
+        _write_json(path, report)
+    except (OSError, ValueError, TypeError) as exc:
+        zq.log.warning("news dashboard status publish skipped safely: %s", exc)
+
+
 def _train_news_model(zq, paper, force=False):
     diagnostics = _news_learning_diagnostics(paper)
     with paper.lock:
@@ -500,6 +523,7 @@ def _train_news_model(zq, paper, force=False):
         updated["diagnostics"] = diagnostics
         _STATE["model"] = updated
         _write_json(os.path.join(_state_dir(zq), "news_model.json"), updated)
+        _publish_news_model_status(zq, updated)
         return updated
     reason = ("no_closed_news_linked_signals" if diagnostics["closed_with_articles"] == 0
               else "no_valid_news_training_samples")
@@ -526,6 +550,7 @@ def _train_news_model(zq, paper, force=False):
     _STATE["model"] = result
     _STATE["last_model_fit"] = time.time()
     _write_json(os.path.join(_state_dir(zq), "news_model.json"), result)
+    _publish_news_model_status(zq, result)
     zq.log.info("global news learner: ready=%s samples=%d linked_closed=%d snapshots=%d auc=%s reason=%s",
                 result.get("ready"), n, diagnostics["closed_with_articles"],
                 diagnostics["snapshots_total"], result.get("validation_auc"), result.get("reason"))
