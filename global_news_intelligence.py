@@ -410,7 +410,7 @@ def _write_intelligence(zq, articles):
             "reason": (_STATE.get("model") or {}).get("reason", "awaiting_news_outcomes"),
             "diagnostics": (_STATE.get("model") or {}).get("diagnostics", {}),
             "features": list(MODEL_FEATURES),
-            "role": "bounded auxiliary news intelligence; primary AI and risk gates unchanged"
+            "role": "validated primary-AI probability fusion; requires positive net holdout advantage"
         },
         "method": "RSS/Atom headline and summary analysis; source-weighted lexicon; timestamp decay; exact URL/title deduplication. No missing facts are inferred.",
         "cache_note": "Displaying the last successful feed snapshot because all current feeds returned no items." if stale_cache else None
@@ -499,23 +499,30 @@ def _train_news_model(zq, paper, force=False):
     diagnostics = _news_learning_diagnostics(paper)
     with paper.lock:
         rows = paper.db.execute(
-            "SELECT n.features,t.ret,t.closed_ts FROM news_signal_memory n "
+            "SELECT n.features,t.ret,t.prob,t.closed_ts FROM news_signal_memory n "
             "JOIN tracked_signals t ON t.signal_id=n.signal_id "
             "WHERE t.status='CLOSED' AND t.ret IS NOT NULL AND t.ret != 0 "
-            "AND n.article_count > 0 ORDER BY t.closed_ts,n.signal_id"
+            "AND t.prob IS NOT NULL AND n.article_count > 0 ORDER BY t.closed_ts,n.signal_id"
         ).fetchall()
-    X, y = [], []
+    X, y, primary_p, net_returns = [], [], [], []
     for row in rows:
         try:
             values = json.loads(row["features"])
-            ret = float(row["ret"])
-            if len(values) != len(MODEL_FEATURES) or not np.isfinite(values).all() or not np.isfinite(ret):
+            ret, primary_prob = float(row["ret"]), float(row["prob"])
+            if (len(values) != len(MODEL_FEATURES) or not np.isfinite(values).all()
+                    or not np.isfinite(ret) or not np.isfinite(primary_prob)
+                    or not 0.0 <= primary_prob <= 1.0):
                 continue
             X.append(values)
             y.append(1.0 if ret > 0 else 0.0)
+            primary_p.append(primary_prob)
+            net_returns.append(ret)
         except (TypeError, ValueError, KeyError):
             continue
-    X, y = np.asarray(X, dtype=np.float64).reshape((-1, len(MODEL_FEATURES))), np.asarray(y, dtype=np.float64)
+    X = np.asarray(X, dtype=np.float64).reshape((-1, len(MODEL_FEATURES)))
+    y = np.asarray(y, dtype=np.float64)
+    primary_p = np.asarray(primary_p, dtype=np.float64)
+    net_returns = np.asarray(net_returns, dtype=np.float64)
     n = len(y)
     old = _STATE.get("model") or {}
     if not force and old.get("ready") and n - int(old.get("samples", 0)) < 10:
@@ -527,9 +534,9 @@ def _train_news_model(zq, paper, force=False):
         return updated
     reason = ("no_closed_news_linked_signals" if diagnostics["closed_with_articles"] == 0
               else "no_valid_news_training_samples")
-    result = {"ready": False, "samples": n, "reason": reason,
-              "feature_names": list(MODEL_FEATURES), "trained_at": time.time(),
-              "diagnostics": diagnostics}
+    result = {"ready": False, "fusion_enabled": False, "fusion_weight": 0.0,
+              "samples": n, "reason": reason, "feature_names": list(MODEL_FEATURES),
+              "trained_at": time.time(), "diagnostics": diagnostics}
     if n:
         result["reason"] = "insufficient_or_unvalidated_news_samples"
     if n >= 60 and min(int((y == 1).sum()), int((y == 0).sum())) >= 10:
@@ -542,9 +549,47 @@ def _train_news_model(zq, paper, force=False):
             auc = _auc(y[split:], val_p)
             result.update({"validation_auc": round(auc, 4), "validation_samples": int(n-split)})
             if auc >= 0.52:
-                result.update(_fit_logistic(X, y))
-                result.update({"ready": True, "reason": "chronological_holdout_passed",
-                               "validation_auc": round(auc, 4)})
+                # Evaluate a fixed, small blend on the chronological holdout against
+                # primary probabilities recorded when each signal was created.
+                # The holdout is never used to fit the news model or tune the blend.
+                hold_news = np.asarray(val_p, dtype=np.float64)
+                hold_primary = primary_p[split:]
+                hold_returns = net_returns[split:]
+                weight = 0.10
+                blended = (1.0 - weight) * hold_primary + weight * hold_news
+                def _top_metrics(probabilities):
+                    count = max(20, int(math.ceil(len(probabilities) * 0.30)))
+                    if len(probabilities) < count:
+                        return {"count": 0, "avg_net": None, "profit_factor": 0.0}
+                    chosen = np.argsort(probabilities)[-count:]
+                    values = hold_returns[chosen]
+                    gains = float(values[values > 0].sum())
+                    losses = float(-values[values < 0].sum())
+                    return {"count": int(len(values)), "avg_net": float(np.mean(values)),
+                            "profit_factor": gains / losses if losses > 1e-12 else (999.0 if gains > 0 else 0.0)}
+                base_metrics = _top_metrics(hold_primary)
+                blend_metrics = _top_metrics(blended)
+                fusion_ok = (
+                    len(hold_returns) >= 30
+                    and min(int((y[split:] == 1).sum()), int((y[split:] == 0).sum())) >= 5
+                    and base_metrics["count"] >= 20 and blend_metrics["count"] >= 20
+                    and base_metrics["avg_net"] is not None and blend_metrics["avg_net"] is not None
+                    and blend_metrics["avg_net"] > max(0.0, base_metrics["avg_net"] + 0.0005)
+                    and blend_metrics["profit_factor"] > 1.0
+                )
+                # Fit only on the earlier chronological block; the holdout remains untouched.
+                result.update(_fit_logistic(X[:split], y[:split]))
+                result.update({
+                    "ready": True, "reason": "chronological_holdout_passed",
+                    "validation_auc": round(auc, 4),
+                    "fusion_enabled": bool(fusion_ok),
+                    "fusion_weight": weight if fusion_ok else 0.0,
+                    "fusion_validation": {"baseline": base_metrics, "blended": blend_metrics,
+                                          "holdout_samples": int(len(hold_returns)),
+                                          "required_net_improvement": 0.0005},
+                })
+                if not fusion_ok:
+                    result["fusion_reason"] = "blend_did_not_beat_primary_net_holdout"
             else:
                 result["reason"] = "chronological_holdout_below_baseline"
     _STATE["model"] = result
@@ -646,12 +691,8 @@ def install(zq):
         try:
             adjusted = base.copy()
             model = _STATE.get("model")
-            for inst in list(base.head(100).index):
-                vector = feature_map.get(str(inst), [0.0] * len(NEWS_FEATURE_COLS))
-                probability = _predict(vector, model)
-                if probability is not None:
-                    # Existing bounded news-ranking adjustment is preserved.
-                    adjusted.loc[inst] = float(base.loc[inst]) + 0.10 * (probability - 0.5) * 2.0
+            # News enters the primary AI probability only through the separate
+            # net-return-gated fusion hook; avoid double-counting it in ranking scores.
             _STATE["features"] = feature_map
             _write_intelligence(zq, articles)
             zq.log.info("global news intelligence: sources=%d online=%d articles=%d learner=%s primary_features=%d",
@@ -665,6 +706,28 @@ def install(zq):
             return base
 
     zq.rank_universe = rank_with_global_news
+
+    def fuse_primary_prediction(brain, frame, primary_probabilities):
+        """Fuse validated news probabilities only after a net-return holdout pass."""
+        model = _STATE.get("model") or {}
+        weight = float(model.get("fusion_weight", 0.0) or 0.0)
+        if not (model.get("ready") and model.get("fusion_enabled") and 0.0 < weight <= 0.10):
+            return primary_probabilities
+        try:
+            matrix = frame.reindex(columns=NEWS_FEATURE_COLS).to_numpy(dtype=np.float64)
+            news_p = np.asarray([_predict(row, model) for row in matrix], dtype=np.float64)
+            primary = np.asarray(primary_probabilities, dtype=np.float64)
+            valid = np.isfinite(news_p) & np.isfinite(primary)
+            output = primary.copy()
+            output[valid] = np.clip((1.0-weight)*primary[valid] + weight*news_p[valid], 0.0, 1.0)
+            zq.log.info("primary AI/news fusion active: weight=%.3f rows=%d/%d",
+                        weight, int(valid.sum()), len(primary))
+            return output
+        except Exception as exc:
+            zq.log.warning("primary AI/news fusion skipped safely: %s", exc)
+            return primary_probabilities
+
+    zq.PRIMARY_PREDICTION_HOOK = fuse_primary_prediction
 
     old_create = zq.Paper.create_tracked_signal
     def create_with_news_snapshot(self, row):
