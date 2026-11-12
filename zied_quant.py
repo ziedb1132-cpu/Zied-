@@ -354,6 +354,14 @@ FEATURE_COLS = TF_COLS + CTX_COLS
 N_FEATURES = len(FEATURE_COLS)
 assert N_FEATURES == 200
 
+
+def feature_schema_fingerprint():
+    """Stable identity for the exact ordered feature columns used by a model."""
+    import hashlib
+    payload = "\n".join(str(name) for name in FEATURE_COLS).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _rsi(c, n):
     d = c.diff()
     up = d.clip(lower=0).ewm(alpha=1 / n, adjust=False).mean()
@@ -725,6 +733,7 @@ class Brain:
         self.mu = self.sd = None
         self.thrs, self.mode, self.auc, self.info = {}, None, None, {}
         self.persist = persist
+        self.load_issue = None
         self._recovering_backup = False
         if persist:
             self.load()
@@ -764,7 +773,8 @@ class Brain:
                 meta = json.load(fh)
             if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
                     or int(meta.get("raw_n_in", -1)) != N_FEATURES
-                    or int(meta.get("missing_mask_version", 0)) != 1):
+                    or int(meta.get("missing_mask_version", 0)) != 1
+                    or meta.get("feature_schema_hash") != feature_schema_fingerprint()):
                 return False
             for key, flag in (("MODEL", "has_nn"), ("GBM", "has_gbm")):
                 if meta.get(flag) and not os.path.isfile(backup[key]):
@@ -825,7 +835,10 @@ class Brain:
                         sd=np.asarray(self.sd, dtype=float).tolist(), thrs=self.thrs, mode=self.mode,
                         auc=self.auc, has_nn=need_nn, has_gbm=need_gbm,
                         n_in=model_n_in, raw_n_in=raw_n_in,
-                        missing_mask_version=1, info=self.info)
+                        missing_mask_version=1,
+                        feature_schema_version=2,
+                        feature_schema_hash=feature_schema_fingerprint(),
+                        info=self.info)
             with open(meta_tmp, "w", encoding="utf-8") as fh:
                 json.dump(meta, fh, allow_nan=False)
                 fh.flush()
@@ -838,6 +851,7 @@ class Brain:
                 old_ok = (int(old_meta.get("n_in", -1)) == 2 * N_FEATURES
                           and int(old_meta.get("raw_n_in", -1)) == N_FEATURES
                           and int(old_meta.get("missing_mask_version", 0)) == 1
+                          and old_meta.get("feature_schema_hash") == feature_schema_fingerprint()
                           and (not old_meta.get("has_nn") or os.path.isfile(CFG["MODEL"]))
                           and (not old_meta.get("has_gbm") or os.path.isfile(CFG["GBM"])))
                 if old_ok:
@@ -888,11 +902,37 @@ class Brain:
             return
         try:
             meta = json.load(open(CFG["META"], encoding="utf-8"))
-            if (int(meta.get("n_in", -1)) != 2 * N_FEATURES
-                    or int(meta.get("raw_n_in", -1)) != N_FEATURES
-                    or int(meta.get("missing_mask_version", 0)) != 1):
-                log.info("saved model schema is incompatible with missing-value encoding -> ignored")
+            expected_hash = feature_schema_fingerprint()
+            schema_ok = (
+                int(meta.get("n_in", -1)) == 2 * N_FEATURES
+                and int(meta.get("raw_n_in", -1)) == N_FEATURES
+                and int(meta.get("missing_mask_version", 0)) == 1
+                and int(meta.get("feature_schema_version", 0)) == 2
+                and meta.get("feature_schema_hash") == expected_hash
+            )
+            if not schema_ok:
+                self.nn = self.gbm = self.mode = None
+                self.mu = self.sd = None
+                self.load_issue = {
+                    "reason": "incompatible_feature_or_missing_value_schema",
+                    "saved_raw_features": meta.get("raw_n_in"),
+                    "current_raw_features": N_FEATURES,
+                    "saved_model_inputs": meta.get("n_in"),
+                    "expected_model_inputs": 2 * N_FEATURES,
+                    "saved_missing_mask_version": meta.get("missing_mask_version"),
+                    "saved_feature_schema_version": meta.get("feature_schema_version"),
+                    "feature_order_matches": meta.get("feature_schema_hash") == expected_hash,
+                }
+                log.warning(
+                    "saved AI model rejected safely: raw_features=%s/%s model_inputs=%s/%s "
+                    "missing_mask=%s feature_schema_version=%s feature_order_match=%s; "
+                    "verified closed-signal retraining will rebuild it when the learning gate is ready",
+                    meta.get("raw_n_in"), N_FEATURES, meta.get("n_in"), 2 * N_FEATURES,
+                    meta.get("missing_mask_version"), meta.get("feature_schema_version"),
+                    meta.get("feature_schema_hash") == expected_hash,
+                )
                 return
+            self.load_issue = None
             if meta.get("has_nn") and not os.path.exists(CFG["MODEL"]):
                 raise FileNotFoundError("committed neural model file is missing")
             if meta.get("has_gbm") and not os.path.exists(CFG["GBM"]):
@@ -915,6 +955,8 @@ class Brain:
         except Exception as e:
             log.warning("could not load model: %s", e)
             self.nn = self.gbm = self.mode = None
+            self.mu = self.sd = None
+            self.load_issue = {"reason": "model_load_error", "error": str(e)}
             if not self._recovering_backup:
                 self._recovering_backup = True
                 try:
