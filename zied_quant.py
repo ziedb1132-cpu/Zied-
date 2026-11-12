@@ -2032,7 +2032,7 @@ def poll_commands(paper, brain, timeout=0):
 # =====================================================================
 MIN_CLOSED_MODEL_SAMPLES = 600
 MIN_CLOSED_CLASS_SAMPLES = 10
-LEARNING_REFRESH_SAMPLES = 10
+LEARNING_REFRESH_SAMPLES = 1
 
 
 def learning_gate_status(paper):
@@ -2135,7 +2135,7 @@ def need_retrain(paper, brain=None):
 
     An incompatible/missing model remains unavailable until a candidate passes
     the untouched net-performance gate. While no compatible champion exists,
-    retry after each small batch of new verified closes; a healthy champion uses
+    retry after every new verified close; a healthy champion also refreshes on each new close.
     the normal refresh cadence.
     """
     status = learning_gate_status(paper)
@@ -2152,8 +2152,6 @@ def need_retrain(paper, brain=None):
         # even when the previous code already recorded an attempt at this sample count.
         return True
     retry_samples = LEARNING_REFRESH_SAMPLES
-    if brain is not None and not brain.ready:
-        retry_samples = max(5, min(LEARNING_REFRESH_SAMPLES, 10))
     return status["total"] - previous >= retry_samples
 
 def _hourly_returns(inst):
