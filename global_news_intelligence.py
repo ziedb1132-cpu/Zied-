@@ -626,31 +626,8 @@ def install(zq):
 
         zq.aligned_matrix = aligned_matrix_with_unknown_news
 
-        # Keep prior closed outcomes usable without inventing historical news:
-        # zero-valued news fields plus available=0 explicitly mean "not recorded".
-        old_rows_to_ds = zq._rows_to_ds
-        legacy_feature_count = zq.N_FEATURES - len(NEWS_FEATURE_COLS)
-
-        def rows_to_ds_with_legacy_news(rows, label_key="label", ret_key="ret"):
-            adapted = []
-            for row in rows:
-                try:
-                    item = dict(row)
-                    values = json.loads(item["feats"])
-                    if isinstance(values, list) and len(values) == legacy_feature_count:
-                        item["feats"] = json.dumps(
-                            values + [0.0] * len(NEWS_FEATURE_COLS),
-                            separators=(",", ":"), allow_nan=False
-                        )
-                    adapted.append(item)
-                except (TypeError, ValueError, KeyError):
-                    adapted.append(row)
-            return old_rows_to_ds(adapted, label_key, ret_key)
-
-        zq._rows_to_ds = rows_to_ds_with_legacy_news
-
-        # Invalidate only feature-schema-dependent caches/models via the existing
-        # schema-version mechanism; trading rules and risk settings are untouched.
+        # Historical snapshots are aligned by stored feature_names in _rows_to_ds.
+        # News was not observed historically, so preserve it as NaN/unknown.
         import hashlib
         schema = "|".join(zq.FEATURE_COLS).encode("utf-8")
         zq.DATA_VER = 4 + int(hashlib.sha256(schema).hexdigest()[:8], 16)
