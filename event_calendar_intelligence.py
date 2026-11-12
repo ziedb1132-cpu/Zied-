@@ -389,31 +389,8 @@ def install(zq):
             return matrix.reindex(columns=zq.FEATURE_COLS)
         zq.aligned_matrix = aligned_with_event_unknown
 
-        old_rows_to_ds = zq._rows_to_ds
-        prior_feature_count = zq.N_FEATURES - len(EVENT_FEATURE_COLS)
-        # Older database rows may predate both the ten news columns and these
-        # ten event columns. Adapt them to the complete schema in one step so
-        # the news wrapper does not mistake an intermediate vector for current data.
-        legacy_without_news_count = prior_feature_count - 10
-        def rows_to_ds_with_legacy_events(rows, label_key="label", ret_key="ret"):
-            adapted = []
-            for row in rows:
-                try:
-                    item = dict(row)
-                    values = json.loads(item["feats"])
-                    if isinstance(values, list) and len(values) == legacy_without_news_count:
-                        values = values + [0.0] * (10 + len(EVENT_FEATURE_COLS))
-                        item["feats"] = json.dumps(values, separators=(",", ":"), allow_nan=False)
-                    elif isinstance(values, list) and len(values) == prior_feature_count:
-                        item["feats"] = json.dumps(
-                            values + [0.0] * len(EVENT_FEATURE_COLS),
-                            separators=(",", ":"), allow_nan=False)
-                    adapted.append(item)
-                except (TypeError, ValueError, KeyError):
-                    adapted.append(row)
-            return old_rows_to_ds(adapted, label_key, ret_key)
-        zq._rows_to_ds = rows_to_ds_with_legacy_events
-
+        # Historical event fields were not observed; preserve them as NaN/unknown.
+        # _rows_to_ds aligns legacy snapshots by their exact stored feature_names.
         import hashlib
         schema = "|".join(zq.FEATURE_COLS).encode("utf-8")
         zq.DATA_VER = 4 + int(hashlib.sha256(schema).hexdigest()[:8], 16)
