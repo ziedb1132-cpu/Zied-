@@ -483,6 +483,32 @@ function renderCharts(){
 }
 
 function portfolioModelReady(){const m=state.contents["meta.json"];const savedModel=!!(m&&typeof m==="object"&&m.mode&&Number(m.n_in)>0);const validatedSignal=state.signals.some(s=>s&&s.prob_source==="validated_ai"&&s.prob!==null&&s.prob!==undefined&&Number.isFinite(Number(s.prob)));return savedModel||validatedSignal;}
+
+function renderAiLearningPanel(){
+ const host=$("aiMetrics"),notice=$("aiLearningNotice");
+ if(!host||!notice)return;
+ const summary=state.summary||{};
+ const gateTotal=Math.max(0,Number(summary.gateTotal)||0);
+ const gateWins=Math.max(0,Number(summary.gateWins)||0);
+ const gateLosses=Math.max(0,Number(summary.gateLosses)||0);
+ const modelMeta=state.contents&&state.contents["meta.json"]&&typeof state.contents["meta.json"]==="object"?state.contents["meta.json"]:{};
+ const modelReady=portfolioModelReady();
+ const classesReady=gateWins>0&&gateLosses>0;
+ const gateReady=gateTotal>=100&&classesReady;
+ const cycle=state.meta&&state.meta.cycle!=null?state.meta.cycle:"—";
+ host.innerHTML=metric("État du modèle",modelReady?"Modèle publié · "+(modelMeta.mode||"validation enregistrée"):"Non activé · validation requise")+
+  metric("Progression apprentissage",gateTotal+" / 100","Signaux clôturés admissibles")+
+  metric("Gagnants / perdants",gateWins+" / "+gateLosses,"Échantillons réels des deux classes")+
+  metric("Démarrage entraînement",gateReady?"Seuil atteint · entraînement autorisé":"En attente de 100 clôtures et des deux classes")+
+  metric("Validation indépendante",modelReady?"Métadonnées de modèle disponibles":"Pas encore réussie / publiée")+
+  metric("AUC du modèle",modelReady?(modelMeta.auc??modelMeta.info?.auc??"Non enregistré"):"—")+
+  metric("Dernier cycle",cycle);
+ notice.textContent=!gateReady
+  ?"Apprentissage supervisé en attente : "+gateTotal+"/100 signaux admissibles ("+gateWins+" gagnants, "+gateLosses+" perdants). Les signaux clôturés admissibles sont conservés dans la mémoire. À 100 échantillons et avec les deux classes, l’entraînement démarre automatiquement."
+  :!modelReady
+   ?"Seuil d’apprentissage atteint. Le modèle doit encore réussir les contrôles de validation indépendants avant toute activation pour les signaux de trading."
+   :"Modèle publié. Son utilisation reste limitée au mode paper ; les résultats de recherche ne remplacent pas la validation indépendante.";
+}
 const VP_STORAGE_KEY="zied_quant_virtual_portfolio_v1";
 function loadVirtualPortfolio(){
  try{const raw=localStorage.getItem(VP_STORAGE_KEY);if(!raw)return {capital:null,activatedAt:null,processed:[],positions:[],history:[]};const x=JSON.parse(raw);return {capital:Number.isFinite(Number(x.capital))&&Number(x.capital)>0?Number(x.capital):null,activatedAt:Number(x.activatedAt)||null,processed:Array.isArray(x.processed)?x.processed:[],positions:Array.isArray(x.positions)?x.positions:[],history:Array.isArray(x.history)?x.history:[]};}
@@ -797,8 +823,7 @@ $("metrics").innerHTML=metric("Positions ouvertes",state.summary.openTracked,"Si
  }
  $("trackedOpen").innerHTML=table(state.tracked.filter(r=>String(r.status).toUpperCase()==="OPEN"),trackedCols);const latestClosed100=closedLatest.slice(0,100);$("trackedClosed").innerHTML='<div class="charthead"><h2>Les 100 dernières clôtures</h2><span class="muted">Affichées : '+latestClosed100.length+' / '+allClosedLatest.length+' signaux clôturés</span></div>'+table(latestClosed100,trackedCols);
  $("metaPreview").innerHTML=showRows(Object.fromEntries(Object.entries(state.meta).slice(0,12)));
-$("aiMetrics").innerHTML=metric("État du modèle",modelReady?("Modèle validé : "+(modelMeta.mode||"enregistré")):"Non activé · validation requise")+metric("Progression apprentissage",gateTotal+" / 100","Signaux clôturés admissibles")+metric("Gagnants / perdants",gateWins+" / "+gateLosses,"Échantillons réels des deux classes")+metric("Démarrage entraînement",gateTotal>=100&&gateWins>0&&gateLosses>0?"Seuil atteint · entraînement autorisé":"En attente de 100 clôtures et des deux classes")+metric("Validation indépendante",modelReady?"Modèle publié":"Pas encore réussie / publiée")+metric("AUC du modèle",modelReady?(modelMeta.auc??modelMeta.info?.auc??"Non enregistré"):"—")+metric("Dernier cycle",cycle);
- const aiNotice=$("aiLearningNotice");if(aiNotice){const classesReady=gateWins>0&&gateLosses>0;const gateReady=gateTotal>=100&&classesReady;aiNotice.textContent=!gateReady?"Apprentissage supervisé en attente : "+gateTotal+"/100 signaux admissibles ("+gateWins+" gagnants, "+gateLosses+" perdants). Les signaux clôturés continuent d’être ajoutés à la mémoire. À 100 échantillons et avec les deux classes, l’entraînement démarre automatiquement.":!modelReady?"Seuil d’apprentissage atteint. Le modèle doit encore réussir les contrôles de validation indépendants avant toute activation pour les signaux de trading.":"Modèle validé et publié. Son utilisation reste limitée au mode paper ; les résultats de recherche ne remplacent pas la validation indépendante.";}
+renderAiLearningPanel();
  renderIndependentPages();
  syncDashboardCharts();
  const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
@@ -1540,6 +1565,7 @@ async function connect(){
  // Keep independent analytics pages alive even if an unrelated home widget fails.
  try{renderIndependentPages();}catch(pageError){const note=document.querySelector("#page-marketRegime .notice");if(note)note.textContent="Erreur de calcul des régimes : "+(pageError&&pageError.message?pageError.message:String(pageError));}
  try{renderEvolutionPanel();}catch(e){const note=$("evolutionNote");if(note)note.textContent="Erreur d’affichage du rapport d’évolution : "+(e&&e.message?e.message:String(e));}
+ try{renderAiLearningPanel();}catch(aiError){const note=$("aiLearningNotice");if(note)note.textContent="Impossible de calculer l’état IA : "+(aiError&&aiError.message?aiError.message:String(aiError));}
 }
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0,gateTotalNow=Number(state.summary.gateTotal)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady(),gateTotalNow);});
