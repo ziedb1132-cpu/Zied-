@@ -290,7 +290,8 @@ def discover_winning_patterns(zq, paper):
         with sqlite3.connect(db_path, timeout=10) as db:
             rows = db.execute(
                 "SELECT COALESCE(s.feature_ts, s.ts) AS feature_ts, s.feats, "
-                "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label, s.ret "
+                "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label, s.ret, "
+                "s.feature_names, s.feature_count "
                 "FROM signals s JOIN tracked_signals t ON t.signal_id=s.id "
                 "WHERE t.status='CLOSED' AND s.labeled=1 AND s.ret IS NOT NULL "
                 "ORDER BY t.closed_ts, s.id"
@@ -300,16 +301,30 @@ def discover_winning_patterns(zq, paper):
         return {"status": "database_error", "error": str(exc)}
 
     parsed = []
-    for feature_ts, feats_json, label, ret in rows:
+    current_names = list(zq.FEATURE_COLS)
+    current_index = {name: i for i, name in enumerate(current_names)}
+    for feature_ts, feats_json, label, ret, names_json, feature_count in rows:
         try:
-            vector = np.asarray(json.loads(feats_json), dtype=np.float64)
+            raw_values = json.loads(feats_json)
+            names = json.loads(names_json) if isinstance(names_json, str) else names_json
             label, ret = int(label), float(ret)
-            coverage = float(np.isfinite(vector).mean()) if vector.shape == (zq.N_FEATURES,) else 0.0
-            if (vector.shape == (zq.N_FEATURES,)
-                    and not np.isinf(vector).any() and coverage >= 0.80
-                    and label in (0, 1) and np.isfinite(ret)):
-                parsed.append((float(feature_ts or 0.0), vector, label, ret))
-        except (TypeError, ValueError, json.JSONDecodeError):
+            if (not isinstance(raw_values, list) or not isinstance(names, list)
+                    or len(raw_values) != len(names) or not names
+                    or len(set(names)) != len(names)
+                    or not all(isinstance(name, str) and name for name in names)
+                    or (feature_count is not None and int(feature_count) != len(raw_values))):
+                continue
+            vector = np.full(zq.N_FEATURES, np.nan, dtype=np.float64)
+            for name, value in zip(names, raw_values):
+                idx = current_index.get(name)
+                if idx is not None:
+                    vector[idx] = np.nan if value is None else float(value)
+            coverage = float(np.isfinite(vector).mean())
+            stamp = float(feature_ts or 0.0)
+            if (not np.isinf(vector).any() and coverage >= 0.80
+                    and label in (0, 1) and np.isfinite(ret) and np.isfinite(stamp)):
+                parsed.append((stamp, vector, label, ret))
+        except (TypeError, ValueError, KeyError, json.JSONDecodeError):
             continue
 
     winners = [r for r in parsed if r[2] == 1 and r[3] > 0.0]
