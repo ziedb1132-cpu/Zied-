@@ -12,6 +12,8 @@ import re
 import tempfile
 
 SCHEMA_VERSION = 1
+MIN_CLOSED_TOTAL = 100
+MIN_CLOSED_PER_CLASS = 1
 FEATURE_PREFIX = "derived_strategy_"
 _ALLOWED_OPS = {"gt", "lt"}
 
@@ -41,10 +43,11 @@ def approve_record(spec, evidence, closed_wins, closed_losses, known_features):
 
     evidence must contain independent chronological train/validation/holdout
     results; holdout must be positive and validation must not be used as holdout.
-    Global win/loss counts remain the user's 500/500 minimum learning gate.
+    The shared learning gate is 100 verified closed outcomes with both classes represented.
     """
     validate_spec(spec, known_features)
-    if int(closed_wins) < 500 or int(closed_losses) < 500:
+    wins, losses = int(closed_wins), int(closed_losses)
+    if wins + losses < MIN_CLOSED_TOTAL or min(wins, losses) < MIN_CLOSED_PER_CLASS:
         return None
     required = ("train", "validation", "holdout")
     if not all(isinstance(evidence.get(k), dict) for k in required):
