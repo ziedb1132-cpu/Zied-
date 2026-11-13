@@ -20,6 +20,13 @@ class EvolutionGovernanceTests(unittest.TestCase):
             ],
         }
 
+    def _shadow(self, sid="candidate-a", avg=0.012, trades=35, pf=1.4, dd=0.10):
+        return {"status": "ok", "selected_by_regime": {"BULL": [{
+            "strategy_id": sid, "spec": {"conditions": [{"feature": "rsi", "op": "lt", "threshold": 40}]},
+            "trades": trades, "avg_net": avg, "profit_factor": pf,
+            "max_drawdown": dd, "win_rate": 0.60,
+        }]}}
+
     def test_realized_payoff_summary_exposes_loss_asymmetry(self):
         report = performance_risk_summary([0.01, 0.02, -0.03, -0.01] * 8)
         self.assertEqual(report["trades"], 32)
@@ -53,41 +60,37 @@ class EvolutionGovernanceTests(unittest.TestCase):
         self.assertFalse(audit["passed"])
         self.assertIn("holdout_expectancy_not_positive", audit["reasons"])
 
-    def test_initial_research_champion_uses_validation_only(self):
+    def test_research_champion_requires_forward_shadow_evidence(self):
         with tempfile.TemporaryDirectory() as td:
-            report = update_governance(td, discovery={
-                "generation": 1, "validation_passed": 1,
-                "latest_experiments": [self._candidate()],
-            })
-            self.assertTrue(report["challenger_promoted"])
-            self.assertEqual(report["decision"], "initial_research_champion_validation_only")
-            self.assertIn("diagnostic_only", report["holdout_usage"])
-            self.assertFalse(report["production_promotion"]["enabled"])
-
-    def test_challenger_selection_is_not_changed_by_reused_holdout(self):
-        with tempfile.TemporaryDirectory() as td:
-            first = update_governance(td, discovery={
+            no_shadow = update_governance(td, discovery={
                 "generation": 1, "latest_experiments": [self._candidate()],
             })
-            original = first["research_champion"]["id"]
-            bad = self._candidate(holdout_avg=-0.02)
-            bad["id"] = "candidate-b"
-            second = update_governance(td, discovery={
-                "generation": 2, "latest_experiments": [bad],
-            })
-            self.assertEqual(second["research_champion"]["id"], original)
+            self.assertIsNone(no_shadow["research_champion"])
+            report = update_governance(td, discovery={
+                "generation": 1, "latest_experiments": [self._candidate()],
+            }, regime_report=self._shadow())
+            self.assertTrue(report["challenger_promoted"])
+            self.assertEqual(report["decision"], "initial_shadow_validated_research_champion")
+            self.assertEqual(report["research_champion"]["source"], "forward_shadow_paper")
+            self.assertFalse(report["production_promotion"]["enabled"])
+
+    def test_shadow_gate_rejects_weak_or_under_sampled_candidate(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertIsNone(update_governance(td, regime_report=self._shadow(trades=29))["research_champion"])
+            self.assertIsNone(update_governance(td, regime_report=self._shadow(pf=1.10))["research_champion"])
+            self.assertIsNone(update_governance(td, regime_report=self._shadow(dd=0.25))["research_champion"])
+
+    def test_shadow_challenger_must_outperform_existing_champion(self):
+        with tempfile.TemporaryDirectory() as td:
+            update_governance(td, regime_report=self._shadow())
+            second = update_governance(td, regime_report=self._shadow(
+                sid="candidate-b", avg=0.010, pf=1.3))
+            self.assertEqual(second["research_champion"]["id"], "candidate-a")
             self.assertFalse(second["challenger_promoted"])
-            # Identical validation score: negative holdout must not change selection
-            # or cause the candidate to be rejected by a reused holdout.
-            better_validation = self._candidate(score=31.0, holdout_avg=-0.02)
-            better_validation["id"] = "candidate-b"
-            better_validation["validation"]["avg_net"] = 0.02
-            third = update_governance(td, discovery={
-                "generation": 3, "latest_experiments": [better_validation],
-            })
-            self.assertEqual(third["research_champion"]["id"], "candidate-b")
+            third = update_governance(td, regime_report=self._shadow(
+                sid="candidate-c", avg=0.020, pf=1.6))
+            self.assertEqual(third["research_champion"]["id"], "candidate-c")
             self.assertTrue(third["challenger_promoted"])
-            self.assertFalse(third["research_champion"]["holdout"]["passed"])
 
     def test_plateau_increases_next_generation_mutation(self):
         with tempfile.TemporaryDirectory() as td:
