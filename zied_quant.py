@@ -1143,7 +1143,7 @@ class Brain:
                 ps.pop("nn", None)
                 thrs.pop("nn", None)
                 selection_aucs.pop("nn", None)
-                if mode == "nn":
+                if mode in ("nn", "ens"):
                     if "gbm" not in models:
                         raise RuntimeError("neither the neural network nor GBM produced valid gate predictions")
                     mode = "gbm"
