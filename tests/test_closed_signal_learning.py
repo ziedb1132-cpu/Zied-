@@ -89,6 +89,44 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertEqual(status["total"], 100)
         self.assertEqual(status["min_per_class"], 1)
 
+    def test_missing_champion_bootstrap_ignores_old_regular_attempt_counter(self):
+        class BootstrapGatePaper:
+            def __init__(self):
+                self.meta = {"last_learning_attempt_closed_count": "102"}
+            def closed_outcome_counts(self):
+                return {"wins": 57, "losses": 45, "total": 102}
+            def _get(self, key):
+                return self.meta.get(key)
+            def _set(self, key, value):
+                self.meta[key] = str(value)
+            def count(self, table, where="1=1"):
+                return 102 if table == "signals" and where == "labeled=1" else 0
+
+        paper = BootstrapGatePaper()
+        brain = zq.Brain(persist=False)
+        self.assertTrue(zq.initial_model_bootstrap_due(brain, paper, now=1000))
+        zq.mark_bootstrap_training_attempt(paper, now=1000)
+        self.assertFalse(zq.initial_model_bootstrap_due(brain, paper, now=1001))
+        self.assertFalse(zq.initial_model_bootstrap_due(brain, paper, now=1000 + 86399))
+        self.assertTrue(zq.initial_model_bootstrap_due(brain, paper, now=1000 + 86400))
+
+    def test_bootstrap_respects_sample_gate_and_does_not_replace_ready_model(self):
+        class GatePaper:
+            def __init__(self, total):
+                self.total = total
+            def closed_outcome_counts(self):
+                return {"wins": self.total - 1, "losses": 1, "total": self.total}
+            def _get(self, key):
+                return None
+            def count(self, table, where="1=1"):
+                return 0
+
+        brain = zq.Brain(persist=False)
+        self.assertFalse(zq.initial_model_bootstrap_due(brain, GatePaper(99), now=1000))
+        self.assertTrue(zq.initial_model_bootstrap_due(brain, GatePaper(100), now=1000))
+        brain.mode, brain.gbm = "gbm", object()
+        self.assertFalse(zq.initial_model_bootstrap_due(brain, GatePaper(100), now=1000))
+
     def test_new_schema_mismatch_forces_one_immediate_rebuild(self):
         class GatePaper:
             def __init__(self, schema_hash=None, total=100):
