@@ -205,8 +205,44 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertEqual(stats["missing_feature_names"], 1)
         self.assertEqual(stats["feature_count_mismatch"], 1)
         self.assertEqual(stats["malformed_feature_vector"], 1)
-        self.assertEqual(stats["valid_training_samples"], 0)
-        self.assertEqual(stats["excluded_total"], 3)
+        # A stale feature_count field is diagnostic only when the actual
+        # vector still matches its trustworthy feature-name manifest.
+        self.assertEqual(stats["valid_training_samples"], 1)
+        self.assertEqual(stats["excluded_total"], 2)
+        self.assertEqual(stats["low_coverage_included"], 0)
+
+    def test_low_coverage_closed_samples_are_kept_as_unknowns(self):
+        # 100 closed outcomes satisfy the existing first-fit sample gate.
+        for _ in range(50):
+            self.add_signal(0.01)
+        for _ in range(50):
+            self.add_signal(-0.01)
+
+        first = self.paper.db.execute("SELECT id,feature_names FROM signals ORDER BY id LIMIT 1").fetchone()
+        names = json.loads(first["feature_names"])
+        sparse = [0.25] + [None] * (zq.N_FEATURES - 1)
+        self.paper.db.execute("UPDATE signals SET feats=? WHERE id=?",
+                              (json.dumps(sparse), first["id"]))
+        self.paper.db.execute("UPDATE tracked_signals SET feats=? WHERE signal_id=?",
+                              (json.dumps(sparse), first["id"]))
+        self.paper.db.commit()
+
+        diagnostics = self.paper.closed_signal_diagnostics()
+        self.assertEqual(diagnostics["valid_training_samples"], 100)
+        self.assertEqual(diagnostics["low_coverage_included"], 1)
+        train = zq.collect_training_data(self.paper)
+        self.assertEqual(len(train["y"]), 100)
+        self.assertEqual(int(np.isnan(train["X"][0]).sum()), zq.N_FEATURES - 1)
+
+    def test_flat_closed_outcomes_are_included_as_non_winning_samples(self):
+        self.add_signal(0.0)
+        ds = self.paper.closed_signal_dataset()
+        self.assertEqual(len(ds["y"]), 1)
+        self.assertEqual(float(ds["y"][0]), 0.0)
+        counts = self.paper.closed_outcome_counts()
+        self.assertEqual(counts["wins"], 0)
+        self.assertEqual(counts["losses"], 1)
+        self.assertEqual(counts["total"], 1)
 
     def test_training_dataset_excludes_open_signals(self):
         self.add_signal(0.01, closed=True)
