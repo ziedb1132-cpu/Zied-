@@ -22,8 +22,10 @@ EXTRA_NAMES = [
     "atr_pct7", "atr_pct28",
     "range_pos50", "breakout_dist50", "drawdown20", "gap_pct",
 ]
-WIN_THRESHOLD = 500
-LOSS_THRESHOLD = 500
+MIN_PATTERN_TOTAL = 100
+MIN_PATTERN_PER_CLASS = 1
+WIN_THRESHOLD = MIN_PATTERN_PER_CLASS
+LOSS_THRESHOLD = MIN_PATTERN_PER_CLASS
 
 
 def _extra_features(df):
@@ -302,10 +304,10 @@ def discover_winning_patterns(zq, paper):
         try:
             vector = np.asarray(json.loads(feats_json), dtype=np.float64)
             label, ret = int(label), float(ret)
+            coverage = float(np.isfinite(vector).mean()) if vector.shape == (zq.N_FEATURES,) else 0.0
             if (vector.shape == (zq.N_FEATURES,)
-                    and np.isfinite(vector).all()
-                    and label in (0, 1)
-                    and np.isfinite(ret)):
+                    and not np.isinf(vector).any() and coverage >= 0.80
+                    and label in (0, 1) and np.isfinite(ret)):
                 parsed.append((float(feature_ts or 0.0), vector, label, ret))
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
@@ -313,7 +315,9 @@ def discover_winning_patterns(zq, paper):
     winners = [r for r in parsed if r[2] == 1 and r[3] > 0.0]
     losers = [r for r in parsed if r[2] == 0 and r[3] < 0.0]
     path = os.path.join(zq.CFG["DIR"], "winning_patterns.json")
-    if len(winners) < WIN_THRESHOLD or len(losers) < LOSS_THRESHOLD:
+    min_total = int(getattr(zq, "MIN_CLOSED_MODEL_SAMPLES", MIN_PATTERN_TOTAL))
+    min_class = int(getattr(zq, "MIN_CLOSED_CLASS_SAMPLES", MIN_PATTERN_PER_CLASS))
+    if len(winners) + len(losers) < min_total or len(winners) < min_class or len(losers) < min_class:
         # Old patterns must not remain active before the stricter evidence gate.
         if os.path.exists(path):
             try:
@@ -322,7 +326,7 @@ def discover_winning_patterns(zq, paper):
                 zq.log.warning("could not remove stale winning-pattern memory: %s", exc)
         return {"status": "waiting_for_closed_outcomes",
                 "winning_samples": len(winners), "losing_samples": len(losers),
-                "required_winners": WIN_THRESHOLD, "required_losers": LOSS_THRESHOLD}
+                "required_total": min_total, "required_per_class": min_class}
 
     old_count = int(paper._get("last_pattern_closed_count") or 0)
     closed_count = len(winners) + len(losers)
@@ -332,30 +336,34 @@ def discover_winning_patterns(zq, paper):
 
     W = np.vstack([r[1] for r in winners])
     L = np.vstack([r[1] for r in losers])
-    wm, lm = np.median(W, axis=0), np.median(L, axis=0)
-    pooled = np.vstack([W, L])
-    pooled_median = np.median(pooled, axis=0)
-    scale = np.median(np.abs(pooled - pooled_median), axis=0) * 1.4826
-    effect = np.abs(wm - lm) / np.maximum(scale, 1e-8)
-    effect = np.nan_to_num(effect, nan=0.0, posinf=0.0, neginf=0.0)
-    order = np.argsort(effect)[::-1]
     patterns = []
-    for j in order[:40]:
+    for j, name in enumerate(zq.FEATURE_COLS):
+        wv, lv = W[:, j][np.isfinite(W[:, j])], L[:, j][np.isfinite(L[:, j])]
+        if not len(wv) or not len(lv):
+            continue
+        wm, lm = float(np.median(wv)), float(np.median(lv))
+        pooled = np.concatenate([wv, lv])
+        pooled_median = float(np.median(pooled))
+        scale = float(np.median(np.abs(pooled - pooled_median)) * 1.4826)
+        effect = abs(wm - lm) / max(scale, 1e-8)
+        if not np.isfinite(effect):
+            continue
         patterns.append({
-            "feature": zq.FEATURE_COLS[int(j)],
-            "winner_median": float(wm[j]),
-            "loser_median": float(lm[j]),
-            "robust_effect": float(effect[j]),
-            "winner_q25_q75": [float(x) for x in np.quantile(W[:, j], [0.25, 0.75])],
-            "loser_q25_q75": [float(x) for x in np.quantile(L[:, j], [0.25, 0.75])],
+            "feature": name, "winner_median": wm, "loser_median": lm,
+            "robust_effect": float(effect),
+            "winner_q25_q75": [float(x) for x in np.quantile(wv, [0.25, 0.75])],
+            "loser_q25_q75": [float(x) for x in np.quantile(lv, [0.25, 0.75])],
         })
+    patterns.sort(key=lambda item: item["robust_effect"], reverse=True)
+    patterns = patterns[:40]
 
     result = {
         "version": 2, "updated_at": time.time(), "feature_count": int(zq.N_FEATURES),
         "winning_samples": len(winners), "losing_samples": len(losers),
         "total_usable_samples": len(parsed),
         "source": "closed tracked signals only; outcomes and net returns from later-candle evaluation",
-        "method": "robust median difference scaled by pooled MAD; discovery only, not proof of predictive edge",
+        "method": "per-feature finite-value robust median difference scaled by pooled MAD; unknown values are retained as missing and excluded only from that feature statistic; discovery only, not proof of predictive edge",
+        "minimum_total_samples": min_total, "minimum_per_class": min_class,
         "top_recurring_features": patterns,
     }
     os.makedirs(zq.CFG["DIR"], exist_ok=True)
