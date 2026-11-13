@@ -56,8 +56,11 @@ class WinningPatternDiscoveryTests(unittest.TestCase):
         for i in range(winners):
             x = np.zeros(300, dtype=float)
             x[0] = 2.0 + (i % 5) * 0.01
+            values = x.tolist()
+            if i == 0:
+                values[1] = None  # unknown is retained; only this feature statistic skips it
             rows.append((i + 1, i + 1, i + 1, f"WIN{i}-USDT",
-                         json.dumps(x.tolist()), 1, 1, 0.02,
+                         json.dumps(values), 1, 1, 0.02,
                          json.dumps([f"feature_{j}" for j in range(300)]), 300))
         for i in range(losers):
             x = np.zeros(300, dtype=float)
@@ -95,6 +98,13 @@ class WinningPatternDiscoveryTests(unittest.TestCase):
         self.assertEqual(result["status"], "waiting_for_closed_outcomes")
         self.assertEqual(result["winning_samples"], 49)
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "winning_patterns.json")))
+
+    def test_starts_at_100_even_when_one_class_has_only_one_real_sample(self):
+        self._insert_samples(winners=99, losers=1)
+        result = dle.discover_winning_patterns(self.zq, self.paper)
+        self.assertEqual(result["status"], "patterns_updated")
+        self.assertEqual(result["winning_samples"], 99)
+        self.assertEqual(result["losing_samples"], 1)
 
     def test_waits_until_both_outcome_classes_are_present(self):
         self._insert_samples(winners=100, losers=0)
