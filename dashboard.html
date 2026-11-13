@@ -1520,7 +1520,8 @@ async function connect(){
   if(state.contents["news_intelligence.json"])renderGlobalNews(state.contents["news_intelligence.json"]);
   if(state.contents["upcoming_events.json"])renderUpcomingEvents(state.contents["upcoming_events.json"]);
   state.strategy_lab=data.strategy_lab||null;
-  state.evolution=data.evolution||null;
+  state.evolution=data.evolution||data.contents?.["autonomous_strategy_report.json"]||null;
+  state.evolution_governance=data.evolution_governance||data.contents?.["evolution_governance.json"]||null;
   state.manifest={generated_at:data.generated_at};
   $("status").textContent="Connecté · "+(data.generated_at?timeFmt(data.generated_at):"Heure indisponible")+" · "+source;
   $("dot").style.background="var(--green)";
@@ -1531,6 +1532,7 @@ async function connect(){
   $("error").textContent="Impossible de charger dashboard_data.json depuis "+owner+"/"+repo+" (branche "+branch+").\\nDétail : "+message+"\\nVérifiez que le fichier existe dans state-data et rechargez la page.";
  }
  render();
+ try{renderEvolutionPanel();}catch(e){const note=$("evolutionNote");if(note)note.textContent="Erreur d’affichage du rapport d’évolution : "+(e&&e.message?e.message:String(e));}
 }
 
 const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0,gateTotalNow=Number(state.summary.gateTotal)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady(),gateTotalNow);});
