@@ -50,12 +50,12 @@ def chronological_train_tune_holdout_masks(ts, block, embargo):
 def fit_partition_requirements(n):
     """Minimum evidence and starting chronological block size for retraining."""
     n = int(n)
-    if n < 600:
-        raise ValueError(f"not enough closed-signal samples for train/tune/holdout ({n}; need 600)")
+    if n < 100:
+        raise ValueError(f"not enough verified closed-signal samples ({n}; need 100)")
     # Start with a 15% later block, then expand it dynamically if the 24h
-    # embargo leaves too few tuning rows. Never relax the embargo itself.
-    block = max(int(n * 0.15), 100)
-    return block, 300, 50, 50
+    # outcome-horizon embargo leaves too few tuning rows. Never relax the embargo.
+    block = max(int(n * 0.15), 15)
+    return block, 40, 15, 15
 
 
 def adaptive_chronological_partition(ts, initial_block, embargo,
@@ -63,22 +63,22 @@ def adaptive_chronological_partition(ts, initial_block, embargo,
     """Expand later blocks until all post-embargo partitions are usable."""
     n = len(ts)
     best = None
-    max_block = max(int(initial_block), int(n * 0.35))
+    max_block = max(int(initial_block), int(n * 0.40))
     for block in range(int(initial_block), max_block + 1):
         masks = chronological_train_tune_holdout_masks(ts, block, embargo)
         actual = tuple(int(mask.sum()) for mask in masks)
         best = (block, masks, actual)
-        # An 80/20 train/early-stop split must retain at least 240/40 rows.
+        # An 80/20 train/early-stop split must retain at least 30/10 rows.
         fit_rows = int(actual[0] * 0.80)
         early_rows = actual[0] - fit_rows
         if (actual[0] >= min_train and actual[1] >= min_tune
-                and actual[2] >= min_test and fit_rows >= 240 and early_rows >= 40):
+                and actual[2] >= min_test and fit_rows >= 30 and early_rows >= 10):
             return block, masks, actual
     actual = best[2] if best else (0, 0, 0)
     raise ValueError(
         f"train/tune/holdout block too small after 24h embargo: "
         f"best={actual}, need at least ({min_train}, {min_tune}, {min_test}) "
-        f"with train fit/early-stop >=240/40; verified samples={n}"
+        f"with train fit/early-stop >=30/10; verified samples={n}"
     )
 
 
@@ -93,23 +93,30 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     ret = None if ret is None else np.asarray(ret, dtype=np.float64)[order]
     n = len(X)
     block, min_train, min_tune, min_test = fit_partition_requirements(n)
+    if not np.isin(y, [0, 1]).all() or len(np.unique(y)) < 2:
+        raise ValueError("closed-signal training requires real winning and losing examples")
     embargo = zq.CFG["BARRIER_H"] * 3600
     block, (train_mask, tune_mask, test_mask), actual = adaptive_chronological_partition(
         ts, block, embargo, min_train, min_tune, min_test
     )
     Xraw, ytr = X[train_mask], y[train_mask]
-    mu, sd = Xraw.mean(0), Xraw.std(0) + 1e-8
+    ytune, ytest = y[tune_mask], y[test_mask]
+    if any(len(np.unique(part)) < 2 for part in (ytr, ytune, ytest)):
+        raise ValueError("chronological train/tune/holdout must each contain real wins and losses; collect more closed signals")
+    with np.errstate(invalid="ignore"):
+        mu, sd = np.nanmean(Xraw, axis=0), np.nanstd(Xraw, axis=0)
+    mu = np.where(np.isfinite(mu), mu, 0.0)
+    sd = np.where(np.isfinite(sd) & (sd > 1e-8), sd, 1.0)
     norm = zq.Brain.__new__(zq.Brain)
     norm.mu, norm.sd = mu, sd
     Xtr, Xtune, Xtest = norm._norm(Xraw), norm._norm(X[tune_mask]), norm._norm(X[test_mask])
-    ytune, ytest = y[tune_mask], y[test_mask]
     rtune = np.full(int(tune_mask.sum()), np.nan) if ret is None else ret[tune_mask]
     rtest = np.full(int(test_mask.sum()), np.nan) if ret is None else ret[test_mask]
     split = int(len(Xtr) * 0.80)
-    if split < 240 or len(Xtr) - split < 40:
+    if split < 30 or len(Xtr) - split < 10:
         raise ValueError(
             f"training split too small for early stopping: fit={split}, "
-            f"early_stop={len(Xtr) - split}; need at least 240/40"
+            f"early_stop={len(Xtr) - split}; need at least 30/10"
         )
     models, tune_p, test_p = {}, {}, {}
     gbm = zq.GBM()
