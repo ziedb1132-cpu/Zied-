@@ -72,6 +72,8 @@ class EvolutionGovernanceTests(unittest.TestCase):
             self.assertTrue(report["challenger_promoted"])
             self.assertEqual(report["decision"], "initial_shadow_validated_research_champion")
             self.assertEqual(report["research_champion"]["source"], "forward_shadow_paper")
+            self.assertIn("BULL", report["ai_strategy_feedback"])
+            self.assertTrue(report["ai_strategy_feedback"]["BULL"]["spec"])
             self.assertFalse(report["production_promotion"]["enabled"])
 
     def test_shadow_gate_rejects_weak_or_under_sampled_candidate(self):
