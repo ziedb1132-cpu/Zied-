@@ -38,7 +38,8 @@ class WinningPatternDiscoveryTests(unittest.TestCase):
             db.execute("""
                 CREATE TABLE signals(
                     id INTEGER PRIMARY KEY, ts REAL, feature_ts REAL, inst TEXT,
-                    feats TEXT, labeled INTEGER, label INTEGER, ret REAL
+                    feats TEXT, labeled INTEGER, label INTEGER, ret REAL,
+                    feature_names TEXT, feature_count INTEGER
                 )
             """)
             db.execute("""
@@ -56,17 +57,19 @@ class WinningPatternDiscoveryTests(unittest.TestCase):
             x = np.zeros(300, dtype=float)
             x[0] = 2.0 + (i % 5) * 0.01
             rows.append((i + 1, i + 1, i + 1, f"WIN{i}-USDT",
-                         json.dumps(x.tolist()), 1, 1, 0.02))
+                         json.dumps(x.tolist()), 1, 1, 0.02,
+                         json.dumps([f"feature_{j}" for j in range(300)]), 300))
         for i in range(losers):
             x = np.zeros(300, dtype=float)
             x[0] = -2.0 - (i % 5) * 0.01
             sid = winners + i + 1
             rows.append((sid, sid, sid, f"LOSS{i}-USDT",
-                         json.dumps(x.tolist()), 1, 0, -0.02))
+                         json.dumps(x.tolist()), 1, 0, -0.02,
+                         json.dumps([f"feature_{j}" for j in range(300)]), 300))
         with sqlite3.connect(self.db_path) as db:
             db.executemany(
-                "INSERT INTO signals(id, ts, feature_ts, inst, feats, labeled, label, ret) "
-                "VALUES(?,?,?,?,?,?,?,?)", rows
+                "INSERT INTO signals(id, ts, feature_ts, inst, feats, labeled, label, ret, feature_names, feature_count) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)", rows
             )
             db.executemany(
                 "INSERT INTO tracked_signals(signal_id, status, closed_ts) VALUES(?,?,?)",
