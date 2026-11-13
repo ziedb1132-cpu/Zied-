@@ -247,6 +247,19 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertEqual(counts["losses"], 1)
         self.assertEqual(counts["total"], 1)
 
+    def test_closed_tracked_outcome_is_used_even_if_signal_label_flag_is_stale(self):
+        self.add_signal(0.02)
+        sid = self.paper.db.execute("SELECT id FROM signals").fetchone()["id"]
+        # The closed tracked record is authoritative if the legacy signal
+        # label flag or signal return was not updated.
+        self.paper.db.execute(
+            "UPDATE signals SET labeled=0,label=NULL,ret=NULL WHERE id=?", (sid,))
+        self.paper.db.commit()
+        ds = self.paper.closed_signal_dataset()
+        self.assertEqual(len(ds["y"]), 1)
+        self.assertEqual(float(ds["y"][0]), 1.0)
+        self.assertAlmostEqual(float(ds["ret"][0]), 0.02)
+
     def test_training_dataset_excludes_open_signals(self):
         self.add_signal(0.01, closed=True)
         self.add_signal(-0.01, closed=False)
