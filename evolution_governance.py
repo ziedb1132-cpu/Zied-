@@ -297,7 +297,7 @@ def update_governance(state_dir, discovery=None, strategy=None,
     opportunities = {
         "validated_candidates": int((discovery or {}).get("validation_passed") or 0),
         "regime_recommendations": (sum(len(v) for v in regime_rows.values() if isinstance(v, list)) if isinstance(regime_rows, dict) else len(regime_rows) if isinstance(regime_rows, list) else 0),
-        "selection_rule": "positive net expectancy, PF > 1.05, cross-symbol consistency and independent holdout",
+        "selection_rule": "at least 30 matured forward shadow trades, positive net expectancy, PF >= 1.20 and max drawdown <= 20%",
     }
 
     champion_shadow = (champion or {}).get("shadow") or {}
