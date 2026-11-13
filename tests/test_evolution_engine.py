@@ -9,7 +9,7 @@ class TradeMetricsTests(unittest.TestCase):
         from evolution_engine import fit_partition_requirements
         block, min_train, min_tune, min_test = fit_partition_requirements(671)
         self.assertEqual(block, 100)
-        self.assertEqual((min_train, min_tune, min_test), (300, 50, 50))
+        self.assertEqual((min_train, min_tune, min_test), (40, 15, 15))
 
     def test_adaptive_partition_preserves_embargo_and_finds_usable_tuning_block(self):
         from evolution_engine import adaptive_chronological_partition
@@ -18,17 +18,18 @@ class TradeMetricsTests(unittest.TestCase):
             ts, initial_block=100, embargo=24 * 3600
         )
         self.assertGreaterEqual(block, 100)
-        self.assertGreaterEqual(actual[0], 300)
-        self.assertGreaterEqual(actual[1], 50)
-        self.assertGreaterEqual(actual[2], 50)
+        self.assertGreaterEqual(actual[0], 40)
+        self.assertGreaterEqual(actual[1], 15)
+        self.assertGreaterEqual(actual[2], 15)
         train, tune, test = masks
         self.assertLess(np.max(ts[train]), np.min(ts[tune]) - 24 * 3600)
         self.assertLess(np.max(ts[tune]), np.min(ts[test]) - 24 * 3600)
 
-    def test_supervised_fit_still_requires_600_verified_samples(self):
+    def test_supervised_fit_uses_the_shared_100_sample_minimum(self):
         from evolution_engine import fit_partition_requirements
-        with self.assertRaisesRegex(ValueError, "need 600"):
-            fit_partition_requirements(599)
+        self.assertEqual(fit_partition_requirements(100)[1:], (40, 15, 15))
+        with self.assertRaisesRegex(ValueError, "need 100"):
+            fit_partition_requirements(99)
 
     def test_chronological_split_keeps_equal_timestamps_together(self):
         # Each timestamp represents multiple coins observed on the same candle.
