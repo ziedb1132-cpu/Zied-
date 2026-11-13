@@ -2,7 +2,7 @@
 """Guarded diagnostics for the seven Zied Quant intelligence improvements.
 
 This module is deliberately observational: it never changes model weights,
-probabilities, entry thresholds, exit policies, or the 500/500 learning gate.
+probabilities, entry thresholds, exit policies, or the shared 100-sample learning gate.
 """
 import json
 import os
@@ -181,7 +181,7 @@ def feature_quality_report(zq, fit_snapshot, max_rows=1024):
 
 
 def feature_quality_report_from_db(zq, paper, max_rows=1024):
-    """Audit recent, matured feature snapshots even before the 500/500 AI gate opens."""
+    """Audit recent, matured feature snapshots even before the shared 100-sample AI gate opens."""
     try:
         with paper.lock:
             rows = paper.db.execute(
