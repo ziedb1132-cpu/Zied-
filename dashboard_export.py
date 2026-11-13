@@ -69,7 +69,8 @@ if db_path.exists():
 # discovery-lab, regime-selector, exit-policy and model walk-forward results.
 for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json", "news_intelligence.json", "news_model.json",
              "upcoming_events.json", "closed_signal_diagnostics.json", "feature_quality.json", "feature_importance.json", "feature_drift.json",
-             "model_calibration.json", "regime_performance.json"):
+             "model_calibration.json", "regime_performance.json",
+             "autonomous_strategy_report.json", "evolution_governance.json"):
     value = safe_json(root / name)
     if value is not None:
         if name == "candle_patterns.json" and isinstance(value, dict):
