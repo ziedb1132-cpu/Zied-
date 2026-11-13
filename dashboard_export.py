@@ -91,8 +91,12 @@ for name in ("meta.json", "comprehensive_backtest.json", "candle_patterns.json",
 comprehensive = data["contents"].get("comprehensive_backtest.json", {})
 layers = comprehensive.get("layers", {}) if isinstance(comprehensive, dict) else {}
 evolution = layers.get("autonomous_feature_discovery") if isinstance(layers, dict) else None
+if not isinstance(evolution, dict):
+    evolution = data["contents"].get("autonomous_strategy_report.json")
 data["evolution"] = evolution if isinstance(evolution, dict) else None
 governance = layers.get("evolution_governance") if isinstance(layers, dict) else None
+if not isinstance(governance, dict):
+    governance = data["contents"].get("evolution_governance.json")
 data["evolution_governance"] = governance if isinstance(governance, dict) else None
 
 out.parent.mkdir(parents=True, exist_ok=True)
