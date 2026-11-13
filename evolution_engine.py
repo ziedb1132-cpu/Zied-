@@ -118,13 +118,16 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
             f"training split too small for early stopping: fit={split}, "
             f"early_stop={len(Xtr) - split}; need at least 30/10"
         )
+    yfit, yearly = ytr[:split], ytr[split:]
+    if len(np.unique(yfit)) < 2 or len(np.unique(yearly)) < 2:
+        raise ValueError("fit and early-stop partitions must each contain real wins and losses")
     models, tune_p, test_p = {}, {}, {}
     gbm = zq.GBM()
-    if gbm.fit(Xtr[:split], ytr[:split], Xtr[split:], ytr[split:]):
+    if gbm.fit(Xtr[:split], yfit, Xtr[split:], yearly):
         models["gbm"] = gbm
         tune_p["gbm"], test_p["gbm"] = gbm.predict(Xtune), gbm.predict(Xtest)
     if zq.torch is not None:
-        net = zq._train_net(Xtr[:split], ytr[:split], Xtr[split:], ytr[split:], epochs)
+        net = zq._train_net(Xtr[:split], yfit, Xtr[split:], yearly, epochs)
         models["nn"] = net
         tune_p["nn"], test_p["nn"] = zq._nn_predict(net, Xtune), zq._nn_predict(net, Xtest)
     if not tune_p:
