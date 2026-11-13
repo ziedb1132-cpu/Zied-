@@ -107,28 +107,39 @@ class ClosedSignalLearningTests(unittest.TestCase):
         brain.load_issue = {"reason": "incompatible_feature_or_missing_value_schema"}
         self.assertTrue(zq.need_retrain(GatePaper(), brain))
         self.assertFalse(zq.need_retrain(GatePaper(zq.feature_schema_fingerprint()), brain))
+        # Once the schema rebuild has been recorded, normal refresh cadence applies.
+        self.assertFalse(zq.need_retrain(
+            GatePaper(zq.feature_schema_fingerprint(), total=109), brain))
         self.assertTrue(zq.need_retrain(
-            GatePaper(zq.feature_schema_fingerprint(), total=101), brain))
+            GatePaper(zq.feature_schema_fingerprint(), total=110), brain))
 
     def test_learning_refreshes_after_each_10_new_verified_closed_signals(self):
         class GatePaper:
             def __init__(self, total):
                 self.total = total
+                self.last_attempt = 100
             def closed_outcome_counts(self):
                 return {"wins": self.total // 2, "losses": self.total - self.total // 2, "total": self.total}
             def _get(self, key):
                 if key == "last_learning_attempt_closed_count":
-                    return "100"
+                    return str(self.last_attempt)
                 if key == "last_learning_attempt_schema_hash":
                     return zq.feature_schema_fingerprint()
                 return None
 
+        paper = GatePaper(100)
         brain = zq.Brain(persist=False)
-        self.assertFalse(zq.need_retrain(GatePaper(100), brain))
-        self.assertFalse(zq.need_retrain(GatePaper(109), brain))
-        self.assertTrue(zq.need_retrain(GatePaper(110), brain))
-        self.assertFalse(zq.need_retrain(GatePaper(119), brain))
-        self.assertTrue(zq.need_retrain(GatePaper(120), brain))
+        self.assertFalse(zq.need_retrain(paper, brain))
+        paper.total = 109
+        self.assertFalse(zq.need_retrain(paper, brain))
+        paper.total = 110
+        self.assertTrue(zq.need_retrain(paper, brain))
+        # The runner persists the attempted total after the full-history attempt.
+        paper.last_attempt = 110
+        paper.total = 119
+        self.assertFalse(zq.need_retrain(paper, brain))
+        paper.total = 120
+        self.assertTrue(zq.need_retrain(paper, brain))
 
     def test_adaptive_memory_learning_starts_with_20_real_closed_outcomes(self):
         for _ in range(10):
