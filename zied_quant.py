@@ -2217,7 +2217,7 @@ def poll_commands(paper, brain, timeout=0):
 # =====================================================================
 MIN_CLOSED_MODEL_SAMPLES = 100
 MIN_CLOSED_CLASS_SAMPLES = 1
-LEARNING_REFRESH_SAMPLES = 1
+LEARNING_REFRESH_SAMPLES = 10
 
 
 def learning_gate_status(paper):
@@ -2320,11 +2320,11 @@ def retrain(brain, paper, universe=None, reason="manual", refresh=False):
     return info
 
 def need_retrain(paper, brain=None):
-    """Refresh supervised learning after each newly verified closed outcome.
+    """Refresh supervised learning after each batch of 10 newly verified closes.
 
-    The 100-sample gate is required before the first fit. After that, every
-    additional verified close triggers a refresh attempt. A candidate still
-    must pass the untouched net-performance gate before it can become active.
+    The first fit requires 100 eligible closed outcomes. Thereafter, every
+    10 additional eligible closes trigger a full-history retraining attempt.
+    Candidate promotion still requires the independent net-performance gate.
     """
     status = learning_gate_status(paper)
     if not status["ready"]:
