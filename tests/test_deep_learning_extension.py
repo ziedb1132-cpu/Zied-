@@ -16,7 +16,7 @@ ext.install(zq)
 assert zq.N_FEATURES >= 300, zq.N_FEATURES
 assert len(zq.FEATURE_COLS) == zq.N_FEATURES
 assert zq.CFG["EXPLORATION_PROB_MIN"] == 0.65
-assert ext.WIN_THRESHOLD == 500 and ext.LOSS_THRESHOLD == 500  # closed-outcome pattern gate
+assert ext.MIN_PATTERN_TOTAL == 100 and ext.MIN_PATTERN_PER_CLASS == 1  # shared closed-outcome gate
 n = 800
 t = np.arange(n, dtype=float)
 c = pd.Series(100 * np.exp(
