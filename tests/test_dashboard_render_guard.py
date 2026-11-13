@@ -16,9 +16,10 @@ class DashboardRenderGuardTests(unittest.TestCase):
         start = self.html.index("function renderAiLearningPanel(){")
         end = self.html.index("\n}", start)
         ai_panel = self.html[start:end]
-        ai_metrics = ai_panel.index('$("aiMetrics")')
-        self.assertIn('const modelMeta=', ai_panel[:ai_metrics])
-        self.assertIn('const modelReady=', ai_panel[:ai_metrics])
+        self.assertIn('const modelMeta=', ai_panel)
+        self.assertIn('const modelReady=', ai_panel)
+        self.assertLess(ai_panel.index('const modelMeta='), ai_panel.index('modelMeta.mode'))
+        self.assertLess(ai_panel.index('const modelReady='), ai_panel.index('modelReady?'))
         self.assertIn("renderAiLearningPanel();", self.render)
 
     def test_independent_sections_are_rendered(self):
