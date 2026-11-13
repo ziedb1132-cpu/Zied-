@@ -97,6 +97,35 @@ with tempfile.TemporaryDirectory() as tmp:
         )
         self.assertEqual(proc.returncode, 0, proc.stdout + "\n" + proc.stderr)
 
+    def test_deep_network_training_produces_finite_checkpoint(self):
+        script = r"""
+import numpy as np
+import zied_quant as zq
+import deep_learning_evolution as ext
+ext.install(zq)
+if zq.torch is None:
+    raise SystemExit(0)
+rng = np.random.default_rng(7)
+Xf = rng.normal(0, 0.5, size=(64, 32)).astype(np.float32)
+yf = (rng.random(64) > 0.5).astype(np.float32)
+Xe = rng.normal(0, 0.5, size=(24, 32)).astype(np.float32)
+ye = (rng.random(24) > 0.5).astype(np.float32)
+net = zq._train_net(Xf, yf, Xe, ye, epochs=3)
+net.eval()
+with zq.torch.no_grad():
+    p = zq.torch.sigmoid(net(zq.torch.from_numpy(Xe))).numpy()
+assert p.shape == (24, 1)
+assert np.isfinite(p).all()
+assert ((p >= 0) & (p <= 1)).all()
+"""
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + "\\n" + proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
