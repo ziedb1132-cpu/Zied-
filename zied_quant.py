@@ -1020,7 +1020,9 @@ class Brain:
         y = np.asarray(y, dtype=np.float32)
         ts = np.asarray(ts, dtype=np.float64)
         ret = None if ret is None else np.asarray(ret, dtype=np.float64)
-        valid = feature_coverage_mask(X, 0.80) & np.isfinite(y) & np.isfinite(ts)
+        # Missing feature values are model inputs (with a separate missingness mask),
+        # not a reason to drop an otherwise valid closed outcome.
+        valid = (~np.isinf(X).any(axis=1)) & np.isfinite(y) & np.isfinite(ts)
         if ret is not None:
             valid &= np.isfinite(ret)
         X, y, ts = X[valid], y[valid], ts[valid]
