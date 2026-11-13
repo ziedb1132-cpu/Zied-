@@ -174,7 +174,9 @@ def _install_30_layer_net(zq):
             )
             self.act = nn.GELU()
         def forward(self, x):
-            return self.act(x + self.net(x))
+            # Scale each residual branch to keep a 30-linear-layer network stable
+            # on wide, sparse feature vectors.
+            return self.act(x + 0.1 * self.net(x))
     class ZiedDeepNet(nn.Module):
         # 1 input linear + 14 residual blocks x 2 linear + 1 output linear = 30.
         def __init__(self, n_in, d=192, p=0.15):
@@ -187,32 +189,65 @@ def _install_30_layer_net(zq):
     def n_linear(model):
         return sum(isinstance(layer, nn.Linear) for layer in model.modules())
     def train_net(Xf, yf, Xe, ye, epochs):
+        # Reject malformed rows before they can poison the optimizer or validation loss.
+        Xf = np.asarray(Xf, dtype=np.float32)
+        yf = np.asarray(yf, dtype=np.float32).reshape(-1)
+        Xe = np.asarray(Xe, dtype=np.float32)
+        ye = np.asarray(ye, dtype=np.float32).reshape(-1)
+        if Xf.ndim != 2 or Xe.ndim != 2 or Xf.shape[1] != Xe.shape[1]:
+            raise ValueError("30-layer network received incompatible feature matrices")
+        fit_ok = np.isfinite(Xf).all(axis=1) & np.isfinite(yf) & np.isin(yf, (0.0, 1.0))
+        val_ok = np.isfinite(Xe).all(axis=1) & np.isfinite(ye) & np.isin(ye, (0.0, 1.0))
+        Xf, yf, Xe, ye = Xf[fit_ok], yf[fit_ok], Xe[val_ok], ye[val_ok]
+        if len(Xf) < 20 or len(Xe) < 8:
+            raise ValueError(
+                f"30-layer network needs >=20 fit and >=8 validation rows; got {len(Xf)}/{len(Xe)}"
+            )
         torch.manual_seed(0)
-        Xt, yt = torch.tensor(np.asarray(Xf, dtype=np.float32)), torch.tensor(np.asarray(yf, dtype=np.float32))
-        Xv, yv = torch.tensor(np.asarray(Xe, dtype=np.float32)), torch.tensor(np.asarray(ye, dtype=np.float32))
+        Xt, yt = torch.from_numpy(Xf.copy()), torch.from_numpy(yf.copy())
+        Xv, yv = torch.from_numpy(Xe.copy()), torch.from_numpy(ye.copy())
+        if not (torch.isfinite(Xt).all() and torch.isfinite(yt).all()
+                and torch.isfinite(Xv).all() and torch.isfinite(yv).all()):
+            raise ValueError("30-layer network inputs remain non-finite after filtering")
         net = ZiedDeepNet(Xf.shape[1])
         assert n_linear(net) == 30, n_linear(net)
-        opt = torch.optim.AdamW(net.parameters(), lr=7e-4, weight_decay=1e-3)
+        opt = torch.optim.AdamW(net.parameters(), lr=1e-4, weight_decay=1e-3)
         sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, max(1, epochs))
         lossf = nn.BCEWithLogitsLoss()
-        best, state, bad = float("inf"), None, 0
-        for _ in range(epochs):
+        best, state, bad, valid_epochs, updates = float("inf"), None, 0, 0, 0
+        for _ in range(max(1, int(epochs))):
             net.train()
             perm = torch.randperm(len(Xt))
             for i in range(0, len(perm), 256):
                 b = perm[i:i+256]
                 if len(b) < 2:
                     continue
-                opt.zero_grad()
-                loss = lossf(net(Xt[b]).squeeze(1), yt[b])
+                opt.zero_grad(set_to_none=True)
+                logits = net(Xt[b]).squeeze(1)
+                loss = lossf(logits, yt[b])
+                if not torch.isfinite(loss):
+                    continue
                 loss.backward()
-                nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+                grad_norm = nn.utils.clip_grad_norm_(net.parameters(), 0.5)
+                if not torch.isfinite(grad_norm):
+                    opt.zero_grad(set_to_none=True)
+                    continue
                 opt.step()
+                updates += 1
             sch.step()
             net.eval()
             with torch.no_grad():
-                val_loss = lossf(net(Xv).squeeze(1), yv).item()
-            if val_loss < best - 1e-4:
+                val_logits = net(Xv).squeeze(1)
+                val_loss_tensor = lossf(val_logits, yv)
+                val_loss = float(val_loss_tensor.item())
+            if not np.isfinite(val_loss):
+                # Do not checkpoint a numerically invalid network. GBM remains eligible.
+                bad += 1
+                if bad >= 2:
+                    break
+                continue
+            valid_epochs += 1
+            if val_loss < best - 1e-6:
                 best, bad = val_loss, 0
                 state = {k: v.detach().clone() for k, v in net.state_dict().items()}
             else:
@@ -220,7 +255,10 @@ def _install_30_layer_net(zq):
                 if bad >= 10:
                     break
         if state is None:
-            raise RuntimeError("30-layer deep network training did not produce a valid checkpoint")
+            raise RuntimeError(
+                "30-layer network produced no finite validation checkpoint "
+                f"(valid_epochs={valid_epochs}, optimizer_updates={updates})"
+            )
         net.load_state_dict(state)
         net.eval()
         return net
