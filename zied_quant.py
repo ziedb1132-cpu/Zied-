@@ -1410,20 +1410,26 @@ class Paper:
     def closed_signal_dataset(self):
         """Training rows from tracked signals only, and only after their closure."""
         return _rows_to_ds(self.db.execute(
-            "SELECT COALESCE(s.feature_ts,s.ts) AS ts,s.inst,s.feats,s.feature_names,s.feature_count,"
-            "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label,s.ret,s.hold "
-            "FROM signals s WHERE EXISTS (SELECT 1 FROM tracked_signals t "
-            "WHERE t.signal_id=s.id AND t.status='CLOSED') "
-            "AND s.labeled=1 AND s.ret IS NOT NULL "
-            "ORDER BY s.feature_ts,s.ts,s.id").fetchall())
+            "SELECT COALESCE(s.feature_ts,s.ts) AS ts,s.inst,"
+            "COALESCE(s.feats,t.feats) AS feats,"
+            "COALESCE(s.feature_names,t.feature_names) AS feature_names,"
+            "COALESCE(s.feature_count,t.feature_count) AS feature_count,"
+            "CASE WHEN COALESCE(t.ret,s.ret)>0 THEN 1 ELSE 0 END AS label,"
+            "COALESCE(t.ret,s.ret) AS ret,COALESCE(t.hold,s.hold) AS hold "
+            "FROM tracked_signals t JOIN signals s ON s.id=t.signal_id "
+            "WHERE t.status='CLOSED' AND COALESCE(t.ret,s.ret) IS NOT NULL "
+            "ORDER BY COALESCE(t.closed_ts,s.ts),s.id").fetchall())
 
     def closed_signal_diagnostics(self):
         """Audit all closed signals and explain every exclusion from supervised training."""
         raw = self.db.execute(
-            "SELECT s.id,s.labeled,s.ret,s.feats,s.feature_names,s.feature_count,"
-            "COALESCE(s.feature_ts,s.ts) AS ts FROM signals s "
-            "WHERE EXISTS (SELECT 1 FROM tracked_signals t "
-            "WHERE t.signal_id=s.id AND t.status='CLOSED') ORDER BY s.id"
+            "SELECT s.id,CASE WHEN COALESCE(t.ret,s.ret) IS NULL THEN 0 ELSE 1 END AS labeled,"
+            "COALESCE(t.ret,s.ret) AS ret,COALESCE(s.feats,t.feats) AS feats,"
+            "COALESCE(s.feature_names,t.feature_names) AS feature_names,"
+            "COALESCE(s.feature_count,t.feature_count) AS feature_count,"
+            "COALESCE(s.feature_ts,s.ts) AS ts "
+            "FROM tracked_signals t JOIN signals s ON s.id=t.signal_id "
+            "WHERE t.status='CLOSED' ORDER BY s.id"
         ).fetchall()
         tracked = self.db.execute(
             "SELECT COUNT(*) FROM tracked_signals WHERE status='CLOSED'").fetchone()[0] or 0
@@ -1492,8 +1498,9 @@ class Paper:
                     # Keep the sample when the actual vector and name manifest align.
                     stats["feature_count_mismatch"] += 1
             except (TypeError, ValueError):
+                # Malformed count metadata is recorded but does not invalidate
+                # a vector whose actual length matches its feature-name manifest.
                 stats["feature_count_mismatch"] += 1
-                continue
             vector = np.full(N_FEATURES, np.nan, dtype=np.float64)
             bad_value = False
             for name, value in zip(names, values):
