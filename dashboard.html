@@ -242,7 +242,6 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
 <nav class="app-sidebar page-nav" id="dashboardNav" aria-label="Navigation principale">
  <div class="sidebar-label">WORKSPACE</div>
  <button type="button" data-tab="overview" class="active"><span class="nav-icon">⌂</span>Vue d’ensemble</button>
- <button type="button" data-tab="graphiques"><span class="nav-icon">▥</span>Graphiques</button>
  <button type="button" data-tab="news"><span class="nav-icon">◉</span>Actualités</button>
  <div class="sidebar-label">TRADING</div>
  <button type="button" data-tab="portfolio"><span class="nav-icon">▤</span>Portefeuille simulé</button>
@@ -284,7 +283,6 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
  <div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2><span id="chartReturnMeta" class="muted">En attente</span></div><div id="returnChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats</h2><span class="muted">Signaux suivis clôturés</span></div><div id="outcomeChart" class="chartbox"></div></div></div>
  <div class="chartgrid analytics-charts"><div class="card"><div class="charthead"><h2>Progression de validation IA</h2><span class="muted">Échantillons admissibles</span></div><div id="learningProgressChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Performance par motif de clôture</h2><span class="muted">Rendement observé</span></div><div id="exitPerformanceChart" class="chartbox"></div></div></div>
  <div class="cols"><div class="card"><h2>État du système</h2><div id="system"></div></div><div class="card"><h2>Évaluation des signaux</h2><div id="labelSummary"></div></div></div>
- <div class="card section"><h2>Résumé de la mémoire enregistrée</h2><div id="metaPreview"></div></div>
 </section>
 <section id="page-news" class="hide section">
  <div class="page-heading"><div><div class="page-eyebrow">GLOBAL NEWS INTELLIGENCE</div><h1>Actualités & analyse mondiale</h1><p>Actualités, calendrier économique et intelligence de marché réunis dans un espace dédié.</p></div><button type="button" class="refresh-btn" id="newsRefresh">↻ Actualiser</button></div>
@@ -325,8 +323,8 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
 
 <section id="page-graphiques" class="hide section"><h2>Graphiques</h2><p class="muted">Visualisation des performances, résultats et progression de l’apprentissage.</p><div class="chartgrid"><div class="card"><div class="charthead"><h2>Rendement cumulé des signaux clôturés</h2></div><div id="refPerformanceChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Répartition des résultats</h2></div><div id="refOutcomeChart" class="chartbox"></div></div></div><div class="chartgrid analytics-charts"><div class="card"><div class="charthead"><h2>Progression de validation IA</h2></div><div id="refLearningChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Performance par motif de clôture</h2></div><div id="refExitChart" class="chartbox"></div></div></div></section>\n\n<section id="page-closedTrades" class="hide section"><h2>Closed Trades</h2><p class="muted">Historique des signaux suivis et clôturés. Les sorties TRAIL sont comptabilisées dans SL.</p><div id="closedKpis" class="grid closed-kpis"></div><div class="chartgrid closed-charts"><div class="card"><div class="charthead"><h2>Répartition des clôtures</h2><span class="muted">100 dernières clôtures</span></div><div id="closedReasonChart" class="chartbox"></div></div><div class="card"><div class="charthead"><h2>Rendement cumulé réalisé</h2><span class="muted">Ordre chronologique</span></div><div id="closedReturnChart" class="chartbox"></div></div></div><div id="trackedClosed" class="tablewrap"></div></section>
 <section id="page-signals" class="hide section"><h2>Signals</h2><div class="card section"><h2>Signaux ouverts suivis</h2><p class="muted">Signaux qui ne sont pas encore clôturés.</p><div id="trackedOpen" class="tablewrap"></div></div></section>
-<section id="page-aiIntelligence" class="hide section"><h2>AI Intelligence</h2><div id="aiMetrics" class="grid"></div><div class="card section"><h2>Toutes les clés meta enregistrées</h2><div id="metaTable" class="tablewrap"></div></div></section>
-<section id="page-portfolio" class="hide section"><div class="executive-hero"><div class="hero-copy"><div class="eyebrow"><span class="pulse"></span> SIMULATION LOCALE · HTML</div><h2>Portefeuille virtuel</h2><p>Simulation indépendante, enregistrée dans le navigateur. Aucun ordre n’est envoyé à OKX et aucune donnée du moteur de trading n’est modifiée.</p><div class="hero-actions"><span class="hero-chip">PAPER ONLY</span><span class="hero-chip">ACTIVATION APRÈS VALIDATION IA</span></div></div><div class="hero-side"><div class="hero-cycle"><span>État du portefeuille</span><strong id="vpStatus">Verrouillé</strong></div><div class="hero-mini"><div><span>Capital initial</span><b id="vpCapital">—</b></div><div><span>Positions ouvertes</span><b id="vpOpenCount">0</b></div></div></div></div><div id="vpGateNotice" class="notice">Le portefeuille reste verrouillé jusqu’à l’atteinte de 500 signaux gagnants, 500 perdants et la disponibilité d’un modèle enregistré.</div><div class="card section"><h2>Configuration de la simulation</h2><div class="controls"><label for="vpCapitalInput">Capital initial (USDT)</label><input id="vpCapitalInput" type="number" min="1" step="0.01" placeholder="Saisir le capital de simulation"><button type="button" class="primary" id="vpSaveConfig">Enregistrer le capital</button><span class="muted">Allocation par signal : 5 % du capital initial. Paramètre local à ce navigateur.</span></div><div id="vpMetrics" class="grid"></div></div><div class="card section"><h2>Positions simulées</h2><p class="muted">Seules les nouvelles signaux portant une probabilité issue d’un modèle validé peuvent être prises en compte après déverrouillage. Les anciennes signaux ne sont pas rejouées.</p><div id="vpPositions" class="tablewrap"></div></div><div class="card section"><h2>Historique du portefeuille</h2><div id="vpHistory" class="tablewrap"></div></div><p class="muted">Les données du portefeuille sont conservées uniquement dans le stockage local du navigateur (localStorage). Elles ne sont pas synchronisées avec GitHub et peuvent disparaître si les données du navigateur sont effacées.</p></section>
+<section id="page-aiIntelligence" class="hide section"><div class="page-heading"><div><div class="page-eyebrow">MODEL CENTER</div><h1>Intelligence artificielle</h1><p>État du modèle, apprentissage et qualité de validation.</p></div></div><div id="aiMetrics" class="grid"></div></section>
+vpGateNotice" class="notice">La simulation nécessite au moins 100 résultats admissibles, des exemples gagnants et perdants, ainsi qu’un modèle validé.
 <section id="page-featureAnalysis" class="hide section"><h2>Feature Analysis</h2><div id="featureMetrics" class="grid"></div><div class="card section"><h2>Analyse des motifs de chandeliers</h2><div id="featurePatterns" class="tablewrap"></div></div><div class="card section"><h2>Qualité des features et risque de surapprentissage</h2><div id="featureQualityTable" class="tablewrap"></div></div><div id="featureNote" class="notice"></div></section>
 <section id="page-marketRegime" class="hide section"><h2>Market Regime</h2><div id="regimeMetrics" class="grid"></div><div class="card section"><h2>Performance par régime de marché</h2><div id="regimeTable" class="tablewrap"></div></div><div class="notice">Les résultats par régime restent N/A tant que le régime n’est pas enregistré avec chaque signal clôturé.</div></section>
 <section id="page-exitIntelligence" class="hide section"><h2>Exit Intelligence</h2><div id="exitMetrics" class="grid"></div><div class="card section"><h2>Résultats selon le motif de clôture</h2><div id="exitTable" class="tablewrap"></div></div></section>
@@ -395,7 +393,7 @@ pre{max-width:100%;overflow:auto;padding:13px;border:1px solid var(--line);borde
  <button type="button" data-mobile-page="overview" class="active"><span>⌂</span>Accueil</button>
  <button type="button" data-mobile-page="signals"><span>⌁</span>Signaux</button>
  <button type="button" data-mobile-page="closedTrades"><span>↗</span>Clôtures</button>
- <button type="button" data-mobile-page="graphiques"><span>▥</span>Graphiques</button>
+ <button type="button" data-mobile-page="news"><span>◉</span>Actualités</button>
  <button type="button" id="mobileMore"><span>☷</span>Menu</button>
 </nav>
 <script>
@@ -434,9 +432,9 @@ function renderCharts(){
  const W=720,H=220,L=48,R=16,T=16,B=34;
  // Learning gate progress: counts come from the persisted evaluation summary.
  const gw=Math.max(0,Number(state.summary.gateWins)||0),gl=Math.max(0,Number(state.summary.gateLosses)||0);
- const target=500,barW=300;
- const progress=[{label:"Gagnants",value:gw,color:"#12805c",y:48},{label:"Perdants",value:gl,color:"#d6455d",y:112}];
- $("learningProgressChart").innerHTML='<svg viewBox="0 0 360 190" role="img" aria-label="Progression vers 500 signaux gagnants et 500 perdants">'+progress.map(p=>'<text x="12" y="'+(p.y-10)+'" fill="#42536d" font-size="13">'+p.label+'</text><text x="348" y="'+(p.y-10)+'" text-anchor="end" fill="#17243a" font-size="13" font-weight="700">'+p.value.toLocaleString("fr-FR")+' / 500</text><rect x="12" y="'+p.y+'" width="'+barW+'" height="17" rx="8" fill="#edf1f6"/><rect x="12" y="'+p.y+'" width="'+(Math.min(target,p.value)/target*barW)+'" height="17" rx="8" fill="'+p.color+'"/>').join("")+'</svg><div class="chartlegend"><span>Gagnants admissibles : <b>'+gw+'</b></span><span>Perdants admissibles : <b>'+gl+'</b></span></div>';
+ const target=100,barW=300,total=Math.max(0,Number(state.summary.gateTotal)||0);
+ const progress=[{label:"Échantillons",value:total,color:"#35c6ad",y:48}];
+ $("learningProgressChart").innerHTML='<svg viewBox="0 0 360 130" role="img" aria-label="Progression vers 100 échantillons admissibles">'+progress.map(p=>'<text x="12" y="'+(p.y-10)+'" fill="#ffffff" font-size="13">'+p.label+'</text><text x="348" y="'+(p.y-10)+'" text-anchor="end" fill="#ffffff" font-size="13" font-weight="700">'+p.value.toLocaleString("fr-FR")+' / 100</text><rect x="12" y="'+p.y+'" width="'+barW+'" height="17" rx="8" fill="#263340"/><rect x="12" y="'+p.y+'" width="'+(Math.min(target,p.value)/target*barW)+'" height="17" rx="8" fill="'+p.color+'"/>').join("")+'</svg><div class="chartlegend"><span>Gagnants : <b>'+gw+'</b></span><span>Perdants : <b>'+gl+'</b></span></div>';
  if(!closed.length){$("returnChart").innerHTML='<div class="empty">Aucun signal clôturé avec un rendement numérique suffisant pour tracer la courbe.</div>';$("outcomeChart").innerHTML='<div class="empty">La répartition des résultats apparaîtra après la clôture des signaux.</div>';$("exitPerformanceChart").innerHTML='<div class="empty">Les performances par motif apparaîtront après les premières clôtures.</div>';$("chartReturnMeta").textContent="0 signal clôturé";return;}
  let cumulative=0;const points=closed.map((r,i)=>{cumulative+=Number(r.ret)*100;return {x:i,y:cumulative}});
  const min=Math.min(0,...points.map(p=>p.y)),max=Math.max(0,...points.map(p=>p.y)),span=max-min||1;
@@ -480,8 +478,8 @@ function loadVirtualPortfolio(){
 }
 let virtualPortfolio=loadVirtualPortfolio();
 function saveVirtualPortfolio(){try{localStorage.setItem(VP_STORAGE_KEY,JSON.stringify(virtualPortfolio));return true;}catch(e){return false;}}
-function renderVirtualPortfolio(gateWins,gateLosses,modelReady){
- const gateReady=gateWins>=500&&gateLosses>=500&&modelReady;
+function renderVirtualPortfolio(gateWins,gateLosses,modelReady,gateTotal){
+const gateReady=gateTotal>=100&&gateWins>0&&gateLosses>0&&modelReady;
  const status=$("vpStatus"),capital=$("vpCapital"),openCount=$("vpOpenCount"),notice=$("vpGateNotice");
  if(!status)return;
  if($("vpCapitalInput")&&document.activeElement!==$("vpCapitalInput"))$("vpCapitalInput").value=virtualPortfolio.capital??"";
@@ -490,7 +488,7 @@ function renderVirtualPortfolio(gateWins,gateLosses,modelReady){
  const unlocked=gateReady&&virtualPortfolio.capital!==null&&!!virtualPortfolio.activatedAt;
  status.textContent=unlocked?"Actif":"Verrouillé";
  notice.textContent=!gateReady
-  ?"Verrouillé : il faut 500 signaux gagnants, 500 signaux perdants et un modèle enregistré dans les données du tableau de bord."
+Verrouillé : il faut 100 résultats admissibles, au moins un gagnant et un perdant, et un modèle enregistré
   :virtualPortfolio.capital===null
    ?"Conditions d’apprentissage remplies. Saisissez le capital initial pour activer la simulation."
    :"Simulation active : allocation plafonnée à 5% du capital et risque théorique plafonné à 1% par signal.";
@@ -630,10 +628,10 @@ function renderEvolutionPanel(){
   {k:"Pire perte récente",v:fmtPct(recentPerf.largest_loss)},
   {k:"Échantillon performance",v:(recentPerf.trades??"—")+" / "+(previousPerf.trades??"—")+" clôtures"},
   {k:"Opportunités validées / régimes",v:(opp.validated_candidates??"—")+" / "+(opp.regime_recommendations??"—")},
-  {k:"Promotion production",v:gov.production_promotion?.enabled===false?"Verrouillée · 500 gagnants + 500 perdants + holdout":"Non autorisée par ce module"}
+validation indépendante requise
  ];
  $("evolutionGovernance").innerHTML=table(govRows,[["Contrôle","k"],["Résultat","v"]]);
- $("evolutionNote").textContent=(report.note||"Mutation + crossover + sélection élitiste.")+" · Holdout diagnostique uniquement, exclu du classement et de la promotion du champion. Le modèle de production reste protégé par les 500 gagnants + 500 perdants et un test final indépendant.";
+Toute promotion reste soumise à un test final indépendant.
 }
 
 function renderIndependentPages(){
@@ -733,19 +731,18 @@ function render(){
  const total=Number(state.summary.total)||0, labeledCount=Number(state.summary.labeled)||0, pending=Math.max(0,total-labeledCount);
  const wins=Number(state.summary.wins)||0,losses=Number(state.summary.losses)||0,avg=state.summary.avgRet;
  const gateWins=Number(state.summary.gateWins)||0,gateLosses=Number(state.summary.gateLosses)||0,gateTotal=Number(state.summary.gateTotal)||0;
- const gateReady=gateWins>=500&&gateLosses>=500;
- renderVirtualPortfolio(gateWins,gateLosses,portfolioModelReady());
+const gateReady=gateTotal>=100&&gateWins>0&&gateLosses>0;
+renderVirtualPortfolio(gateWins,gateLosses,portfolioModelReady(),gateTotal);
  const cycle=state.meta.cycle??"—",paused=String(state.meta.paused||"0")==="1";
  const heroCycle=$("heroCycle"),heroTracked=$("heroTracked"),heroEvaluated=$("heroEvaluated"),heroUpdated=$("heroUpdated");
  if(heroCycle)heroCycle.textContent=String(cycle);
  if(heroTracked)heroTracked.textContent=fmt(Number(state.summary.openTracked||0)+Number(state.summary.closedTracked||0));
  if(heroEvaluated)heroEvaluated.textContent=fmt(labeledCount);
  if(heroUpdated)heroUpdated.textContent=state.manifest?.generated_at?timeFmt(state.manifest.generated_at):"—";
- $("metrics").innerHTML=metric("Tous les signaux enregistrés",total,"Table signals dans SQLite")+metric("Signaux évalués",labeledCount,"Y compris les signaux non suivis")+metric("Signaux suivis ouverts",state.summary.openTracked,"Statut OPEN")+metric("Signaux suivis clôturés",state.summary.closedTracked,"Statut CLOSED")+metric("Gagnants admissibles à l’entraînement",gateWins,"Clôturés + rendement positif")+metric("Perdants admissibles à l’entraînement",gateLosses,"Clôturés + rendement négatif")+metric("Seuil d’entraînement",gateReady?"Prête":"En attente des résultats",gateWins+"/500 Gagnant · "+gateLosses+"/500 Perdant");
+$("metrics").innerHTML=metric("Positions ouvertes",state.summary.openTracked,"Signaux réellement suivis")+metric("Positions clôturées",state.summary.closedTracked,"Résultats réellement suivis")+metric("Échantillons admissibles",gateTotal,gateReady?"Apprentissage activé":"Objectif initial : 100")+metric("Gagnants",gateWins,"Résultats positifs vérifiés")+metric("Perdants",gateLosses,"Résultats négatifs vérifiés")+metric("État de l’apprentissage",gateReady?"Actif":"Collecte en cours",gateReady?"Les deux classes sont représentées":"En attente de 100 résultats et des deux classes");
  $("system").innerHTML=showRows({"Dépôt":DASHBOARD_REPOSITORY.owner+"/"+DASHBOARD_REPOSITORY.repo,"Branche des données":DASHBOARD_REPOSITORY.branch,"Cycle d’analyse":cycle,"Enregistrement des signaux":paused?"Temporairement suspendu":"Actif selon meta","Base de données":"Non téléchargée dans le navigateur — conservée dans state-data","Données": "Lecture seule — aucune transaction"});
  const winRate=labeledCount?(wins/labeledCount*100):null;
  const avgLabel=avg===null||avg===undefined?"—":(Number(avg)*100).toFixed(3)+"%";
- const winProgress=Math.min(100,gateWins/5),lossProgress=Math.min(100,gateLosses/5);
  const fmtPct=n=>Number(n).toFixed(1)+"%";
  $("labelSummary").innerHTML='<div class="eval-panel">'+
  '<div class="eval-kpis">'+
@@ -757,11 +754,9 @@ function render(){
  '<div class="eval-stats"><div class="eval-stat"><span>Signaux gagnants</span><b class="good">'+fmt(wins)+'</b></div><div class="eval-stat"><span>Signaux perdants / non positifs</span><b class="bad">'+fmt(losses)+'</b></div><div class="eval-stat"><span>Rendement théorique moyen</span><b>'+esc(avgLabel)+'</b></div><div class="eval-stat"><span>Signaux non encore évalués</span><b>'+fmt(pending)+'</b></div></div></div>'+
  '<div class="eval-block"><div class="eval-block-head"><strong>Signaux réellement suivis</strong><span class="eval-tag">Suivi des positions virtuelles</span></div>'+
  '<div class="eval-stats"><div class="eval-stat"><span>Encore ouverts</span><b>'+fmt(state.summary.openTracked)+'</b></div><div class="eval-stat"><span>Clôturés et évaluables</span><b>'+fmt(state.summary.closedTracked)+'</b></div></div></div>'+
- '<div class="eval-block"><div class="eval-block-head"><strong>Progression vers l’admissibilité à l’entraînement</strong><span class="eval-tag '+(gateWins>=500&&gateLosses>=500?"ready":"wait")+'">'+(gateWins>=500&&gateLosses>=500?"Seuil atteint":"Collecte en cours")+'</span></div>'+
- '<div class="eval-progress-row"><span class="name">Gagnants</span><div class="eval-track"><div class="eval-fill" style="width:'+winProgress+'%"></div></div><span class="pct">'+fmt(gateWins)+' / 500</span></div>'+
- '<div class="eval-progress-row"><span class="name">Perdants</span><div class="eval-track"><div class="eval-fill loss" style="width:'+lossProgress+'%"></div></div><span class="pct">'+fmt(gateLosses)+' / 500</span></div>'+
- '<div class="eval-stats"><div class="eval-stat"><span>Total des résultats admissibles</span><b>'+fmt(gateTotal)+'</b></div><div class="eval-stat"><span>Condition d’activation</span><b>'+(gateWins>=500&&gateLosses>=500?"Remplie":"1 000 résultats requis")+'</b></div></div></div>'+
- '<div class="eval-note">Seuls les signaux suivis puis clôturés sont comptabilisés dans le seuil d’entraînement. Les signaux non suivis et ceux qui sont encore ouverts restent exclus de ce compteur. Les résultats globaux et les résultats admissibles à l’entraînement sont présentés séparément.</div></div>';
+ '<div class="eval-block"><div class="eval-block-head"><strong>Progression de l’apprentissage</strong><span class="eval-tag '+(gateReady?"ready":"wait")+'">'+(gateReady?"Apprentissage activé":"Collecte en cours")+'</span></div>'+
+  '<div class="eval-stats"><div class="eval-stat"><span>Échantillons admissibles</span><b>'+fmt(gateTotal)+' / 100</b></div><div class="eval-stat"><span>Répartition réelle</span><b>'+fmt(gateWins)+' gagnants · '+fmt(gateLosses)+' perdants</b></div></div>'+
+  '<div class="eval-note">Le modèle commence l’apprentissage après 100 résultats réels, dès que les deux catégories sont représentées. Chaque nouvelle clôture admissible enrichit ensuite les données. Les contrôles de validation restent indépendants.</div></div></div>';
  const sigCols=[["Date d’enregistrement",r=>timeFmt(r.ts)],["Actif","inst"],["Prix",r=>priceFmt(r.price)],["Probabilité IA",r=>r.prob_source!=="validated_ai"||r.prob===null||r.prob===undefined?"—":(Number(r.prob)*100).toFixed(2)+"%"],["Rang","rank"],["Évaluation terminée",r=>Number(r.labeled)===1?"Oui":"Non"],["Résultat",r=>r.label===null||r.label===undefined?"—":Number(r.label)===1&&Number(r.ret)>0?"Gagnant":"Perdant / non positif"],["Rendement théorique",r=>r.ret===null||r.ret===undefined?"—":(Number(r.ret)*100).toFixed(3)+"%"],["Durée d’évaluation (heures)",r=>r.hold===null||r.hold===undefined?"—":fmt(r.hold)]];
  const ordered=state.signals.slice().sort((a,b)=>Number(b.ts||0)-Number(a.ts||0));
  
@@ -787,8 +782,7 @@ function render(){
  }
  $("trackedOpen").innerHTML=table(state.tracked.filter(r=>String(r.status).toUpperCase()==="OPEN"),trackedCols);const latestClosed100=closedLatest.slice(0,100);$("trackedClosed").innerHTML='<div class="charthead"><h2>Les 100 dernières clôtures</h2><span class="muted">Affichées : '+latestClosed100.length+' / '+allClosedLatest.length+' signaux clôturés</span></div>'+table(latestClosed100,trackedCols);
  $("metaPreview").innerHTML=showRows(Object.fromEntries(Object.entries(state.meta).slice(0,12)));
- const modelMeta=state.contents["meta.json"]; const modelReady=!!(modelMeta&&typeof modelMeta==="object"&&modelMeta.mode&&Number(modelMeta.n_in)>0); $("aiMetrics").innerHTML=metric("État du modèle",modelReady?("Modèle enregistré : "+modelMeta.mode):"Aucun modèle valide n’est enregistré dans state-data")+metric("Signaux gagnants clôturés / 500",gateWins,Math.min(100,gateWins/5).toFixed(1)+"% du seuil")+metric("Signaux perdants clôturés / 500",gateLosses,Math.min(100,gateLosses/5).toFixed(1)+"% du seuil")+metric("Échantillons admissibles à l’entraînement",gateTotal,"Total actuel des signaux suivis et clôturés")+metric("Seuil du modèle",modelReady?(modelMeta.thrs?.[modelMeta.mode]??"Non enregistré"):"—")+metric("AUC du modèle",modelReady?(modelMeta.auc??modelMeta.info?.auc??"Non enregistré"):"—")+metric("Dernier cycle",cycle);
- $("metaTable").innerHTML=table(Object.entries(state.meta).map(([key,value])=>({key,value:typeof value==="string"?value:JSON.stringify(value)})),[["Clé","key"],["Valeur","value"]]);
+$("aiMetrics").innerHTML=metric("État du modèle",modelReady?("Modèle enregistré : "+modelMeta.mode):"Aucun modèle validé enregistré")+metric("Échantillons admissibles",gateTotal,"Résultats réellement suivis et clôturés")+metric("Gagnants / perdants",gateWins+" / "+gateLosses,"Deux catégories réelles")+metric("Seuil initial",gateTotal>=100&&gateWins>0&&gateLosses>0?"Atteint":"100 résultats + deux catégories")+metric("AUC du modèle",modelReady?(modelMeta.auc??modelMeta.info?.auc??"Non enregistré"):"—")+metric("Dernier cycle",cycle);
  renderIndependentPages();
  syncDashboardCharts();
  const modelNames=["paper.db","ranking.csv","strategy_evolution.json","train.npz","model.pt","gbm.pkl","meta.json"];
@@ -1528,7 +1522,7 @@ async function connect(){
  render();
 }
 
-const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady());});
+const vpSaveButton=$("vpSaveConfig");if(vpSaveButton)vpSaveButton.addEventListener("click",()=>{const value=Number($("vpCapitalInput").value);if(!Number.isFinite(value)||value<=0){$("vpGateNotice").textContent="Veuillez saisir un capital initial supérieur à zéro.";return;}if(virtualPortfolio.capital!==null&&virtualPortfolio.capital!==value&&(virtualPortfolio.positions.length||virtualPortfolio.history.length)){ $("vpGateNotice").textContent="Le capital ne peut pas être modifié après le démarrage de la simulation afin de préserver l’historique.";return;}virtualPortfolio.capital=value;saveVirtualPortfolio();const gateWinsNow=Number(state.summary.gateWins)||0,gateLossesNow=Number(state.summary.gateLosses)||0,gateTotalNow=Number(state.summary.gateTotal)||0;renderVirtualPortfolio(gateWinsNow,gateLossesNow,portfolioModelReady(),gateTotalNow);});
 function showNewsView(view){
  const valid=["overview","articles","events","analysis","sources"];
  const key=valid.includes(view)?view:"overview";
@@ -1573,7 +1567,7 @@ setLanguage();
 
 <script id="zied-quant-new-navigation">
 (function(){
- const titles={overview:"Vue d’ensemble",graphiques:"Graphiques",portfolio:"Portefeuille simulé",signals:"Signaux ouverts",closedTrades:"Historique clôturé",aiIntelligence:"Intelligence IA",featureAnalysis:"Analyse des features",marketRegime:"Régime du marché",exitIntelligence:"Intelligence des sorties",modelHealth:"Santé du modèle",learningHistory:"Historique d’apprentissage",evolutionLab:"Évolution IA",backtestValidation:"Backtest & validation",strategyLabZ:"Strategy Lab",strategyMonitor:"Strategy Monitor",solana:"Solana · SOL/USDT",xrp:"XRP · XRP/USDT",okb:"OKB · OKB/USDT",bnb:"BNB · BNB/USDT",systemLogs:"Journaux du système"};
+const titles={overview:"Vue d’ensemble",news:"Actualités",graphiques:"Graphiques",portfolio:
  const title=document.getElementById("workspaceTitle");
  const dockButtons=[...document.querySelectorAll("[data-mobile-page]")];
  const menu=document.getElementById("mobileMore");
