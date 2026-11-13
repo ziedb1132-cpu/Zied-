@@ -2599,6 +2599,13 @@ def mark_bootstrap_training_attempt(paper, now=None):
     paper._set("bootstrap_attempt_labels", paper.count("signals", "labeled=1"))
 
 
+def initial_model_bootstrap_due(brain, paper, now=None):
+    """Retry initial fit when no validated champion exists, independent of normal cadence."""
+    return (not brain.ready
+            and learning_gate_status(paper)["ready"]
+            and bootstrap_training_due(paper, now))
+
+
 def run_cycle_backtest(universe, paper=None, folds=5):
     """Run the walk-forward research backtest as part of each analysis cycle."""
     try:
@@ -2653,7 +2660,19 @@ def once():
     monitor_tracked_signals(paper)
     label_signals(paper)
     status = enforce_closed_outcome_gate(brain, paper)
-    if status["ready"] and need_retrain(paper, brain):
+    if status["ready"] and initial_model_bootstrap_due(brain, paper):
+        mark_bootstrap_training_attempt(paper)
+        log.warning("AI bootstrap: validated model missing; first fit requested from %d verified closed outcomes",
+                    status["total"])
+        try:
+            retrain(brain, paper, uni, "إنشاء النموذج الأول من الإشارات المغلقة")
+        except Exception as e:
+            log.exception("initial AI model bootstrap failed: %s", e)
+            tg(f"⚠️ تعذر إنشاء النموذج الأولي؛ ستعاد المحاولة وفق المهلة وشروط الاعتماد: {e}")
+        finally:
+            paper._set("last_learning_attempt_closed_count", status["total"])
+            paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
+    elif status["ready"] and need_retrain(paper, brain):
         try:
             retrain(brain, paper, uni, "تعلّم من الإشارات المغلقة")
         except Exception as e:
@@ -2671,7 +2690,17 @@ def once():
     run_cycle_backtest(uni, paper)
     paper._set("cycle", cycle + 1)
     status = learning_gate_status(paper)
-    if status["ready"] and need_retrain(paper, brain):
+    if status["ready"] and initial_model_bootstrap_due(brain, paper):
+        mark_bootstrap_training_attempt(paper)
+        log.warning("AI bootstrap: model remains unavailable after cycle; retrying first fit")
+        try:
+            retrain(brain, paper, uni, "إعادة محاولة إنشاء النموذج الأول")
+        except Exception as e:
+            log.exception("post-cycle AI bootstrap failed: %s", e)
+        finally:
+            paper._set("last_learning_attempt_closed_count", status["total"])
+            paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
+    elif status["ready"] and need_retrain(paper, brain):
         try:
             retrain(brain, paper, uni, "تحديث بعد إشارة مغلقة")
         except Exception as e:
@@ -2706,7 +2735,19 @@ def run():
                 monitor_tracked_signals(paper)
                 label_signals(paper)
                 status = enforce_closed_outcome_gate(brain, paper)
-                if status["ready"] and need_retrain(paper, brain):
+                if status["ready"] and initial_model_bootstrap_due(brain, paper):
+                    mark_bootstrap_training_attempt(paper)
+                    log.warning("AI bootstrap: validated model missing; first fit requested from %d verified closed outcomes",
+                                status["total"])
+                    try:
+                        retrain(brain, paper, None, "إنشاء النموذج الأول من الإشارات المغلقة")
+                    except Exception as e:
+                        log.exception("initial AI model bootstrap failed: %s", e)
+                        tg(f"⚠️ تعذر إنشاء النموذج الأولي؛ ستعاد المحاولة وفق المهلة وشروط الاعتماد: {e}")
+                    finally:
+                        paper._set("last_learning_attempt_closed_count", status["total"])
+                        paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
+                elif status["ready"] and need_retrain(paper, brain):
                     try:
                         retrain(brain, paper, None, "تعلّم من الإشارات المغلقة")
                     except Exception as e:
@@ -2714,7 +2755,7 @@ def run():
                         tg(f"⚠️ فشل تحديث التعلم: {e}")
                     finally:
                         paper._set("last_learning_attempt_closed_count", status["total"])
-                    paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
+                        paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
                 elif not status["ready"]:
                     log.info("AI memory learning active; supervised model waiting: samples=%d/%d wins=%d losses=%d",
                              status["total"], MIN_CLOSED_MODEL_SAMPLES, status["wins"], status["losses"])
@@ -2725,14 +2766,24 @@ def run():
                 log.exception("scan failed: %s", e)
                 tg(f"⚠️ خطأ في المسح: {e}")
             status = learning_gate_status(paper)
-            if status["ready"] and need_retrain(paper, brain):
+            if status["ready"] and initial_model_bootstrap_due(brain, paper):
+                mark_bootstrap_training_attempt(paper)
+                log.warning("AI bootstrap: model remains unavailable after cycle; retrying first fit")
+                try:
+                    retrain(brain, paper, None, "إعادة محاولة إنشاء النموذج الأول")
+                except Exception as e:
+                    log.exception("post-cycle AI bootstrap failed: %s", e)
+                finally:
+                    paper._set("last_learning_attempt_closed_count", status["total"])
+                    paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
+            elif status["ready"] and need_retrain(paper, brain):
                 try:
                     retrain(brain, paper, None, "تحديث بعد إشارة مغلقة")
                 except Exception as e:
                     log.exception("post-closure learning failed: %s", e)
                 finally:
                     paper._set("last_learning_attempt_closed_count", status["total"])
-                paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
+                    paper._set("last_learning_attempt_schema_hash", feature_schema_fingerprint())
             time.sleep(max(5, CFG["SCAN_EVERY_SEC"] - (time.time() - t0)))
     except KeyboardInterrupt:
         stop.set()
