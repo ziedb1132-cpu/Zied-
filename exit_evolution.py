@@ -189,8 +189,8 @@ def _holdout_passes(metrics):
 def _promote(paper, zq):
     gate = zq.learning_gate_status(paper)
     if not gate["ready"]:
-        zq.log.info("AI exit-policy gate closed: verified samples=%d/100 wins=%d losses=%d",
-                    gate["total"], gate["wins"], gate["losses"])
+        zq.log.info("AI exit-policy gate closed: verified samples=%d/%d wins=%d losses=%d",
+                    gate["total"], gate["min_samples"], gate["wins"], gate["losses"])
         return []
     promoted = []
     with paper.lock:
@@ -279,7 +279,7 @@ def _promote(paper, zq):
 def _evaluate(paper, zq):
     _ensure(paper)
     # IMPORTANT: collect counterfactual TP/SL/TRAIL/TIME outcomes from day one.
-    # The shared verified-sample gate controls promotion only, never data collection.
+    # The shared 100-total-sample gate (both classes represented) controls promotion only, never data collection.
     horizon = max(p[5] for p in POLICIES)
     # Keep a 25-hour grace window so hourly / two-hour Actions schedules can
     # still replay the complete 24-hour path from the retained 5m candles.
