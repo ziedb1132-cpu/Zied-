@@ -198,9 +198,10 @@ def test_scan_and_once_pipeline():
     zq.CFG["SCAN_DEPTH"] = 300
     zq.CFG["BTC_FILTER"] = -1.0  # synthetic test candles should not trip the live BTC gate
     b = zq.Brain(persist=False); p = zq.Paper()
-    R = zq.scan(b, p, uni, 0, trade=True)                       # no model yet: ranking + signal logging only
+    R = zq.scan(b, p, uni, 0, trade=True)                       # ranking may explore, but only opened entries persist
     assert len(R) > 0 and R["rank"].is_monotonic_increasing
-    assert p.count("signals") >= min(zq.CFG["LOG_TOP"], len(R))
+    assert p.count("signals") == p.tracked_count()
+    assert p.count("signals") <= len(R)
     assert p.tracked_count("status='OPEN'") <= 10
     ds = zq.build_trainset(uni)
     b.fit(ds["X"], ds["y"], ds["ts"], ds["ret"], epochs=2, force=True)
