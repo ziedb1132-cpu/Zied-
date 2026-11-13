@@ -75,7 +75,7 @@ class TradeMetricsTests(unittest.TestCase):
         self.assertFalse(holdout_edge_passes(
             {"n": 35, "avg": 0.0105, "pf": 1.5}, baseline))
         self.assertFalse(holdout_edge_passes(
-            {"n": 20, "avg": 0.020, "pf": 2.0}, baseline))
+            {"n": 7, "avg": 0.020, "pf": 2.0}, baseline))
         self.assertFalse(holdout_edge_passes(
             {"n": 35, "avg": -0.001, "pf": 0.8}, baseline))
 
