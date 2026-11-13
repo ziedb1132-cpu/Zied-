@@ -187,44 +187,62 @@ def update_governance(state_dir, discovery=None, strategy=None,
     memory = _read(path)
     history = list(memory.get("history") or [])
     previous_champion = memory.get("research_champion")
-    candidates = [
-        item for item in (
-            _candidate_from_discovery(discovery),
-            _candidate_from_strategy(strategy),
-        ) if item is not None
-    ]
-    # Validation-only ordering: holdout metrics are deliberately excluded.
+    # A genetic candidate becomes a research Champion only after genuinely
+    # forward, matured shadow-paper evidence. Reused historical holdout slices
+    # never promote candidates or influence the breeding pool.
+    shadow = regime_report if isinstance(regime_report, dict) else {}
+    shadow_rows = shadow.get("selected_by_regime") or {}
+    candidates = []
+    if isinstance(shadow_rows, dict):
+        for regime_name, rows in shadow_rows.items():
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                trades = int(row.get("trades") or 0)
+                avg = _number(row.get("avg_net"))
+                pf = _number(row.get("profit_factor"), 0.0)
+                dd = _number(row.get("max_drawdown"), 1.0)
+                spec = row.get("spec")
+                if (not row.get("strategy_id") or not isinstance(spec, dict) or not spec
+                        or trades < 30 or avg is None or avg <= 0
+                        or pf < 1.20 or dd is None or dd > 0.20):
+                    continue
+                candidates.append({
+                    "id": row["strategy_id"], "generation": int((discovery or {}).get("generation") or 0),
+                    "score": avg, "spec": spec, "genome": None,
+                    "regime": str(regime_name),
+                    "shadow": {"trades": trades, "avg_net": avg, "profit_factor": pf,
+                               "max_drawdown": dd, "win_rate": _number(row.get("win_rate"))},
+                    "source": "forward_shadow_paper",
+                })
     candidates.sort(key=lambda x: (
-        _number((x.get("validation") or {}).get("avg_net"), -999.0),
-        _number((x.get("validation") or {}).get("profit_factor"), 0.0),
-        _number(x.get("score"), -100.0)), reverse=True)
+        _number((x.get("shadow") or {}).get("avg_net"), -999.0),
+        _number((x.get("shadow") or {}).get("profit_factor"), 0.0),
+        -_number((x.get("shadow") or {}).get("max_drawdown"), 1.0)), reverse=True)
     challenger = candidates[0] if candidates else None
     promoted = False
-    decision = "no_qualified_challenger"
+    decision = "no_shadow_validated_challenger"
     champion = previous_champion
 
     if challenger:
-        # Research champion selection uses tune/validation only. The holdout
-        # remains a one-way diagnostic and is not consulted for promotion.
-        new_val = challenger.get("validation") or {}
+        new_shadow = challenger["shadow"]
+        old_shadow = (champion or {}).get("shadow") or {}
         if not champion:
             champion = challenger
             promoted = True
-            decision = "initial_research_champion_validation_only"
+            decision = "initial_shadow_validated_research_champion"
+        elif challenger.get("id") == champion.get("id"):
+            champion = challenger
+            decision = "shadow_champion_refreshed"
+        elif (_number(new_shadow.get("avg_net"), -999.0)
+              >= _number(old_shadow.get("avg_net"), -999.0) + 0.0005
+              and _number(new_shadow.get("profit_factor"), 0.0)
+              >= max(1.20, _number(old_shadow.get("profit_factor"), 0.0) * 0.95)):
+            champion = challenger
+            promoted = True
+            decision = "shadow_validated_challenger_promoted"
         else:
-            old_val = champion.get("validation") or {}
-            old_avg = _number(old_val.get("avg_net"), -999.0)
-            new_avg = _number(new_val.get("avg_net"), -999.0)
-            old_pf = _number(old_val.get("profit_factor"), 0.0)
-            new_pf = _number(new_val.get("profit_factor"), 0.0)
-            if (challenger.get("id") != champion.get("id")
-                    and new_avg >= old_avg + 0.0005
-                    and new_pf >= max(1.05, old_pf * 0.95)):
-                champion = challenger
-                promoted = True
-                decision = "challenger_promoted_validation_only"
-            else:
-                decision = "champion_retained_validation_only"
+            decision = "shadow_champion_retained"
 
     gen = int((discovery or {}).get("generation") or 0)
     best_score = max(
@@ -278,27 +296,29 @@ def update_governance(state_dir, discovery=None, strategy=None,
         "selection_rule": "positive net expectancy, PF > 1.05, cross-symbol consistency and independent holdout",
     }
 
-    champion_hold = (champion or {}).get("holdout") or {}
+    champion_shadow = (champion or {}).get("shadow") or {}
     history.append({
         "generation": gen, "best_score": best_score,
-        "champion_avg_net": _number(champion_hold.get("avg_net")),
+        "champion_avg_net": _number(champion_shadow.get("avg_net")),
         "champion_id": (champion or {}).get("id"), "timestamp": time.time(),
     })
     history = history[-100:]
     memory.update({
         "schema": 1, "updated_at": time.time(), "history": history,
         "research_champion": champion, "last_challenger": challenger,
+        "ai_strategy_feedback": {str(x.get("regime")): x for x in candidates},
         "mutation_rate": mutation_rate,
     })
     _write(path, memory)
     return {
         "status": "ok", "generation": gen,
         "research_champion": champion, "challenger": challenger,
+        "ai_strategy_feedback": {str(x.get("regime")): x for x in candidates},
         "challenger_promoted": promoted, "decision": decision,
         "mutation_rate_next_generation": mutation_rate,
         "mutation_reason": mutation_reason,
         "overfit_audit": (challenger or {}).get("holdout"),
-        "holdout_usage": "diagnostic_only_never_used_for_candidate_ranking_or_research_champion_promotion",
+        "holdout_usage": "reused_historical_holdout_is_diagnostic_only; research_champion_requires_30_matured_forward_shadow_trades_pf_1.20_positive_net_expectancy_and_drawdown_at_most_20pct",
         "feature_evaluation": {
             "status": quality.get("status", "not_available"),
             "feature_count": quality.get("feature_count"),
@@ -322,5 +342,5 @@ def update_governance(state_dir, discovery=None, strategy=None,
             "enabled": False,
             "gate": "independent model holdout and net-performance validation; no fixed win/loss quota",
         },
-        "note": "Research Champion/Challenger selection uses tune/validation only. Reused chronological holdout is diagnostic only and never affects ranking or promotion. No production weights, live signals, orders, portfolio or risk settings are changed.",
+        "note": "Research Champion/Challenger selection requires matured forward shadow-paper evidence. Reused historical holdout is diagnostic only. AI strategy feedback is exported as research context; production model weights and live signals are not changed.",
     }
