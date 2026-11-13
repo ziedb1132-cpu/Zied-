@@ -1078,8 +1078,18 @@ class Brain:
         if g.fit(Xfit, yfit, Xearly, yearly):
             models["gbm"] = g; ps["gbm"] = g.predict(Xs)
         if torch is not None:
-            net = _train_net(Xfit, yfit, Xearly, yearly, epochs)
-            models["nn"] = net; ps["nn"] = _nn_predict(net, Xs)
+            try:
+                net = _train_net(Xfit, yfit, Xearly, yearly, epochs)
+                nn_selection = _nn_predict(net, Xs)
+                if np.isfinite(nn_selection).all():
+                    models["nn"] = net
+                    ps["nn"] = nn_selection
+                else:
+                    log.warning("30-layer network skipped: non-finite selection probabilities; keeping other validated models")
+            except Exception as exc:
+                # A neural-network failure must not discard an independently trained GBM
+                # or turn an otherwise valid walk-forward fold into a failed fold.
+                log.warning("30-layer network unavailable for this split; continuing with other models: %s", exc)
         if not ps:
             raise RuntimeError("no model available: install torch and/or lightgbm / scikit-learn")
         if len(ps) == 2:
@@ -1123,7 +1133,20 @@ class Brain:
         if "gbm" in models:
             pg_all["gbm"] = models["gbm"].predict(Xg)
         if "nn" in models:
-            pg_all["nn"] = _nn_predict(models["nn"], Xg)
+            nn_gate = _nn_predict(models["nn"], Xg)
+            if np.isfinite(nn_gate).all():
+                pg_all["nn"] = nn_gate
+            else:
+                # Do not let a corrupt NN gate prediction invalidate the GBM candidate.
+                log.warning("30-layer network omitted from untouched gate: non-finite probabilities")
+                models.pop("nn", None)
+                ps.pop("nn", None)
+                thrs.pop("nn", None)
+                selection_aucs.pop("nn", None)
+                if mode == "nn":
+                    if "gbm" not in models:
+                        raise RuntimeError("neither the neural network nor GBM produced valid gate predictions")
+                    mode = "gbm"
         if len(pg_all) == 2:
             pg_all["ens"] = (pg_all["nn"] + pg_all["gbm"]) / 2
         pg = pg_all[mode]
@@ -1986,23 +2009,40 @@ def simulate(idx, ds):
 def walk_forward(ds, folds=5, epochs=30, min_train_frac=0.4):
     o = np.argsort(ds["ts"], kind="stable")
     ds = {k: v[o] for k, v in ds.items()}
-    ts = ds["ts"]
-    edges = np.linspace(ts.min() + (ts.max() - ts.min()) * min_train_frac, ts.max() + 1, folds + 1)
+    ts = np.asarray(ds["ts"], dtype=np.float64)
+    unique_ts = np.unique(ts[np.isfinite(ts)])
+    if len(unique_ts) < 3:
+        raise RuntimeError("backtest needs at least three distinct feature timestamps")
+    # Partition by unique timestamps, not equal-width clock intervals. This keeps
+    # same-candle coin rows together and avoids empty test windows on irregular data.
+    first_test = min(max(1, int(len(unique_ts) * float(min_train_frac))), len(unique_ts) - 1)
+    test_times = unique_ts[first_test:]
+    fold_count = min(max(1, int(folds)), len(test_times))
+    time_chunks = [chunk for chunk in np.array_split(test_times, fold_count) if len(chunk)]
     emb = CFG["BARRIER_H"] * 3600
     oos = {}                                   # mode -> {"idx": [], "sig": [], "p": []}
-    for k in range(folds):
-        te = (ts >= edges[k]) & (ts < edges[k + 1]); tr = ts < edges[k] - emb
-        if te.sum() < 50 or tr.sum() < 800:
+    min_train_rows = max(100, MIN_CLOSED_MODEL_SAMPLES)
+    for k, chunk in enumerate(time_chunks):
+        te = np.isin(ts, chunk)
+        tr = ts < float(chunk[0]) - emb
+        if te.sum() < 30 or tr.sum() < min_train_rows:
+            log.info("fold %d/%d not evaluated: train=%d test=%d (minimum train=%d test=30)",
+                     k + 1, len(time_chunks), int(tr.sum()), int(te.sum()), min_train_rows)
             continue
         b = Brain(persist=False)
         try:
             b.fit(ds["X"][tr], ds["y"][tr], ds["ts"][tr], ds["ret"][tr], epochs=epochs, force=True)
         except Exception as e:
             log.warning("fold %d skipped: %s", k, e); continue
-        for mode, p in b.predict_all(ds["X"][te]).items():
+        fold_predictions = b.predict_all(ds["X"][te])
+        for mode, p in fold_predictions.items():
+            p = np.asarray(p, dtype=np.float64).reshape(-1)
+            if len(p) != int(te.sum()) or not np.isfinite(p).all():
+                log.warning("fold %d model %s returned invalid out-of-sample probabilities; skipped", k, mode)
+                continue
             d = oos.setdefault(mode, {"idx": [], "sig": [], "p": []})
             d["idx"].append(np.where(te)[0]); d["sig"].append(p >= b.thrs[mode]); d["p"].append(p)
-        log.info("fold %d/%d done (train=%d test=%d)", k + 1, folds, tr.sum(), te.sum())
+        log.info("fold %d/%d done (train=%d test=%d)", k + 1, len(time_chunks), tr.sum(), te.sum())
     if not oos:
         raise RuntimeError("backtest produced no out-of-sample fold (not enough data)")
     rep = {}
