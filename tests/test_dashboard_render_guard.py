@@ -20,6 +20,9 @@ class DashboardRenderGuardTests(unittest.TestCase):
     def test_independent_sections_are_rendered(self):
         self.assertIn("renderIndependentPages();", self.render)
 
+    def test_independent_analytics_render_after_general_render_failure(self):
+        self.assertIn("try{renderIndependentPages();}catch(pageError)", self.html)
+
     def test_no_literal_newline_escape_between_dashboard_pages(self):
         self.assertNotIn(r"\n\n<section", self.html)
 
