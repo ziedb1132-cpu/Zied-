@@ -47,11 +47,12 @@ def chronological_train_tune_holdout_masks(ts, block, embargo):
     return train_mask, tune_mask, test_mask
 
 
-def fit_partition_requirements(n):
+def fit_partition_requirements(n, minimum_samples=100):
     """Minimum evidence and starting chronological block size for retraining."""
     n = int(n)
-    if n < 100:
-        raise ValueError(f"not enough verified closed-signal samples ({n}; need 100)")
+    minimum_samples = int(minimum_samples)
+    if n < minimum_samples:
+        raise ValueError(f"not enough verified closed-signal samples ({n}; need {minimum_samples})")
     # Start with a 15% later block, then expand it dynamically if the 24h
     # outcome-horizon embargo leaves too few tuning rows. Never relax the embargo.
     block = max(int(n * 0.15), 15)
@@ -92,17 +93,21 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
     ts = np.asarray(ts, dtype=np.float64)[order]
     ret = None if ret is None else np.asarray(ret, dtype=np.float64)[order]
     n = len(X)
-    block, min_train, min_tune, min_test = fit_partition_requirements(n)
-    if not np.isin(y, [0, 1]).all() or len(np.unique(y)) < 2:
-        raise ValueError("closed-signal training requires real winning and losing examples")
+    min_class = int(getattr(zq, "MIN_CLOSED_CLASS_SAMPLES", 1))
+    block, min_train, min_tune, min_test = fit_partition_requirements(
+        n, getattr(zq, "MIN_CLOSED_MODEL_SAMPLES", 100))
+    if (not np.isin(y, [0, 1]).all()
+            or min(int(np.sum(y == 1)), int(np.sum(y == 0))) < min_class):
+        raise ValueError("closed-signal training requires the configured minimum of real wins and losses")
     embargo = zq.CFG["BARRIER_H"] * 3600
     block, (train_mask, tune_mask, test_mask), actual = adaptive_chronological_partition(
         ts, block, embargo, min_train, min_tune, min_test
     )
     Xraw, ytr = X[train_mask], y[train_mask]
     ytune, ytest = y[tune_mask], y[test_mask]
-    if any(len(np.unique(part)) < 2 for part in (ytr, ytune, ytest)):
-        raise ValueError("chronological train/tune/holdout must each contain real wins and losses; collect more closed signals")
+    if any(min(int(np.sum(part == 1)), int(np.sum(part == 0))) < min_class
+           for part in (ytr, ytune, ytest)):
+        raise ValueError("chronological train/tune/holdout must each contain the configured real wins and losses; collect more closed signals")
     with np.errstate(invalid="ignore"):
         mu, sd = np.nanmean(Xraw, axis=0), np.nanstd(Xraw, axis=0)
     mu = np.where(np.isfinite(mu), mu, 0.0)
@@ -119,8 +124,9 @@ def evolved_fit(self, X, y, ts, ret=None, epochs=80, force=False):
             f"early_stop={len(Xtr) - split}; need at least 30/10"
         )
     yfit, yearly = ytr[:split], ytr[split:]
-    if len(np.unique(yfit)) < 2 or len(np.unique(yearly)) < 2:
-        raise ValueError("fit and early-stop partitions must each contain real wins and losses")
+    if any(min(int(np.sum(part == 1)), int(np.sum(part == 0))) < min_class
+           for part in (yfit, yearly)):
+        raise ValueError("fit and early-stop partitions must each contain the configured real wins and losses")
     models, tune_p, test_p = {}, {}, {}
     gbm = zq.GBM()
     if gbm.fit(Xtr[:split], yfit, Xtr[split:], yearly):
