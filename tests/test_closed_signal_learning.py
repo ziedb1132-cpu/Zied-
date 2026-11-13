@@ -73,22 +73,21 @@ class ClosedSignalLearningTests(unittest.TestCase):
         self.assertGreater(ret, 0.0)
         self.assertEqual(outcome, "WIN")
 
-    def test_gate_opens_at_100_verified_samples_with_10_per_class(self):
-        # The model may start with an imbalanced but non-empty real dataset.
-        for _ in range(90):
+    def test_gate_opens_at_100_total_with_only_one_real_sample_per_class(self):
+        # No 500/500 or 10-per-class quota: 100 total and both observed labels.
+        for _ in range(99):
             self.add_signal(0.01)
-        for _ in range(9):
-            self.add_signal(-0.01)
         status = zq.learning_gate_status(self.paper)
-        self.assertEqual(status["wins"], 90)
-        self.assertEqual(status["losses"], 9)
+        self.assertEqual(status["wins"], 99)
+        self.assertEqual(status["losses"], 0)
         self.assertFalse(status["ready"])
         self.add_signal(-0.01)
         status = zq.learning_gate_status(self.paper)
-        self.assertEqual(status["wins"], 90)
-        self.assertEqual(status["losses"], 10)
+        self.assertEqual(status["wins"], 99)
+        self.assertEqual(status["losses"], 1)
         self.assertTrue(status["ready"])
         self.assertEqual(status["total"], 100)
+        self.assertEqual(status["min_per_class"], 1)
 
     def test_new_schema_mismatch_forces_one_immediate_rebuild(self):
         class GatePaper:
