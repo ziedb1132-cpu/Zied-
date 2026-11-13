@@ -1411,9 +1411,9 @@ class Paper:
         """Training rows from tracked signals only, and only after their closure."""
         return _rows_to_ds(self.db.execute(
             "SELECT COALESCE(s.feature_ts,s.ts) AS ts,s.inst,"
-            "COALESCE(s.feats,t.feats) AS feats,"
-            "COALESCE(s.feature_names,t.feature_names) AS feature_names,"
-            "COALESCE(s.feature_count,t.feature_count) AS feature_count,"
+            "COALESCE(t.feats,s.feats) AS feats,"
+            "COALESCE(t.feature_names,s.feature_names) AS feature_names,"
+            "COALESCE(t.feature_count,s.feature_count) AS feature_count,"
             "CASE WHEN COALESCE(t.ret,s.ret)>0 THEN 1 ELSE 0 END AS label,"
             "COALESCE(t.ret,s.ret) AS ret,COALESCE(t.hold,s.hold) AS hold "
             "FROM tracked_signals t JOIN signals s ON s.id=t.signal_id "
@@ -1425,8 +1425,8 @@ class Paper:
         raw = self.db.execute(
             "SELECT s.id,CASE WHEN COALESCE(t.ret,s.ret) IS NULL THEN 0 ELSE 1 END AS labeled,"
             "COALESCE(t.ret,s.ret) AS ret,COALESCE(s.feats,t.feats) AS feats,"
-            "COALESCE(s.feature_names,t.feature_names) AS feature_names,"
-            "COALESCE(s.feature_count,t.feature_count) AS feature_count,"
+            "COALESCE(t.feature_names,s.feature_names) AS feature_names,"
+            "COALESCE(t.feature_count,s.feature_count) AS feature_count,"
             "COALESCE(s.feature_ts,s.ts) AS ts "
             "FROM tracked_signals t JOIN signals s ON s.id=t.signal_id "
             "WHERE t.status='CLOSED' ORDER BY s.id"
@@ -1502,7 +1502,6 @@ class Paper:
                 # a vector whose actual length matches its feature-name manifest.
                 stats["feature_count_mismatch"] += 1
             vector = np.full(N_FEATURES, np.nan, dtype=np.float64)
-            bad_value = False
             for name, value in zip(names, values):
                 if name not in current:
                     stats["unknown_feature_names"] += 1
