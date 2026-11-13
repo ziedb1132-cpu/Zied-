@@ -488,7 +488,7 @@ const gateReady=gateTotal>=100&&gateWins>0&&gateLosses>0&&modelReady;
  const unlocked=gateReady&&virtualPortfolio.capital!==null&&!!virtualPortfolio.activatedAt;
  status.textContent=unlocked?"Actif":"Verrouillé";
  notice.textContent=!gateReady
-Verrouillé : il faut 100 résultats admissibles, au moins un gagnant et un perdant, et un modèle enregistré
+  ?"Verrouillé : il faut 100 résultats admissibles, au moins un gagnant et un perdant, et un modèle enregistré"
   :virtualPortfolio.capital===null
    ?"Conditions d’apprentissage remplies. Saisissez le capital initial pour activer la simulation."
    :"Simulation active : allocation plafonnée à 5% du capital et risque théorique plafonné à 1% par signal.";
@@ -628,10 +628,10 @@ function renderEvolutionPanel(){
   {k:"Pire perte récente",v:fmtPct(recentPerf.largest_loss)},
   {k:"Échantillon performance",v:(recentPerf.trades??"—")+" / "+(previousPerf.trades??"—")+" clôtures"},
   {k:"Opportunités validées / régimes",v:(opp.validated_candidates??"—")+" / "+(opp.regime_recommendations??"—")},
-validation indépendante requise
+{k:"Validation indépendante",v:"Requise"}
  ];
  $("evolutionGovernance").innerHTML=table(govRows,[["Contrôle","k"],["Résultat","v"]]);
-Toute promotion reste soumise à un test final indépendant.
+// Toute promotion reste soumise à un test final indépendant.
 }
 
 function renderIndependentPages(){
