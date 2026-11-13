@@ -249,7 +249,7 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
                   and m["max_drawdown"] <= MAX_DRAWDOWN)
         profiles.setdefault(sid, {})[regime] = {**m, "paper_approved": bool(passed)}
         if passed:
-            eligible[regime].append({"strategy_id": sid, **m})
+            eligible[regime].append({"strategy_id": sid, "spec": memory["strategy_specs"].get(sid, {}), **m})
 
     # A selector proposal is a top-three ensemble by matured shadow performance.
     # Coin-specific evidence is shrunk toward its regime-wide prior to limit overfit.
@@ -282,7 +282,7 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
                    "prior_regime_avg_net": prior, "paper_approved": bool(passed)}
         symbol_profiles.setdefault(symbol, {}).setdefault(regime, {})[sid] = profile
         if passed:
-            selected_by_symbol_regime[(symbol, regime)].append({"strategy_id": sid, **profile})
+            selected_by_symbol_regime[(symbol, regime)].append({"strategy_id": sid, "spec": memory["strategy_specs"].get(sid, {}), **profile})
     selected_by_symbol_regime = {
         f"{symbol}|{regime}": sorted(rows, key=lambda x: (
             x["shrunk_avg_net"], x["profit_factor"], -x["max_drawdown"]), reverse=True
@@ -313,7 +313,9 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
                            "min_expectancy": MIN_EXPECTANCY,
                            "max_drawdown": MAX_DRAWDOWN},
         "live_integration": False,
-        "note": "Independent shadow paper portfolio only. Selection is not connected to live signals or the production model."
+        "ai_feedback_ready": bool(selected),
+        "ai_feedback_source": "matured_shadow_trades_only",
+        "note": "Only strategies with matured shadow evidence are exported as research feedback; this report does not directly change production signals or model weights."
     }
     _save(memory_path, memory)
     _save(report_path, memory["last_report"])
