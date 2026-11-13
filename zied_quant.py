@@ -1259,14 +1259,19 @@ def _rows_to_ds(rows, label_key="label", ret_key="ret"):
                     or len(set(names)) != len(names)):
                 continue
             feature_count = r["feature_count"] if "feature_count" in r.keys() else None
-            if feature_count is not None and int(feature_count) != len(values):
-                continue
+            # The names manifest and vector length define the usable schema.
+            # feature_count is diagnostic metadata; a stale count must not discard
+            # an otherwise alignable closed outcome.
             vector = np.full(N_FEATURES, np.nan, dtype=np.float64)
             for name, value in zip(names, values):
                 target = current_index.get(name)
                 if target is None:
                     continue
-                vector[target] = np.nan if value is None else float(value)
+                try:
+                    number = np.nan if value is None else float(value)
+                except (TypeError, ValueError):
+                    number = np.nan
+                vector[target] = number if np.isfinite(number) else np.nan
             if vector.shape != (N_FEATURES,):
                 continue
             X.append(vector); y.append(r[label_key]); ts.append(r["ts"])
@@ -1407,7 +1412,7 @@ class Paper:
             "CASE WHEN s.ret>0 THEN 1 ELSE 0 END AS label,s.ret,s.hold "
             "FROM signals s WHERE EXISTS (SELECT 1 FROM tracked_signals t "
             "WHERE t.signal_id=s.id AND t.status='CLOSED') "
-            "AND s.labeled=1 AND s.ret IS NOT NULL AND s.ret != 0 "
+            "AND s.labeled=1 AND s.ret IS NOT NULL "
             "ORDER BY s.feature_ts,s.ts,s.id").fetchall())
 
     def closed_signal_diagnostics(self):
@@ -1430,9 +1435,11 @@ class Paper:
             "feature_count_mismatch": 0, "duplicate_feature_names": 0,
             "malformed_feature_vector": 0, "invalid_feature_values": 0,
             "infinite_feature_values": 0, "unknown_feature_names": 0,
-            "below_80_percent_coverage": 0, "invalid_timestamp": 0,
-            "valid_training_samples": 0, "wins": 0, "losses": 0,
-            "coverage_threshold": 0.80, "active_feature_count": int(N_FEATURES),
+            "below_80_percent_coverage": 0, "low_coverage_included": 0,
+            "invalid_timestamp": 0, "valid_training_samples": 0,
+            "wins": 0, "losses": 0,
+            "coverage_threshold": 0.80, "coverage_is_informational": True,
+            "active_feature_count": int(N_FEATURES),
         }
         current = set(FEATURE_COLS)
         positions = {name: i for i, name in enumerate(FEATURE_COLS)}
@@ -1442,7 +1449,7 @@ class Paper:
                 continue
             try:
                 ret_value = float(row["ret"])
-                if not np.isfinite(ret_value) or ret_value == 0:
+                if not np.isfinite(ret_value):
                     stats["invalid_return"] += 1
                     continue
             except (TypeError, ValueError):
@@ -1480,8 +1487,8 @@ class Paper:
                 continue
             try:
                 if row["feature_count"] is not None and int(row["feature_count"]) != len(values):
+                    # Keep the sample when the actual vector and name manifest align.
                     stats["feature_count_mismatch"] += 1
-                    continue
             except (TypeError, ValueError):
                 stats["feature_count_mismatch"] += 1
                 continue
@@ -1496,19 +1503,17 @@ class Paper:
                 try:
                     number = float(value)
                 except (TypeError, ValueError):
-                    bad_value = True
-                    break
+                    stats["invalid_feature_values"] += 1
+                    continue
                 if np.isinf(number):
                     stats["infinite_feature_values"] += 1
-                    bad_value = True
-                    break
-                vector[positions[name]] = number
-            if bad_value:
-                stats["invalid_feature_values"] += 1
-                continue
-            if np.isfinite(vector).mean() < 0.80:
+                    continue
+                vector[positions[name]] = number if np.isfinite(number) else np.nan
+            coverage = float(np.isfinite(vector).mean())
+            if coverage < 0.80:
                 stats["below_80_percent_coverage"] += 1
-                continue
+                stats["low_coverage_included"] += 1
+            # Coverage is reported for transparency, never used as a learning gate.
             stats["valid_training_samples"] += 1
             stats["wins" if ret_value > 0 else "losses"] += 1
         stats["excluded_total"] = max(0, stats["unique_closed_signals"] - stats["valid_training_samples"])
@@ -1528,12 +1533,12 @@ class Paper:
     @locked
     def closed_outcome_counts(self):
         stats = self.closed_signal_diagnostics()
-        log.info("closed-signal audit: closed=%d eligible=%d excluded=%d wins=%d losses=%d "
-                 "missing_names=%d bad_schema=%d below_80%%=%d",
+        log.info("closed-signal audit: closed=%d learnable=%d structurally_excluded=%d wins=%d non_wins=%d "
+                 "missing_names=%d schema_count_mismatch=%d low_coverage_included=%d",
                  stats["closed_tracked"], stats["valid_training_samples"], stats["excluded_total"],
                  stats["wins"], stats["losses"], stats["missing_feature_names"],
                  stats["feature_count_mismatch"] + stats["invalid_feature_names"],
-                 stats["below_80_percent_coverage"])
+                 stats["low_coverage_included"])
         return dict(wins=stats["wins"], losses=stats["losses"],
                     total=stats["valid_training_samples"])
 
@@ -2242,20 +2247,25 @@ def collect_training_data(paper, universe=None, refresh=False, with_trades=False
     # Learn only from observed, completed tracked signals; never invent missing outcomes.
     status = learning_gate_status(paper)
     ds = paper.closed_signal_dataset()
-    # Do not manufacture missing feature values for closed-signal learning.
-    # Keep NaN as an explicit unknown: Brain._norm encodes both the normalized
-    # value and a separate missingness indicator. Reject only infinities, rows
-    # below the established 80% observed-feature threshold, or invalid labels.
-    valid = (feature_coverage_mask(ds["X"], 0.80)
-             & np.isfinite(ds["y"])
+    # Every structurally alignable, completed outcome enters the learning memory.
+    # NaN/None/Inf and non-numeric feature cells are represented as Unknown by
+    # _rows_to_ds; Brain._norm adds an explicit missingness channel. Coverage is
+    # measured for diagnostics only, not used to discard a closed outcome.
+    valid = (np.isfinite(ds["y"])
              & np.isin(ds["y"], [0, 1])
              & np.isfinite(ds["ts"])
-             & np.isfinite(ds["ret"]))
-    excluded_incomplete = int(len(valid) - np.sum(valid))
+             & np.isfinite(ds["ret"])
+             & ~np.isinf(ds["X"]).any(axis=1))
+    excluded_invalid = int(len(valid) - np.sum(valid))
     ds = {k: v[valid] for k, v in ds.items()}
-    if excluded_incomplete:
-        log.info("closed-signal memory: excluded %d rows below 80%% feature coverage or with invalid labels/timestamps/returns (NaN retained as unknown)",
-                 excluded_incomplete)
+    if excluded_invalid:
+        log.warning("closed-signal memory: excluded %d structurally invalid rows (bad labels/timestamps/returns or infinite values)",
+                    excluded_invalid)
+    coverage = np.isfinite(ds["X"]).mean(axis=1) if len(ds["X"]) else np.asarray([])
+    log.info("closed-signal feature coverage: min=%.1f%% mean=%.1f%% low_coverage_samples=%d (included)",
+             float(np.min(coverage) * 100) if len(coverage) else 0.0,
+             float(np.mean(coverage) * 100) if len(coverage) else 0.0,
+             int(np.sum(coverage < 0.80)) if len(coverage) else 0)
     wins = int(np.sum(ds["y"] == 1))
     losses = int(np.sum(ds["y"] == 0))
     log.info("verified closed-signal memory: samples=%d wins=%d losses=%d (minimum total=%d, per class=%d)",
