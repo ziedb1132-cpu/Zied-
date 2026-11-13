@@ -19,12 +19,13 @@ class DerivedStrategyFeatureTests(unittest.TestCase):
             "holdout": {"trades": 21, "avg_net": 0.005},
         }
 
-    def test_500_win_loss_gate(self):
-        self.assertIsNone(approve_record(self.spec, self.evidence, 499, 500, {"ret1"}))
-        self.assertIsNone(approve_record(self.spec, self.evidence, 500, 499, {"ret1"}))
+    def test_shared_100_sample_gate_requires_both_outcomes(self):
+        self.assertIsNone(approve_record(self.spec, self.evidence, 49, 50, {"ret1"}))
+        self.assertIsNone(approve_record(self.spec, self.evidence, 100, 0, {"ret1"}))
+        self.assertIsNotNone(approve_record(self.spec, self.evidence, 99, 1, {"ret1"}))
 
     def test_approved_feature_is_causal_rule_output(self):
-        record = approve_record(self.spec, self.evidence, 500, 500, {"ret1"})
+        record = approve_record(self.spec, self.evidence, 50, 50, {"ret1"})
         self.assertEqual(record["feature_name"], strategy_feature_name(self.spec))
         frame = pd.DataFrame({"ret1": [-0.01, 0.02, 0.03]})
         result = approved_feature_matrix(frame, {"features": [record]})
@@ -33,7 +34,7 @@ class DerivedStrategyFeatureTests(unittest.TestCase):
     def test_negative_holdout_is_not_approved(self):
         evidence = dict(self.evidence)
         evidence["holdout"] = {"trades": 30, "avg_net": -0.001}
-        self.assertIsNone(approve_record(self.spec, evidence, 500, 500, {"ret1"}))
+        self.assertIsNone(approve_record(self.spec, evidence, 50, 50, {"ret1"}))
 
 
 if __name__ == "__main__":
