@@ -59,7 +59,7 @@ def fit_partition_requirements(n):
 
 
 def adaptive_chronological_partition(ts, initial_block, embargo,
-                                      min_train=300, min_tune=50, min_test=50):
+                                      min_train=40, min_tune=15, min_test=15):
     """Expand later blocks until all post-embargo partitions are usable."""
     n = len(ts)
     best = None
