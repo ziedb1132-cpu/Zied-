@@ -126,6 +126,48 @@ assert ((p >= 0) & (p <= 1)).all()
         )
         self.assertEqual(proc.returncode, 0, proc.stdout + "\\n" + proc.stderr)
 
+    def test_walk_forward_keeps_gbm_when_deep_network_training_fails(self):
+        script = r"""
+import numpy as np
+import zied_quant as zq
+import deep_learning_evolution as ext
+ext.install(zq)
+
+class StableFakeGBM:
+    kind = "test-fallback"
+    def fit(self, Xf, yf, Xe, ye):
+        return True
+    def predict(self, X):
+        return np.linspace(0.2, 0.8, len(X), dtype=np.float64)
+
+zq.GBM = StableFakeGBM
+def fail_nn(*args, **kwargs):
+    raise RuntimeError("simulated non-finite neural checkpoint")
+zq._train_net = fail_nn
+
+n = 900
+rng = np.random.default_rng(11)
+X = rng.normal(size=(n, zq.N_FEATURES)).astype(np.float64)
+y = (np.arange(n) % 2).astype(np.float32)
+ts = np.arange(n, dtype=np.float64) * 3600.0
+ret = np.where(y > 0, 0.012, -0.009).astype(np.float64)
+ds = {
+    "X": X, "y": y, "ts": ts, "ret": ret,
+    "hold": np.full(n, 4.0),
+    "coin": np.asarray([f"COIN{i % 40}" for i in range(n)]),
+}
+rep = zq.walk_forward(ds, folds=3, epochs=2)
+assert "gbm" in rep, rep
+assert rep["gbm"]["n_oos"] >= 30, rep["gbm"]
+"""
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + "\\n" + proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
