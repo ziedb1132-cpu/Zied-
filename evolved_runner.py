@@ -274,10 +274,11 @@ def _cycle_backtest_with_comprehensive_research(universe, paper=None, folds=5):
         zied_quant.log.info("heavy walk-forward/comprehensive research skipped: daily guard is active")
         return {"status": "skipped_daily_guard"}
     core_result = _original_cycle_backtest(universe, paper, folds)
-    if core_result is None:
-        return None
     if paper is not None:
         zied_quant.mark_daily_backtest_attempt(paper)
+    # Keep genetic discovery and its forward shadow learning independent from
+    # the core ML walk-forward result. A failed/undersized ML fold must not
+    # silently prevent strategy generations from running.
     try:
         run_comprehensive_backtest(universe=universe, paper=paper)
     except Exception as exc:
