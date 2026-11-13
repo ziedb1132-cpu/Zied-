@@ -25,8 +25,10 @@ def _load_pattern_memory(zq):
         wins = int(data.get("winning_samples", 0))
         losses = int(data.get("losing_samples", 0))
         total = int(data.get("total_usable_samples", wins + losses))
-        if (total < MIN_PATTERN_TOTAL or wins < MIN_PATTERN_PER_CLASS
-                or losses < MIN_PATTERN_PER_CLASS or wins + losses < MIN_PATTERN_TOTAL):
+        min_total = int(getattr(zq, "MIN_CLOSED_MODEL_SAMPLES", MIN_PATTERN_TOTAL))
+        min_class = int(getattr(zq, "MIN_CLOSED_CLASS_SAMPLES", MIN_PATTERN_PER_CLASS))
+        if (total < min_total or wins < min_class
+                or losses < min_class or wins + losses < min_total):
             return []
         if int(data.get("feature_count", 0)) != int(zq.N_FEATURES):
             return []
