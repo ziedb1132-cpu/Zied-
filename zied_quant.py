@@ -2021,7 +2021,7 @@ def walk_forward(ds, folds=5, epochs=30, min_train_frac=0.4):
     time_chunks = [chunk for chunk in np.array_split(test_times, fold_count) if len(chunk)]
     emb = CFG["BARRIER_H"] * 3600
     oos = {}                                   # mode -> {"idx": [], "sig": [], "p": []}
-    min_train_rows = max(100, MIN_CLOSED_MODEL_SAMPLES)
+    min_train_rows = max(120, MIN_CLOSED_MODEL_SAMPLES)
     for k, chunk in enumerate(time_chunks):
         te = np.isin(ts, chunk)
         tr = ts < float(chunk[0]) - emb
