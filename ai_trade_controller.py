@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Use closed-signal pattern memory in live paper-trade ranking and AI scoring.
 
-Pattern memory is unavailable until at least 500 net-positive and 500 net-negative closed signals.
+Pattern memory is available after 100 verified closed signals containing at least one real winner and one real loser.
 It is an auxiliary signal, not a substitute for model validation or risk gates.
 """
 import json
@@ -12,6 +12,8 @@ import numpy as np
 
 PATTERN_FILE = "winning_patterns.json"
 MAX_FEATURES = 40
+MIN_PATTERN_TOTAL = 100
+MIN_PATTERN_PER_CLASS = 1
 MODEL_SCORE_ADJUSTMENT = 0.08
 
 
@@ -20,7 +22,11 @@ def _load_pattern_memory(zq):
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
-        if int(data.get("winning_samples", 0)) < 500 or int(data.get("losing_samples", 0)) < 500:
+        wins = int(data.get("winning_samples", 0))
+        losses = int(data.get("losing_samples", 0))
+        total = int(data.get("total_usable_samples", wins + losses))
+        if (total < MIN_PATTERN_TOTAL or wins < MIN_PATTERN_PER_CLASS
+                or losses < MIN_PATTERN_PER_CLASS or wins + losses < MIN_PATTERN_TOTAL):
             return []
         if int(data.get("feature_count", 0)) != int(zq.N_FEATURES):
             return []
@@ -57,11 +63,15 @@ def pattern_scores(zq, X):
     if arr.ndim != 2 or arr.shape[1] != zq.N_FEATURES:
         return np.full(arr.shape[0] if arr.ndim else 1, 0.5)
     patterns = _load_pattern_memory(zq)
-    if not patterns or not np.isfinite(arr).all():
+    if not patterns or np.isinf(arr).any():
         return np.full(len(arr), 0.5)
-    evidence, weights = [], []
+    weighted_sum = np.zeros(len(arr), dtype=np.float64)
+    weight_sum = np.zeros(len(arr), dtype=np.float64)
     for idx, wm, lm, wq, lq, effect in patterns:
         values = arr[:, idx]
+        valid = np.isfinite(values)
+        if not valid.any():
+            continue
         wscale = max(float(wq[1] - wq[0]), abs(wm) * 0.02, 1e-6)
         lscale = max(float(lq[1] - lq[0]), abs(lm) * 0.02, 1e-6)
         dw = np.abs(values - wm) / wscale
@@ -70,10 +80,9 @@ def pattern_scores(zq, X):
         e = 1.0 / (1.0 + np.exp(-np.clip(dl - dw, -6, 6)))
         in_winner_band = (values >= wq[0]) & (values <= wq[1])
         e = np.where(in_winner_band, np.maximum(e, 0.75), e)
-        evidence.append(e)
-        weights.append(effect)
-    matrix = np.vstack(evidence)
-    score = np.average(matrix, axis=0, weights=np.asarray(weights, dtype=float))
+        weighted_sum[valid] += e[valid] * effect
+        weight_sum[valid] += effect
+    score = np.divide(weighted_sum, weight_sum, out=np.full(len(arr), 0.5), where=weight_sum > 0)
     return np.clip(score, 0.0, 1.0)
 
 
