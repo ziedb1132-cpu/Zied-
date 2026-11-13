@@ -20,6 +20,11 @@ class DashboardRenderGuardTests(unittest.TestCase):
     def test_independent_sections_are_rendered(self):
         self.assertIn("renderIndependentPages();", self.render)
 
+    def test_ai_page_explains_learning_threshold_and_validation_separately(self):
+        self.assertIn("Progression apprentissage", self.html)
+        self.assertIn("Validation indépendante", self.html)
+        self.assertIn("aiLearningNotice", self.html)
+
     def test_independent_analytics_render_after_general_render_failure(self):
         self.assertIn("try{renderIndependentPages();}catch(pageError)", self.html)
 
