@@ -187,6 +187,10 @@ def update_governance(state_dir, discovery=None, strategy=None,
     memory = _read(path)
     history = list(memory.get("history") or [])
     previous_champion = memory.get("research_champion")
+    # Discard legacy validation-only champions; they have not earned forward
+    # shadow confirmation under the current governance contract.
+    if previous_champion and previous_champion.get("source") != "forward_shadow_paper":
+        previous_champion = None
     # A genetic candidate becomes a research Champion only after genuinely
     # forward, matured shadow-paper evidence. Reused historical holdout slices
     # never promote candidates or influence the breeding pool.
