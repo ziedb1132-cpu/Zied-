@@ -21,7 +21,7 @@ class DashboardRenderGuardTests(unittest.TestCase):
         self.assertIn("renderIndependentPages();", self.render)
 
     def test_no_literal_newline_escape_between_dashboard_pages(self):
-        self.assertNotIn(r"\\n\\n<section", self.html)
+        self.assertNotIn(r"\n\n<section", self.html)
 
 
 if __name__ == "__main__":
