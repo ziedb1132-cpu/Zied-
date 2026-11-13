@@ -2203,7 +2203,7 @@ def poll_commands(paper, brain, timeout=0):
 # PIPELINE
 # =====================================================================
 MIN_CLOSED_MODEL_SAMPLES = 100
-MIN_CLOSED_CLASS_SAMPLES = 10
+MIN_CLOSED_CLASS_SAMPLES = 1
 LEARNING_REFRESH_SAMPLES = 1
 
 
@@ -2233,8 +2233,8 @@ def enforce_closed_outcome_gate(brain, paper):
                     os.remove(model_path)
             except OSError as exc:
                 log.warning("could not remove non-compliant model artifact %s: %s", model_path, exc)
-    # Pattern/strategy memory is retained and may inform conservative ranking before
-    # the supervised model has enough balanced, verified outcomes.
+    # Pattern/strategy memory is retained; supervised fitting starts at 100 verified
+    # closes once both real outcome classes are represented.
     return status
 
 
