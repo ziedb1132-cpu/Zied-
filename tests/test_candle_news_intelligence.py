@@ -94,7 +94,7 @@ def test_new_pattern_name_is_persisted_for_next_primary_schema(tmp_path, monkeyp
 def test_dynamic_sequence_feature_is_causal(monkeypatch):
     definition = {
         "feature_name": "candle_seq_test_3",
-        "sequence": ["220", "220", "220"],
+        "sequence": ["222", "222", "222"],
         "direction": "long",
         "status": "approved",
     }
