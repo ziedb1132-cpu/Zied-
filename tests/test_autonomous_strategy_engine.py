@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from autonomous_strategy_engine import (
-    build_features, FEATURES, _LIBRARY_FEATURES, _new_spec, _spec_id, _signals, _evaluate, run_discovery
+    build_features, FEATURES, _LIBRARY_FEATURES, _new_spec, _spec_id, _signals, _evaluate, run_discovery, _generate_candidates
 )
 
 
@@ -69,6 +69,31 @@ class AutonomousStrategyTests(unittest.TestCase):
         self.assertIn(child["tp_atr"], [1.25,1.5,2.0,2.5,3.0,4.0])
         self.assertIn(child["max_hold"], [6,12,18,24,36,48])
 
+    def test_generation_uses_exact_quotas_when_two_validated_parents_exist(self):
+        import random
+        parents = [
+            {"id":"parent-a","status":"validation_pass","spec":{"conditions":[
+                {"feature":"ret1","op":"gt","threshold":0.0},
+                {"feature":"rsi","op":"lt","threshold":50}],"sl_atr":1.5,"tp_atr":2.0,"max_hold":12}},
+            {"id":"parent-b","status":"validation_pass","spec":{"conditions":[
+                {"feature":"ema_gap","op":"gt","threshold":0.01},
+                {"feature":"volume_ratio","op":"gt","threshold":1.25}],"sl_atr":2.0,"tp_atr":3.0,"max_hold":24}},
+        ]
+        candidates, mutations, crossovers = _generate_candidates(
+            random.Random(123), 2, parents, set(), 30, 20)
+        self.assertEqual(len(candidates), 50)
+        self.assertEqual(mutations, 30)
+        self.assertEqual(crossovers, 20)
+        self.assertEqual(len({x["id"] for x in candidates}), 50)
+
+    def test_first_generation_fills_crossover_slots_with_mutations(self):
+        import random
+        candidates, mutations, crossovers = _generate_candidates(
+            random.Random(321), 1, [], set(), 30, 20)
+        self.assertEqual(len(candidates), 50)
+        self.assertEqual(mutations, 50)
+        self.assertEqual(crossovers, 0)
+
     def test_signal_expression_returns_boolean_vector(self):
         f=build_features(candles())
         spec={"conditions":[{"feature":"rsi","op":"lt","threshold":50},
@@ -88,18 +113,20 @@ class AutonomousStrategyTests(unittest.TestCase):
             self.assertTrue(np.isfinite(m["avg_net"]))
             self.assertGreaterEqual(m["max_drawdown"],0)
 
-    def test_discovery_persists_memory_and_generates_ten(self):
+    def test_discovery_persists_memory_and_generates_fifty(self):
         with tempfile.TemporaryDirectory() as td:
             uni=pd.DataFrame({"last":[1,1,1]},index=["A-USDT","B-USDT","C-USDT"])
             def get_candles(inst,tf,limit):
                 return candles(seed={"A-USDT":1,"B-USDT":2,"C-USDT":3}[inst])
             result=run_discovery(uni,get_candles,td,telegram=None)
-            self.assertEqual(result["generated"],10)
+            self.assertEqual(result["generated"],50)
+            self.assertEqual(result["mutation_candidates"],50)
+            self.assertEqual(result["crossover_candidates"],0)
             self.assertTrue(os.path.exists(os.path.join(td,"autonomous_strategy_memory.json")))
             import json
             saved=json.load(open(os.path.join(td,"autonomous_strategy_memory.json"),encoding="utf-8"))
             self.assertEqual(saved["generation"],1)
-            self.assertEqual(len(saved["archive"]),10)
+            self.assertEqual(len(saved["archive"]),50)
 
 
 if __name__=="__main__":
