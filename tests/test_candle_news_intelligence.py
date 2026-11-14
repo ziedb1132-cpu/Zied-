@@ -61,7 +61,7 @@ def test_pattern_feature_matrix_is_causal_and_model_ready():
     extended = pd.concat([candles, pd.DataFrame([{"o": 108, "h": 110, "l": 107, "c": 109, "vol": 22}],
                                                   index=[pd.Timestamp("2026-01-01 04:00:00")])])
     extended_matrix = cni.pattern_feature_matrix(extended)
-    pd.testing.assert_frame_equal(matrix.iloc[:4], extended_matrix.iloc[:4])
+    pd.testing.assert_frame_equal(matrix.iloc[:4], extended_matrix.iloc[:4], check_freq=False)
 
 
 
