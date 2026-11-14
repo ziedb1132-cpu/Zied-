@@ -83,6 +83,7 @@ def detect_candlestick_patterns(candles):
     a, b, c = cs[-3], cs[-2], cs[-1]
     p = []
     def add(name, direction, confidence):
+        _register_pattern_name(name)
         p.append({"name": name, "direction": direction,
                   "confidence": round(float(np.clip(confidence, 0.0, 1.0)), 3)})
 
@@ -181,6 +182,70 @@ PATTERN_FEATURE_NAMES = tuple(
     [f"candle_pat_{_pattern_slug(name)}" for name in PATTERN_NAMES]
     + ["candle_pat_count"]
 )
+_PATTERN_REGISTRY_PATH = None
+
+
+def _write_pattern_registry():
+    if not _PATTERN_REGISTRY_PATH:
+        return
+    payload = {
+        "version": 1,
+        "patterns": list(PATTERN_NAMES),
+        "feature_names": list(PATTERN_FEATURE_NAMES),
+        "note": "Names are discovered by the causal detector; newly registered names enter the primary model schema on the next process start."
+    }
+    tmp = _PATTERN_REGISTRY_PATH + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(_PATTERN_REGISTRY_PATH) or ".", exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False, allow_nan=False, indent=2)
+        os.replace(tmp, _PATTERN_REGISTRY_PATH)
+    except OSError:
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
+
+
+def configure_pattern_registry(path):
+    """Load persistent pattern vocabulary before the primary model schema is built."""
+    global PATTERN_NAMES, PATTERN_FEATURE_NAMES, _PATTERN_REGISTRY_PATH
+    _PATTERN_REGISTRY_PATH = path
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            saved = json.load(fh)
+        names = saved.get("patterns", []) if isinstance(saved, dict) else []
+    except (OSError, ValueError, TypeError):
+        names = []
+    # Keep the built-in vocabulary first and append only valid, unique discoveries.
+    merged = list(PATTERN_NAMES)
+    for name in names:
+        if isinstance(name, str) and name.strip() and len(name) <= 80 and name not in merged:
+            merged.append(name)
+    PATTERN_NAMES = tuple(merged)
+    PATTERN_FEATURE_NAMES = tuple(
+        [f"candle_pat_{_pattern_slug(name)}" for name in PATTERN_NAMES]
+        + ["candle_pat_count"]
+    )
+    _write_pattern_registry()
+    return PATTERN_FEATURE_NAMES
+
+
+def _register_pattern_name(name):
+    """Persist a newly detected pattern for inclusion in the next model schema."""
+    global PATTERN_NAMES, PATTERN_FEATURE_NAMES
+    if not isinstance(name, str) or not name.strip() or len(name) > 80:
+        return
+    if name in PATTERN_NAMES:
+        return
+    PATTERN_NAMES = tuple(list(PATTERN_NAMES) + [name])
+    PATTERN_FEATURE_NAMES = tuple(
+        [f"candle_pat_{_pattern_slug(item)}" for item in PATTERN_NAMES]
+        + ["candle_pat_count"]
+    )
+    _write_pattern_registry()
+
 
 def pattern_feature_matrix(candles):
     """Build causal per-candle pattern inputs using only candles closed at each row.
