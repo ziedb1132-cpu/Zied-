@@ -88,3 +88,31 @@ def test_new_pattern_name_is_persisted_for_next_primary_schema(tmp_path, monkeyp
     )
     names = cni.configure_pattern_registry(str(registry))
     assert "candle_pat_new_research_pattern" in names
+
+
+
+def test_dynamic_sequence_feature_is_causal(monkeypatch):
+    definition = {
+        "feature_name": "candle_seq_test_3",
+        "sequence": ["201", "201", "201"],
+        "direction": "long",
+        "status": "approved",
+    }
+    monkeypatch.setattr(cni, "_DISCOVERED_PATTERN_DEFS", [definition])
+    candles = pd.DataFrame([
+        {"o": 10, "h": 11, "l": 9, "c": 11, "vol": 1},
+        {"o": 10, "h": 11, "l": 9, "c": 11, "vol": 1},
+        {"o": 10, "h": 11, "l": 9, "c": 11, "vol": 1},
+        {"o": 10, "h": 11, "l": 9, "c": 11, "vol": 1},
+    ], index=pd.date_range("2026-01-01", periods=4, freq="h"))
+    matrix = cni.pattern_feature_matrix(candles)
+    assert "candle_seq_test_3" in matrix.columns
+    assert matrix.iloc[2]["candle_seq_test_3"] == 1.0
+    assert matrix.iloc[3]["candle_seq_test_3"] == 1.0
+
+
+def test_sequence_discovery_handles_empty_universe():
+    result = cni.discover_sequence_patterns({})
+    assert result["candidate_sequences"] == 0
+    assert result["approved"] == 0
+    assert result["horizon_bars"] == 12
