@@ -226,13 +226,14 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
                 continue
             ret = future / current - 1.0
             stamp = frame.index[end] if len(frame.index) else end
+            label_end_stamp = frame.index[end + DISCOVERY_HORIZON] if len(frame.index) else end + DISCOVERY_HORIZON
             for width in range(3, 21):
                 seq = tuple(tokens[end - width + 1:end + 1])
                 if seq not in occurrences and len(occurrences) >= DISCOVERY_MAX_CANDIDATES:
                     continue
                 bucket = occurrences.setdefault(seq, [])
                 if len(bucket) < 500:
-                    bucket.append((stamp, str(symbol), float(ret)))
+                    bucket.append((stamp, str(symbol), float(ret), label_end_stamp))
 
     approved = []
     for seq, events in occurrences.items():
@@ -244,7 +245,9 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
         timestamps = sorted({event[0] for event in events})
         split_at = max(1, min(len(timestamps) - 1, int(len(timestamps) * 0.60)))
         cutoff = timestamps[split_at]
-        discovery = [event for event in events if event[0] < cutoff]
+        # Embargo discovery observations whose 12-bar outcome window crosses
+        # the validation boundary; otherwise their labels would leak forward.
+        discovery = [event for event in events if event[0] < cutoff and event[3] < cutoff]
         validation = [event for event in events if event[0] >= cutoff]
         if len(discovery) < 18 or len(validation) < DISCOVERY_MIN_VALIDATION:
             continue
