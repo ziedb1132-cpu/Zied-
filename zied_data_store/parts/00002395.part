@@ -1,0 +1,42 @@
+{
+  "updated_at": 1794660873.11275,
+  "mode": "research_only",
+  "missed_signals": {
+    "n": 100,
+    "wins": 19,
+    "losses": 81,
+    "avg": -0.017351656011752193
+  },
+  "entry_timing": [
+    {
+      "delay_bars": 0,
+      "samples": 100,
+      "avg_net": -0.01596133651582272,
+      "win_rate": 0.1
+    },
+    {
+      "delay_bars": 1,
+      "samples": 100,
+      "avg_net": -0.01660521370413646,
+      "win_rate": 0.1
+    },
+    {
+      "delay_bars": 2,
+      "samples": 100,
+      "avg_net": -0.017699432790748374,
+      "win_rate": 0.12
+    },
+    {
+      "delay_bars": 3,
+      "samples": 100,
+      "avg_net": -0.016858029060421324,
+      "win_rate": 0.13
+    }
+  ],
+  "historical_similarity": {
+    "signals": 21,
+    "analogue_win_rate": 0.5634920634920635,
+    "analogue_avg_net": -0.009302024268369107
+  },
+  "note": "Research only. No live signal, model, entry, exit, risk, or portfolio setting is modified."
+}

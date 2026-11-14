@@ -1,0 +1,574 @@
+{
+  "version": 2,
+  "updated_at": 1794658727.305273,
+  "feature_count": 3050,
+  "winning_samples": 106,
+  "losing_samples": 119,
+  "total_usable_samples": 225,
+  "source": "closed tracked signals only; outcomes and net returns from later-candle evaluation",
+  "method": "per-feature finite-value robust median difference scaled by pooled MAD; unknown values are retained as missing and excluded only from that feature statistic; discovery only, not proof of predictive edge",
+  "minimum_total_samples": 100,
+  "minimum_per_class": 1,
+  "top_recurring_features": [
+    {
+      "feature": "15m_ema_gap__rank5",
+      "winner_median": 0.8,
+      "loser_median": 1.0,
+      "robust_effect": 19999999.999999996,
+      "winner_q25_q75": [
+        0.2,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.2,
+        1.0
+      ]
+    },
+    {
+      "feature": "1H_ema_gap__rank5",
+      "winner_median": 0.8,
+      "loser_median": 1.0,
+      "robust_effect": 19999999.999999996,
+      "winner_q25_q75": [
+        0.2,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.4,
+        1.0
+      ]
+    },
+    {
+      "feature": "1D_breakout_dist__rank5",
+      "winner_median": 0.8,
+      "loser_median": 1.0,
+      "robust_effect": 19999999.999999996,
+      "winner_q25_q75": [
+        0.4,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.6,
+        1.0
+      ]
+    },
+    {
+      "feature": "5m_ema_gap__rank10",
+      "winner_median": 0.8500000000000001,
+      "loser_median": 1.0,
+      "robust_effect": 14999999.99999999,
+      "winner_q25_q75": [
+        0.1,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.1,
+        1.0
+      ]
+    },
+    {
+      "feature": "4H_ema_gap__rank40",
+      "winner_median": 0.975,
+      "loser_median": 1.0,
+      "robust_effect": 2500000.0000000023,
+      "winner_q25_q75": [
+        0.7375,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.7124999999999999,
+        1.0
+      ]
+    },
+    {
+      "feature": "5m_lower_wick",
+      "winner_median": 0.007189723483675603,
+      "loser_median": 0.0,
+      "robust_effect": 718972.3483675603,
+      "winner_q25_q75": [
+        0.0,
+        0.33333333219154737
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.17735748810182858
+      ]
+    },
+    {
+      "feature": "5m_drawdown_3",
+      "winner_median": -2.7478075370623856e-11,
+      "loser_median": -2.4654832349813027e-05,
+      "robust_effect": 2465.4804871737656,
+      "winner_q25_q75": [
+        -0.0022688994151517927,
+        -2.2148949341271873e-14
+      ],
+      "loser_q25_q75": [
+        -0.003688235133697093,
+        -4.679590048795035e-14
+      ]
+    },
+    {
+      "feature": "15m_drawdown_5",
+      "winner_median": -0.0008488175552666122,
+      "loser_median": -6.422608000988816e-10,
+      "robust_effect": 23.221377302099853,
+      "winner_q25_q75": [
+        -0.006470852972865454,
+        -6.554173870298996e-12
+      ],
+      "loser_q25_q75": [
+        -0.0034998373923858517,
+        -1.8818280267396403e-14
+      ]
+    },
+    {
+      "feature": "4H_drawdown_3",
+      "winner_median": -0.0033425754841769906,
+      "loser_median": -1.6241685774076586e-10,
+      "robust_effect": 11.27718985290466,
+      "winner_q25_q75": [
+        -0.012697767196833354,
+        -1.6850826289882548e-11
+      ],
+      "loser_q25_q75": [
+        -0.006225985317972305,
+        -1.4488410471358293e-14
+      ]
+    },
+    {
+      "feature": "1H_drawdown_3",
+      "winner_median": -0.001361318727159,
+      "loser_median": -5.002501746176335e-10,
+      "robust_effect": 3.3670267996012635,
+      "winner_q25_q75": [
+        -0.009750681408677409,
+        -7.328943008033661e-12
+      ],
+      "loser_q25_q75": [
+        -0.0054972523833980436,
+        -1.8818280267396403e-14
+      ]
+    },
+    {
+      "feature": "15m_lower_wick",
+      "winner_median": 0.09403508721445919,
+      "loser_median": 0.0,
+      "robust_effect": 2.600457693164447,
+      "winner_q25_q75": [
+        0.0,
+        0.23778195470305996
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.1909090889008122
+      ]
+    },
+    {
+      "feature": "4H_ema_gap__rank80",
+      "winner_median": 0.925,
+      "loser_median": 0.9875,
+      "robust_effect": 1.124151265794326,
+      "winner_q25_q75": [
+        0.7,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.60625,
+        1.0
+      ]
+    },
+    {
+      "feature": "4H_drawdown_5",
+      "winner_median": -0.005393293555453038,
+      "loser_median": -0.0012170780390463598,
+      "robust_effect": 1.0482589869829333,
+      "winner_q25_q75": [
+        -0.014796118715888679,
+        -2.7716218209405952e-11
+      ],
+      "loser_q25_q75": [
+        -0.007835531445719524,
+        -6.381006834033087e-13
+      ]
+    },
+    {
+      "feature": "15m_drawdown_8",
+      "winner_median": -0.002477346259343205,
+      "loser_median": -0.00020004000801165933,
+      "robust_effect": 1.012622518426901,
+      "winner_q25_q75": [
+        -0.010245987673371176,
+        -2.6996765933873235e-11
+      ],
+      "loser_q25_q75": [
+        -0.006370983880361225,
+        -1.5026868638301494e-13
+      ]
+    },
+    {
+      "feature": "5m_ema_slope__rank5",
+      "winner_median": 0.9,
+      "loser_median": 0.6,
+      "robust_effect": 1.0117361392148934,
+      "winner_q25_q75": [
+        0.2,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.2,
+        1.0
+      ]
+    },
+    {
+      "feature": "5m_close_location__rank5",
+      "winner_median": 0.75,
+      "loser_median": 0.5,
+      "robust_effect": 0.8431134493457438,
+      "winner_q25_q75": [
+        0.4,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.3333333333333333,
+        0.6499999999999999
+      ]
+    },
+    {
+      "feature": "15m_efficiency_3",
+      "winner_median": 0.5600697245395678,
+      "loser_median": 0.8884708873553464,
+      "robust_effect": 0.7715305834636155,
+      "winner_q25_q75": [
+        0.24959651267400476,
+        0.9999999994064064
+      ],
+      "loser_q25_q75": [
+        0.45266017828720506,
+        0.9999999998904144
+      ]
+    },
+    {
+      "feature": "1H_obv_slope",
+      "winner_median": 0.020473210340994252,
+      "loser_median": 0.33068633817255894,
+      "robust_effect": 0.7371186790585296,
+      "winner_q25_q75": [
+        -0.15606014939444207,
+        0.3478156287324534
+      ],
+      "loser_q25_q75": [
+        -2.6398573741413608e-05,
+        0.5404795815398167
+      ]
+    },
+    {
+      "feature": "4H_downside_vol_3",
+      "winner_median": 0.006346854446632074,
+      "loser_median": 0.0023190999284978366,
+      "robust_effect": 0.736751985325185,
+      "winner_q25_q75": [
+        0.0019516546145585199,
+        0.012675035553512204
+      ],
+      "loser_q25_q75": [
+        0.0003721690291366073,
+        0.006820827772074335
+      ]
+    },
+    {
+      "feature": "4H_breakout_dist_40",
+      "winner_median": -0.049142115697120514,
+      "loser_median": -0.02645011600929581,
+      "robust_effect": 0.7013183996922828,
+      "winner_q25_q75": [
+        -0.09325645527467397,
+        -0.02383679735483471
+      ],
+      "loser_q25_q75": [
+        -0.05265916430808959,
+        -0.013387788760310049
+      ]
+    },
+    {
+      "feature": "4H_atr_pct_30",
+      "winner_median": 0.028720583885049087,
+      "loser_median": 0.020472825193424683,
+      "robust_effect": 0.7009511584781838,
+      "winner_q25_q75": [
+        0.02005485808131877,
+        0.03533527564345405
+      ],
+      "loser_q25_q75": [
+        0.01110328183270179,
+        0.029471002777732652
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_3",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_5",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_8",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_10",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_14",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_20",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_30",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_40",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_50",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_80",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_100",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_lower_wick_200",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "15m_core__lower_wick",
+      "winner_median": 0.12499999977678881,
+      "loser_median": 0.030679156880427348,
+      "robust_effect": 0.6976832907780045,
+      "winner_q25_q75": [
+        0.0,
+        0.31818181816736363
+      ],
+      "loser_q25_q75": [
+        0.0,
+        0.24340650099637146
+      ]
+    },
+    {
+      "feature": "4H_atr_pct28",
+      "winner_median": 0.028861740006011723,
+      "loser_median": 0.020669911660950308,
+      "robust_effect": 0.6847763471217791,
+      "winner_q25_q75": [
+        0.02014244046838051,
+        0.035348791884071626
+      ],
+      "loser_q25_q75": [
+        0.011097079606885217,
+        0.029550987762076274
+      ]
+    },
+    {
+      "feature": "15m_interaction__body_pct__close_location",
+      "winner_median": 0.04668091302123714,
+      "loser_median": 0.1027403904917645,
+      "robust_effect": 0.6763554614821397,
+      "winner_q25_q75": [
+        0.016947249877347446,
+        0.1238689243092858
+      ],
+      "loser_q25_q75": [
+        0.04271304690596545,
+        0.18755147130598673
+      ]
+    },
+    {
+      "feature": "15m_ret1__rank5",
+      "winner_median": 0.6,
+      "loser_median": 0.8,
+      "robust_effect": 0.6744907594765956,
+      "winner_q25_q75": [
+        0.4,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.4,
+        1.0
+      ]
+    },
+    {
+      "feature": "15m_ret12__rank5",
+      "winner_median": 0.6,
+      "loser_median": 0.8,
+      "robust_effect": 0.6744907594765956,
+      "winner_q25_q75": [
+        0.4,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.55,
+        1.0
+      ]
+    },
+    {
+      "feature": "15m_rsi__rank5",
+      "winner_median": 0.6,
+      "loser_median": 0.8,
+      "robust_effect": 0.6744907594765956,
+      "winner_q25_q75": [
+        0.4,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.4,
+        1.0
+      ]
+    },
+    {
+      "feature": "15m_atr_pct__rank5",
+      "winner_median": 0.6,
+      "loser_median": 0.8,
+      "robust_effect": 0.6744907594765956,
+      "winner_q25_q75": [
+        0.2,
+        1.0
+      ],
+      "loser_q25_q75": [
+        0.4,
+        1.0
+      ]
+    }
+  ]
+}

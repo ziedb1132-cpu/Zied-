@@ -1,0 +1,181 @@
+{
+  "updated_at": 1794659817.0357604,
+  "feeds": [
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://cointelegraph.com/rss",
+    "https://decrypt.co/feed",
+    "https://cryptoslate.com/feed/"
+  ],
+  "headline_count": 105,
+  "coins": {
+    "SOPH-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ORBS-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "NIGHT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "TRA-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAPP-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XTTWO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ALLO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAAPL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "MERL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "HMSTR-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "KITE-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XCBRS-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XMETA-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "USAT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XSHEIN-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XKO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "TRX-USDT": {
+      "score": 0.0,
+      "headlines": [
+        {
+          "title": "Tron, Tether and Chainalysis Form a New Crypto-Crime Task Force—Replacing One That Just Collapsed",
+          "link": "https://decrypt.co/383139/tron-tether-chainalysis-new-crypto-crime-task-force-replacing-trm",
+          "published": "Thu, 12 Nov 2026 16:36:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        }
+      ]
+    },
+    "XSOXS-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XGOOGL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XZM-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XXLE-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "JUP-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XJNJ-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAVGO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "LEO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XTSLA-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XSPY-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "GALFT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "PAXG-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAUT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XADBE-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XQQQ-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XSTRC-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XRKLB-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAMZN-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XGME-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XTSM-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XORCL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XMU-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAMD-USDT": {
+      "score": 0.0,
+      "headlines": []
+    }
+  },
+  "note": "Headline sentiment is a lightweight keyword heuristic; missing news is neutral."
+}
