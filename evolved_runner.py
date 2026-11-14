@@ -97,6 +97,18 @@ def run_comprehensive_backtest(universe=None, paper=None):
             "source": "verified closed tracked signals only",
         },
         "layers": {},
+        "primary_ai_feedback": {
+            "enabled": True,
+            "mechanism": "bounded_probability_blend_from_fresh_approved_symbol_regime_shadow_profiles",
+            "max_blend_weight": 0.10,
+            "minimum_shadow_trades": 20,
+            "minimum_profit_factor": 1.20,
+            "maximum_drawdown": 0.20,
+            "maximum_report_age_hours": 72,
+            "changes_model_weights": False,
+            "creates_training_labels": False,
+            "changes_real_orders_or_risk_controls": False,
+        },
     }
     universe = universe if universe is not None else zied_quant.get_universe()
     if universe is None or universe.empty:
@@ -259,9 +271,11 @@ def run_comprehensive_backtest(universe=None, paper=None):
         key: zied_quant.CFG.get(key) for key in keys if key in zied_quant.CFG
     }
     report["note"] = (
-        "Research feedback only. No backtest result is injected as a training label, "
-        "no live policy is changed, and no paper position is modified. AI Learning may "
-        "consume only matured real closed-signal outcomes under the configured verified-sample gate."
+        "Evolution feedback is connected to primary AI inference through a bounded, fresh, symbol+regime shadow-evidence overlay. "
+        "It adjusts probabilities only (maximum 10% blend) after at least 20 matured shadow trades, PF >= 1.20, "
+        "positive net expectancy and drawdown <= 20%; stale reports expire after 72 hours. "
+        "No backtest result becomes a training label; model weights, real orders, paper positions and risk controls are not changed. "
+        "Supervised AI training continues to use only matured real closed tracked-signal outcomes."
     )
     output = os.path.join(state_dir, "comprehensive_backtest.json")
     tmp = output + ".tmp"
