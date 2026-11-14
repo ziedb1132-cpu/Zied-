@@ -236,16 +236,19 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
         if len(events) < DISCOVERY_MIN_OCCURRENCES:
             continue
         events.sort(key=lambda item: (item[0], item[1]))
-        split = int(len(events) * 0.60)
-        discovery, validation = events[:split], events[split:]
+        # Split by unique candle timestamp, never by individual coin rows:
+        # coins observed on the same bar cannot leak across the temporal boundary.
+        timestamps = sorted({event[0] for event in events})
+        split_at = max(1, min(len(timestamps) - 1, int(len(timestamps) * 0.60)))
+        cutoff = timestamps[split_at]
+        discovery = [event for event in events if event[0] < cutoff]
+        validation = [event for event in events if event[0] >= cutoff]
         if len(discovery) < 18 or len(validation) < DISCOVERY_MIN_VALIDATION:
             continue
         # Select orientation using discovery data only.
         long_mean = float(np.mean([e[2] - DISCOVERY_ROUND_TRIP_COST for e in discovery]))
         short_mean = float(np.mean([-e[2] - DISCOVERY_ROUND_TRIP_COST for e in discovery]))
         direction = "long" if long_mean >= short_mean else "short"
-        train_net = [((e[2] if direction == "long" else -e[2]) - DISCOVERY_ROUND_TRIP_COST)
-                     for e in discovery]
         val_net = [((e[2] if direction == "long" else -e[2]) - DISCOVERY_ROUND_TRIP_COST)
                    for e in validation]
         wins = [x for x in val_net if x > 0]
