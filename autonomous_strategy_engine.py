@@ -433,7 +433,7 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
             "feature_count":len(_LIBRARY_FEATURES),"total_feature_columns":len(FEATURES),
             "feature_library_version":FEATURE_LIBRARY_VERSION,
             "latest_experiments":results,
-            "note":"Genetic evolution uses mutation + two-parent crossover + elitist breeding over selected 561-feature input genes, thresholds/operators and exit genes. Chronological train/tune; holdout is never used to mutate genomes or choose breeding parents. It is used only for independent research Champion/Challenger confirmation. Production promotion remains behind the shared 100-verified-close gate (both outcomes represented) and independent model holdout."}
+            "note":"Genetic evolution targets 30 mutations + 20 two-parent crossovers per generation; unavailable crossover slots become mutations until two validated parents exist. The top 20 validated strategies persist as the breeding pool. Chronological train/tune; holdout is never used to mutate genomes or choose breeding parents. It is used only for independent research Champion/Challenger confirmation. Production promotion remains behind the shared 100-verified-close gate (both outcomes represented) and independent model holdout."}
     generation_history=list(memory.get("generation_history") or [])
     generation_best=max([float(x.get("score",-100)) for x in results] or [-100.0])
     generation_history.append({"generation":generation,"best_score":generation_best,
