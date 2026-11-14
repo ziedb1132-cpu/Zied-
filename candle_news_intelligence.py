@@ -161,6 +161,51 @@ def pattern_score(candles):
     return float(np.clip(np.mean(vals), -1, 1)), patterns
 
 
+# Fixed pattern vocabulary shared by live inference and historical training.
+PATTERN_NAMES = (
+    "Doji", "Dragonfly Doji", "Gravestone Doji", "Hammer / Hanging Man",
+    "Inverted Hammer / Shooting Star", "Bullish Marubozu", "Bearish Marubozu",
+    "Spinning Top", "Bullish Engulfing", "Bearish Engulfing", "Piercing Line",
+    "Dark Cloud Cover", "Bullish Harami", "Bearish Harami", "Tweezer Top",
+    "Tweezer Bottom", "Inside Bar Breakout", "Outside Bar", "Morning Star",
+    "Evening Star", "Three White Soldiers", "Three Black Crows",
+    "Bearish Kicker-like Reversal", "Bullish Kicker-like Reversal",
+)
+
+def _pattern_slug(name):
+    return re.sub(r"[^a-z0-9]+", "_", str(name).lower()).strip("_")
+
+PATTERN_FEATURE_NAMES = tuple(
+    [f"candle_pat_{_pattern_slug(name)}" for name in PATTERN_NAMES]
+    + ["candle_pat_count"]
+)
+
+def pattern_feature_matrix(candles):
+    """Build causal per-candle pattern inputs using only candles closed at each row.
+
+    Bullish confidence is positive, bearish confidence negative, and neutral
+    patterns are represented by the aggregate count without a directional score.
+    The first two rows remain NaN because the detector needs at least 3 candles.
+    """
+    if candles is None or len(candles) == 0:
+        return pd.DataFrame(columns=PATTERN_FEATURE_NAMES, index=getattr(candles, "index", None))
+    values = np.full((len(candles), len(PATTERN_FEATURE_NAMES)), np.nan, dtype=np.float64)
+    name_to_col = {name: i for i, name in enumerate(PATTERN_NAMES)}
+    count_col = len(PATTERN_NAMES)
+    for end in range(2, len(candles)):
+        detected = detect_candlestick_patterns(candles.iloc[max(0, end - 4):end + 1])
+        values[end, :] = 0.0
+        for item in detected:
+            col = name_to_col.get(item.get("name"))
+            if col is None:
+                continue
+            confidence = float(item.get("confidence") or 0.0)
+            direction = item.get("direction")
+            values[end, col] = confidence if direction == "bullish" else (-confidence if direction == "bearish" else 0.0)
+        values[end, count_col] = float(len(detected))
+    return pd.DataFrame(values, index=candles.index, columns=PATTERN_FEATURE_NAMES)
+
+
 def _symbol_terms(inst):
     base = str(inst).split("-")[0].upper()
     terms = {base, base.lower()}
