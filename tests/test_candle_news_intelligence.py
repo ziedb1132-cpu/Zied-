@@ -52,11 +52,11 @@ def test_pattern_feature_matrix_is_causal_and_model_ready():
     column = "candle_pat_bullish_engulfing"
     assert column in matrix.columns
     assert matrix.loc[candles.index[0], column] != matrix.loc[candles.index[2], column]
-    assert matrix.loc[candles.index[0], column] != matrix.loc[candles.index[0], column]  # warm-up is NaN
+    assert pd.isna(matrix.loc[candles.index[0], column])  # warm-up is unknown, not fabricated
     assert matrix.loc[candles.index[2], column] == 0.86
     assert matrix.loc[candles.index[2], "candle_pat_count"] >= 1
     # Appending a future candle cannot rewrite already-computed historical rows.
     extended = pd.concat([candles, pd.DataFrame([{"o": 108, "h": 110, "l": 107, "c": 109, "vol": 22}],
                                                   index=[pd.Timestamp("2026-01-01 04:00:00")])])
     extended_matrix = cni.pattern_feature_matrix(extended)
-    pd.testing.assert_series_equal(matrix.iloc[:4], extended_matrix.iloc[:4])
+    pd.testing.assert_frame_equal(matrix.iloc[:4], extended_matrix.iloc[:4])
