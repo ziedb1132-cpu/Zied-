@@ -608,6 +608,7 @@ function renderEvolutionPanel(){
  const latest=Array.isArray(report.latest_experiments)?report.latest_experiments:[];
  const tested=Number(report.tested??latest.length)||0;
  const cross=Number(report.crossover_candidates??latest.filter(x=>x&&x.spec&&x.spec.crossover).length)||0;
+ const mutations=Number(report.mutation_candidates??Math.max(0,tested-cross))||0;
  const champion=report.champion||null;
  if(status){status.textContent=report.status==="ok"?"Rapport publié":"État : "+String(report.status||"inconnu");status.className=report.status==="ok"?"eval-tag ready":"eval-tag wait";}
  metrics.innerHTML=
@@ -615,6 +616,7 @@ function renderEvolutionPanel(){
   metric("Candidats générés",report.generated??tested,"Cette génération")+
   metric("Validés",report.validation_passed??0,"Train + validation")+
   metric("Pool de reproduction",report.breeding_pool_size??"—","Meilleurs individus validés")+
+  metric("Mutations",mutations,"Candidats issus de mutations")+
   metric("Crossover",cross,"Candidats issus de deux parents")+
   metric("Gènes features",report.feature_count??"—","Bibliothèque d’entrées sélectionnables");
  const rows=latest.map(x=>{
