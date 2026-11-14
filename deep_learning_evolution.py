@@ -94,15 +94,33 @@ def _install_features(zq):
     # into the model's input matrix, not only strategies that passed the approval gate.
     from autonomous_strategy_engine import _LIBRARY_FEATURES, build_features as build_discovery_features
     research_names = list(_LIBRARY_FEATURES)
-    # Deduplicate the expanded 3k-column schema before it reaches training.
-    # Preserve first occurrence so existing feature meaning/order remains stable.
-    new_names = list(dict.fromkeys(old_names + EXTRA_NAMES + research_names + derived_names))
+    # Candlestick patterns are now explicit supervised inputs, not dashboard-only
+    # diagnostics or a ranking adjustment. The same causal detector is used for
+    # historical training rows and live inference rows.
+    from candle_news_intelligence import PATTERN_FEATURE_NAMES, pattern_feature_matrix
+
+    # Deduplicate the expanded schema while preserving stable feature order.
+    new_names = list(dict.fromkeys(
+        old_names + EXTRA_NAMES + research_names + derived_names + list(PATTERN_FEATURE_NAMES)
+    ))
 
     def expanded_tf_features(df):
         base = old_tf_isolated(df)
         extra = _extra_features(df)
         extra.index = base.index
-        combined = pd.concat([base, extra], axis=1)
+        try:
+            candle_patterns = pattern_feature_matrix(df)
+            if len(candle_patterns) != len(base):
+                raise ValueError(
+                    f"Candlestick pattern row mismatch: {len(candle_patterns)} != {len(base)}"
+                )
+            candle_patterns.index = base.index
+        except Exception as exc:
+            zq.log.warning("candlestick model features unavailable: %s", exc)
+            candle_patterns = pd.DataFrame(
+                np.nan, index=base.index, columns=PATTERN_FEATURE_NAMES
+            )
+        combined = pd.concat([base, extra, candle_patterns], axis=1)
         try:
             discovery = build_discovery_features(df)
             # The legacy feature function indexes rows by candle timestamps,
