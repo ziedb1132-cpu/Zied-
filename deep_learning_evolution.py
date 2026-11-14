@@ -97,7 +97,14 @@ def _install_features(zq):
     # Candlestick patterns are now explicit supervised inputs, not dashboard-only
     # diagnostics or a ranking adjustment. The same causal detector is used for
     # historical training rows and live inference rows.
-    from candle_news_intelligence import PATTERN_FEATURE_NAMES, pattern_feature_matrix
+    import candle_news_intelligence as candle_intel
+    # Load newly discovered pattern names before freezing this process's model schema.
+    # Names detected later in this run are persisted and become columns next startup.
+    candle_intel.configure_pattern_registry(
+        os.path.join(zq.CFG["DIR"], "candle_pattern_registry.json")
+    )
+    PATTERN_FEATURE_NAMES = candle_intel.PATTERN_FEATURE_NAMES
+    pattern_feature_matrix = candle_intel.pattern_feature_matrix
 
     # Deduplicate the expanded schema while preserving stable feature order.
     new_names = list(dict.fromkeys(
