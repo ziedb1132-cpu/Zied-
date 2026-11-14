@@ -29,6 +29,28 @@ def _load_report(path):
         return {}
 
 
+def _matching_shadow_regime(zied_quant, row):
+    """Reproduce strategy_meta_selector.market_regime from primary features."""
+    try:
+        atr = float(row["1H_atr_pct"])
+        ema21_dist = float(row["1H_ema_dist21"])
+        ema50_dist = float(row["1H_ema_dist50"])
+        slope = float(row["1H_ema_slope21"])
+        gap = (1.0 + ema50_dist) / (1.0 + ema21_dist) - 1.0
+        if np.isfinite([atr, gap, slope]).all():
+            if atr >= 0.035:
+                return "HIGH_VOL"
+            if gap >= 0.008 and slope > 0:
+                return "BULL"
+            if gap <= -0.008 and slope < 0:
+                return "BEAR"
+            return "RANGE"
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        pass
+    # Compatibility fallback for callers with a custom regime column/classifier.
+    return str(zied_quant.classify_market_regime(row))
+
+
 def _valid_profile(profile):
     if not isinstance(profile, dict):
         return False
@@ -80,7 +102,7 @@ def apply_strategy_feedback(zied_quant, frame, predictions, report_path):
     applied = 0
     for offset, (symbol, row) in enumerate(frame.iterrows()):
         try:
-            regime = str(zied_quant.classify_market_regime(row))
+            regime = _matching_shadow_regime(zied_quant, row)
             profiles = selected.get(str(symbol) + "|" + regime, [])
             if not isinstance(profiles, list):
                 continue
