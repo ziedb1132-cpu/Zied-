@@ -187,6 +187,7 @@ _DISCOVERED_PATTERN_DEFS = []
 DISCOVERY_MIN_OCCURRENCES = 30
 DISCOVERY_MIN_VALIDATION = 10
 DISCOVERY_MAX_APPROVED = 40
+DISCOVERY_MAX_CANDIDATES = 80000
 DISCOVERY_HORIZON = 12
 DISCOVERY_ROUND_TRIP_COST = 0.003
 
@@ -227,6 +228,8 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
             stamp = str(frame.index[end]) if len(frame.index) else str(end)
             for width in range(3, 21):
                 seq = tuple(tokens[end - width + 1:end + 1])
+                if seq not in occurrences and len(occurrences) >= DISCOVERY_MAX_CANDIDATES:
+                    continue
                 bucket = occurrences.setdefault(seq, [])
                 if len(bucket) < 500:
                     bucket.append((stamp, str(symbol), float(ret)))
@@ -270,6 +273,7 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
             "validation_profit_factor": profit_factor, "validation_mean_net_return": mean_net,
             "round_trip_cost_assumption": DISCOVERY_ROUND_TRIP_COST,
             "horizon_bars": DISCOVERY_HORIZON,
+            "last_validated_at": time.time(),
         })
     approved.sort(key=lambda x: (x["validation_mean_net_return"], x["validation_profit_factor"]),
                   reverse=True)
@@ -282,12 +286,22 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
             old_defs = existing.get("discovered_patterns", []) if isinstance(existing, dict) else []
         except (OSError, ValueError, TypeError):
             old_defs = []
-        # Retain prior approved definitions only if they remain in this fresh validation.
-        merged = {p["feature_name"]: p for p in old_defs
-                  if isinstance(p, dict) and p.get("status") == "approved"}
+        # Keep previously validated definitions for at most seven days while
+        # transient candle-fetch failures occur; fresh validations replace them.
+        now = time.time()
+        merged = {
+            p["feature_name"]: p for p in old_defs
+            if isinstance(p, dict) and p.get("status") == "approved"
+            and now - float(p.get("last_validated_at") or 0) <= 7 * 86400
+        }
         merged.update({p["feature_name"]: p for p in approved})
         global _DISCOVERED_PATTERN_DEFS
-        _DISCOVERED_PATTERN_DEFS = list(merged.values())[:DISCOVERY_MAX_APPROVED]
+        _DISCOVERED_PATTERN_DEFS = sorted(
+            merged.values(),
+            key=lambda p: (float(p.get("last_validated_at") or 0),
+                           float(p.get("validation_mean_net_return") or 0)),
+            reverse=True
+        )[:DISCOVERY_MAX_APPROVED]
         if _PATTERN_REGISTRY_PATH != registry_path:
             configure_pattern_registry(registry_path)
         else:
