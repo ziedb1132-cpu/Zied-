@@ -183,6 +183,115 @@ PATTERN_FEATURE_NAMES = tuple(
     + ["candle_pat_count"]
 )
 _PATTERN_REGISTRY_PATH = None
+_DISCOVERED_PATTERN_DEFS = []
+DISCOVERY_MIN_OCCURRENCES = 30
+DISCOVERY_MIN_VALIDATION = 10
+DISCOVERY_MAX_APPROVED = 40
+DISCOVERY_HORIZON = 12
+DISCOVERY_ROUND_TRIP_COST = 0.003
+
+
+def _candle_token(row):
+    """Scale-free candle-shape token used by the 3..20-bar sequence miner."""
+    x = _candle_shape(row)
+    direction = 1 if x["bull"] else (-1 if x["bear"] else 0)
+    body_bin = min(3, int(x["body_pct"] * 4))
+    wick = x["upper_pct"] - x["lower_pct"]
+    wick_bin = 0 if abs(wick) < 0.12 else (1 if wick > 0 else 2)
+    return f"{direction + 1}{body_bin}{wick_bin}"
+
+
+def discover_sequence_patterns(candles_by_symbol, registry_path=None):
+    """Mine causal 3..20-candle shapes and approve only chronological OOS edges.
+
+    The sequence ends at bar t; its outcome is measured only from t+1 onward.
+    Discovery chooses long/short direction on the earlier 60%; the later 40%
+    is used once for validation and never for direction/threshold selection.
+    """
+    occurrences = {}
+    for symbol, frame in (candles_by_symbol or {}).items():
+        if not isinstance(frame, pd.DataFrame) or len(frame) < 40:
+            continue
+        required = {"o", "h", "l", "c"}
+        if not required.issubset(frame.columns):
+            continue
+        data = frame.reset_index(drop=True)
+        tokens = [_candle_token(row) for _, row in data.iterrows()]
+        close = pd.to_numeric(data["c"], errors="coerce").to_numpy(dtype=float)
+        for end in range(19, len(data) - DISCOVERY_HORIZON):
+            future = close[end + DISCOVERY_HORIZON]
+            current = close[end]
+            if not (np.isfinite(current) and current > 0 and np.isfinite(future)):
+                continue
+            ret = future / current - 1.0
+            stamp = str(frame.index[end]) if len(frame.index) else str(end)
+            for width in range(3, 21):
+                seq = tuple(tokens[end - width + 1:end + 1])
+                bucket = occurrences.setdefault(seq, [])
+                if len(bucket) < 500:
+                    bucket.append((stamp, str(symbol), float(ret)))
+
+    approved = []
+    for seq, events in occurrences.items():
+        if len(events) < DISCOVERY_MIN_OCCURRENCES:
+            continue
+        events.sort(key=lambda item: (item[0], item[1]))
+        split = int(len(events) * 0.60)
+        discovery, validation = events[:split], events[split:]
+        if len(discovery) < 18 or len(validation) < DISCOVERY_MIN_VALIDATION:
+            continue
+        # Select orientation using discovery data only.
+        long_mean = float(np.mean([e[2] - DISCOVERY_ROUND_TRIP_COST for e in discovery]))
+        short_mean = float(np.mean([-e[2] - DISCOVERY_ROUND_TRIP_COST for e in discovery]))
+        direction = "long" if long_mean >= short_mean else "short"
+        train_net = [((e[2] if direction == "long" else -e[2]) - DISCOVERY_ROUND_TRIP_COST)
+                     for e in discovery]
+        val_net = [((e[2] if direction == "long" else -e[2]) - DISCOVERY_ROUND_TRIP_COST)
+                   for e in validation]
+        wins = [x for x in val_net if x > 0]
+        losses = [x for x in val_net if x < 0]
+        mean_net = float(np.mean(val_net))
+        win_rate = len(wins) / len(val_net)
+        profit_factor = (sum(wins) / abs(sum(losses))) if losses else (99.0 if wins else 0.0)
+        # Require positive validation expectancy and a modest edge after costs.
+        if mean_net <= 0 or win_rate < 0.52 or profit_factor < 1.10:
+            continue
+        slug = "_".join(seq)
+        feature_name = "candle_seq_" + str(len(seq)) + "_" + slug
+        approved.append({
+            "name": f"Discovered {len(seq)}-bar sequence {slug[:36]}",
+            "feature_name": feature_name, "sequence": list(seq), "length": len(seq),
+            "direction": direction, "status": "approved",
+            "occurrences": len(events), "discovery_samples": len(discovery),
+            "validation_samples": len(validation), "validation_win_rate": win_rate,
+            "validation_profit_factor": profit_factor, "validation_mean_net_return": mean_net,
+            "round_trip_cost_assumption": DISCOVERY_ROUND_TRIP_COST,
+            "horizon_bars": DISCOVERY_HORIZON,
+        })
+    approved.sort(key=lambda x: (x["validation_mean_net_return"], x["validation_profit_factor"]),
+                  reverse=True)
+    approved = approved[:DISCOVERY_MAX_APPROVED]
+    if registry_path:
+        try:
+            existing = {}
+            with open(registry_path, "r", encoding="utf-8") as fh:
+                existing = json.load(fh)
+            old_defs = existing.get("discovered_patterns", []) if isinstance(existing, dict) else []
+        except (OSError, ValueError, TypeError):
+            old_defs = []
+        # Retain prior approved definitions only if they remain in this fresh validation.
+        merged = {p["feature_name"]: p for p in old_defs
+                  if isinstance(p, dict) and p.get("status") == "approved"}
+        merged.update({p["feature_name"]: p for p in approved})
+        global _DISCOVERED_PATTERN_DEFS
+        _DISCOVERED_PATTERN_DEFS = list(merged.values())[:DISCOVERY_MAX_APPROVED]
+        if _PATTERN_REGISTRY_PATH != registry_path:
+            configure_pattern_registry(registry_path)
+        else:
+            _write_pattern_registry()
+    return {"candidate_sequences": len(occurrences), "approved": len(approved),
+            "minimum_occurrences": DISCOVERY_MIN_OCCURRENCES,
+            "horizon_bars": DISCOVERY_HORIZON, "cost_assumption": DISCOVERY_ROUND_TRIP_COST}
 
 
 def _write_pattern_registry():
@@ -192,7 +301,8 @@ def _write_pattern_registry():
         "version": 1,
         "patterns": list(PATTERN_NAMES),
         "feature_names": list(PATTERN_FEATURE_NAMES),
-        "note": "Names are discovered by the causal detector; newly registered names enter the primary model schema on the next process start."
+        "discovered_patterns": list(_DISCOVERED_PATTERN_DEFS),
+        "note": "Built-in patterns plus independently validated 3..20-bar sequence definitions; schema changes activate on next process start."
     }
     tmp = _PATTERN_REGISTRY_PATH + ".tmp"
     try:
@@ -210,14 +320,21 @@ def _write_pattern_registry():
 
 def configure_pattern_registry(path):
     """Load persistent pattern vocabulary before the primary model schema is built."""
-    global PATTERN_NAMES, PATTERN_FEATURE_NAMES, _PATTERN_REGISTRY_PATH
+    global PATTERN_NAMES, PATTERN_FEATURE_NAMES, _PATTERN_REGISTRY_PATH, _DISCOVERED_PATTERN_DEFS
     _PATTERN_REGISTRY_PATH = path
     try:
         with open(path, "r", encoding="utf-8") as fh:
             saved = json.load(fh)
         names = saved.get("patterns", []) if isinstance(saved, dict) else []
+        _DISCOVERED_PATTERN_DEFS = [
+            p for p in saved.get("discovered_patterns", [])
+            if isinstance(p, dict) and p.get("status") == "approved"
+            and isinstance(p.get("sequence"), list) and 3 <= len(p["sequence"]) <= 20
+            and isinstance(p.get("feature_name"), str)
+        ] if isinstance(saved, dict) else []
     except (OSError, ValueError, TypeError):
         names = []
+        _DISCOVERED_PATTERN_DEFS = []
     # Keep the built-in vocabulary first and append only valid, unique discoveries.
     merged = list(PATTERN_NAMES)
     for name in names:
@@ -227,6 +344,7 @@ def configure_pattern_registry(path):
     PATTERN_FEATURE_NAMES = tuple(
         [f"candle_pat_{_pattern_slug(name)}" for name in PATTERN_NAMES]
         + ["candle_pat_count"]
+        + [p["feature_name"] for p in _DISCOVERED_PATTERN_DEFS]
     )
     _write_pattern_registry()
     return PATTERN_FEATURE_NAMES
@@ -243,6 +361,7 @@ def _register_pattern_name(name):
     PATTERN_FEATURE_NAMES = tuple(
         [f"candle_pat_{_pattern_slug(item)}" for item in PATTERN_NAMES]
         + ["candle_pat_count"]
+        + [p["feature_name"] for p in _DISCOVERED_PATTERN_DEFS]
     )
     _write_pattern_registry()
 
@@ -259,6 +378,10 @@ def pattern_feature_matrix(candles):
     values = np.full((len(candles), len(PATTERN_FEATURE_NAMES)), np.nan, dtype=np.float64)
     name_to_col = {name: i for i, name in enumerate(PATTERN_NAMES)}
     count_col = len(PATTERN_NAMES)
+    dynamic_start = count_col + 1
+    dynamic_defs = list(_DISCOVERED_PATTERN_DEFS)
+    tokens = [_candle_token(row) for _, row in candles.iterrows()]
+    dynamic_index = {p["feature_name"]: dynamic_start + i for i, p in enumerate(dynamic_defs)}
     for end in range(2, len(candles)):
         detected = detect_candlestick_patterns(candles.iloc[max(0, end - 4):end + 1])
         values[end, :] = 0.0
@@ -270,6 +393,12 @@ def pattern_feature_matrix(candles):
             direction = item.get("direction")
             values[end, col] = confidence if direction == "bullish" else (-confidence if direction == "bearish" else 0.0)
         values[end, count_col] = float(len(detected))
+        for definition in dynamic_defs:
+            seq = definition.get("sequence", [])
+            width = len(seq)
+            if width <= end + 1 and tokens[end - width + 1:end + 1] == seq:
+                col = dynamic_index.get(definition["feature_name"])
+                values[end, col] = 1.0 if definition.get("direction") == "long" else -1.0
     return pd.DataFrame(values, index=candles.index, columns=PATTERN_FEATURE_NAMES)
 
 
