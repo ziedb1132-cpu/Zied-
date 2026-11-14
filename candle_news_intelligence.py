@@ -225,8 +225,17 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
             if not (np.isfinite(current) and current > 0 and np.isfinite(future)):
                 continue
             ret = future / current - 1.0
-            stamp = frame.index[end] if len(frame.index) else end
-            label_end_stamp = frame.index[end + DISCOVERY_HORIZON] if len(frame.index) else end + DISCOVERY_HORIZON
+            if "ts" in frame.columns:
+                # OKX candle cache is RangeIndex-based; use its real millisecond
+                # candle timestamps for cross-coin chronological validation.
+                stamp = int(pd.to_numeric(frame["ts"].iloc[end], errors="coerce"))
+                label_end_stamp = int(pd.to_numeric(
+                    frame["ts"].iloc[end + DISCOVERY_HORIZON], errors="coerce"
+                ))
+            else:
+                stamp = frame.index[end] if len(frame.index) else end
+                label_end_stamp = (frame.index[end + DISCOVERY_HORIZON]
+                                   if len(frame.index) else end + DISCOVERY_HORIZON)
             for width in range(3, 21):
                 seq = tuple(tokens[end - width + 1:end + 1])
                 if seq not in occurrences and len(occurrences) >= DISCOVERY_MAX_CANDIDATES:
