@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Autonomous symbolic strategy discovery for Zied Quant.
 
-Research-only: generated strategies are evaluated and persisted, but NEVER wired
-into live entries or allowed to modify the existing AI model/portfolio controls.
+Generated rules remain research-only and never directly create entries or modify
+model weights/portfolio controls. Only independently approved, matured forward
+shadow performance may reach primary inference through the separate bounded bridge.
 """
 import hashlib
 import json
