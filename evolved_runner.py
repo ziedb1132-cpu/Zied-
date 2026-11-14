@@ -116,7 +116,7 @@ def run_comprehensive_backtest(universe=None, paper=None):
     try:
         discovery = autonomous_strategy_engine.run_discovery(
             universe, zied_quant.get_candles, state_dir, telegram=None,
-            batch_size=10, max_coins=5)
+            mutation_count=30, crossover_count=20, max_coins=5)
         report["layers"]["autonomous_feature_discovery"] = discovery
     except Exception as exc:
         discovery = None
