@@ -16,7 +16,9 @@ import pandas as pd
 
 COST = 0.0035
 HORIZON = 24
-BATCH_SIZE = 10
+BATCH_SIZE = 50
+MUTATION_COUNT = 30
+CROSSOVER_COUNT = 20
 MIN_TRADES = 20
 MAX_ARCHIVE = 2000
 LEGACY_FEATURES = (
@@ -223,6 +225,45 @@ def _crossover_specs(rng, parent_a, parent_b, generation, mutation_rate=0.40):
     return child
 
 
+
+def _generate_candidates(rng, generation, parents, known, mutation_count=MUTATION_COUNT,
+                         crossover_count=CROSSOVER_COUNT, mutation_rate=0.40):
+    """Build 30 mutations + 20 two-parent crossovers when two validated parents exist.
+
+    If fewer than two validated parents exist, crossover slots become mutations;
+    the engine never fabricates a second parent or weakens validation.
+    """
+    mutation_count = max(0, int(mutation_count))
+    crossover_count = max(0, int(crossover_count))
+    total = mutation_count + crossover_count
+    mutations, crossovers = [], []
+    seen = set(known or ())
+
+    def add_unique(spec, bucket):
+        sid = spec.get("id")
+        if sid and sid not in seen:
+            seen.add(sid)
+            bucket.append(spec)
+
+    if len(parents) >= 2 and crossover_count:
+        attempts = 0
+        while len(crossovers) < crossover_count and attempts < max(100, crossover_count * 80):
+            attempts += 1
+            parent_a, parent_b = rng.sample(parents, 2)
+            add_unique(_crossover_specs(rng, parent_a, parent_b, generation, mutation_rate), crossovers)
+
+    # Unavailable/duplicate crossover slots are filled with genuine mutations.
+    mutation_target = total - len(crossovers)
+    attempts = 0
+    while len(mutations) < mutation_target and attempts < max(200, mutation_target * 100):
+        attempts += 1
+        parent = rng.choice(parents) if parents and rng.random() < 0.75 else None
+        spec = _new_spec(rng, generation, parent, mutation_rate)
+        spec["input_features"] = sorted({x["feature"] for x in spec["conditions"]})
+        add_unique(spec, mutations)
+
+    return mutations + crossovers, len(mutations), len(crossovers)
+
 def _genome_summary(spec):
     conditions = spec.get("conditions", [])
     return {
@@ -343,8 +384,9 @@ def _load(path):
     return {"schema":1,"generation":0,"experiments":[],"archive":[],"champion":None}
 
 
-def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BATCH_SIZE, max_coins=5):
-    """Generate ten fresh symbolic candidates per cycle, evaluate, and persist all research state."""
+def run_discovery(universe, get_candles, state_dir, telegram=None,
+                  mutation_count=MUTATION_COUNT, crossover_count=CROSSOVER_COUNT, max_coins=5):
+    """Generate and evaluate one persistent genetic generation."""
     os.makedirs(state_dir,exist_ok=True)
     path=os.path.join(state_dir,"autonomous_strategy_memory.json")
     memory=_load(path)
@@ -363,7 +405,9 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
             continue
     if len(frames)<3:
         result={"status":"insufficient_data","generation":generation,
-                "symbols":symbols,"batch_size":int(batch_size),
+                "symbols":symbols,"requested_mutations":int(mutation_count),
+                "requested_crossovers":int(crossover_count),
+                "batch_size":int(mutation_count)+int(crossover_count),
                 "message":"Need at least 3 symbols with 400+ hourly candles."}
         memory.update({"generation":generation,"last_run":time.time(),"last_result":result})
         _atomic_write(path,memory)
@@ -374,19 +418,9 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
     parents=sorted([x for x in archive if x.get("status") in ("validation_pass","paper_candidate")],
                    key=lambda x:float(x.get("score",-100)),reverse=True)[:20]
     known={x.get("id") for x in archive}
-    candidates=[]
-    attempts=0
-    while len(candidates)<int(batch_size) and attempts<int(batch_size)*40:
-        attempts+=1
-        if len(parents) >= 2 and rng.random() < 0.60:
-            p1, p2 = rng.sample(parents, 2)
-            spec = _crossover_specs(rng, p1, p2, generation, mutation_rate)
-        else:
-            parent = rng.choice(parents) if parents and rng.random() < 0.75 else None
-            spec = _new_spec(rng, generation, parent, mutation_rate)
-            spec["input_features"] = sorted({x["feature"] for x in spec["conditions"]})
-        if spec["id"] not in known and all(x["id"] != spec["id"] for x in candidates):
-            candidates.append(spec)
+    # Use an explicit quota, not a probabilistic crossover ratio.
+    candidates, mutation_candidates, crossover_candidates = _generate_candidates(
+        rng, generation, parents, known, mutation_count, crossover_count, mutation_rate)
     results=[]
     for spec in candidates:
         train_rows=[]; tune_rows=[]; hold_rows=[]
@@ -422,13 +456,17 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
         [x for x in archive if x.get("status")=="validation_pass"],
         key=lambda x:float(x.get("score",-100)),reverse=True
     )
-    elite_count=max(2, min(20, int(math.ceil(len(valid)*0.10)))) if valid else 0
-    population=valid[:elite_count]
+    population=valid[:20]
+    elite_count=len(population)
     champion=max(valid,key=lambda x:float(x.get("score",-100))) if valid else memory.get("champion")
     result={"status":"ok","generation":generation,"generated":len(candidates),
+            "requested_mutations":int(mutation_count),"requested_crossovers":int(crossover_count),
+            "mutation_candidates":int(mutation_candidates),"crossover_candidates":int(crossover_candidates),
+            "crossover_shortfall":max(0,int(crossover_count)-int(crossover_candidates)),
+            "generation_cadence":"one generation per successful daily comprehensive research cycle",
             "tested":len(results),"validation_passed":sum(x["status"]=="validation_pass" for x in results),
             "archive_size":len(archive),"symbols":symbols,"champion":champion,
-            "breeding_pool_size":len(population),"crossover_candidates":sum(bool(x.get("spec",{}).get("crossover")) for x in results),
+            "breeding_pool_size":len(population),
             "genome_scope":"561 causal input features + thresholds/operators + SL/TP ATR + max-hold genes",
             "feature_count":len(_LIBRARY_FEATURES),"total_feature_columns":len(FEATURES),
             "feature_library_version":FEATURE_LIBRARY_VERSION,
@@ -453,7 +491,8 @@ def run_discovery(universe, get_candles, state_dir, telegram=None, batch_size=BA
     _atomic_write(os.path.join(state_dir,"autonomous_strategy_report.json"),result)
     if telegram:
         telegram("🧬 Autonomous Strategy Discovery\n"
-                 f"Generation: {generation} | New candidates: {len(results)} | "
+                 f"Generation: {generation} | New candidates: {len(results)} "
+                 f"(mutation={mutation_candidates}, crossover={crossover_candidates}) | "
                  f"Passed validation: {result['validation_passed']}\n"
                  f"Features: {len(_LIBRARY_FEATURES)} | Archive: {len(archive)} | Mode: research-only; no live changes.")
     return result
