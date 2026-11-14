@@ -1,4 +1,6 @@
 """Offline tests for the candlestick and headline intelligence overlay."""
+import json
+
 import pandas as pd
 
 import candle_news_intelligence as cni
@@ -60,3 +62,29 @@ def test_pattern_feature_matrix_is_causal_and_model_ready():
                                                   index=[pd.Timestamp("2026-01-01 04:00:00")])])
     extended_matrix = cni.pattern_feature_matrix(extended)
     pd.testing.assert_frame_equal(matrix.iloc[:4], extended_matrix.iloc[:4])
+
+
+
+def test_new_pattern_name_is_persisted_for_next_primary_schema(tmp_path, monkeypatch):
+    registry = tmp_path / "candle_pattern_registry.json"
+    monkeypatch.setattr(cni, "_PATTERN_REGISTRY_PATH", str(registry))
+    monkeypatch.setattr(cni, "PATTERN_NAMES", ("Doji",))
+    monkeypatch.setattr(
+        cni, "PATTERN_FEATURE_NAMES",
+        ("candle_pat_doji", "candle_pat_count")
+    )
+
+    cni._register_pattern_name("New Research Pattern")
+
+    saved = json.loads(registry.read_text(encoding="utf-8"))
+    assert "New Research Pattern" in saved["patterns"]
+    assert "candle_pat_new_research_pattern" in saved["feature_names"]
+
+    # A fresh schema load restores the discovered name before model columns freeze.
+    monkeypatch.setattr(cni, "PATTERN_NAMES", ("Doji",))
+    monkeypatch.setattr(
+        cni, "PATTERN_FEATURE_NAMES",
+        ("candle_pat_doji", "candle_pat_count")
+    )
+    names = cni.configure_pattern_registry(str(registry))
+    assert "candle_pat_new_research_pattern" in names
