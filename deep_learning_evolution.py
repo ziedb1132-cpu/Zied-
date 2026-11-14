@@ -443,5 +443,28 @@ def install(zq):
                 zq.log.info("winning-pattern discovery: %s", outcome)
             except Exception as exc:
                 zq.log.warning("winning-pattern discovery skipped: %s", exc)
+            # Mine the same liquid scan universe periodically; sequence features
+            # are persisted now and become model columns at the next process start.
+            if int(cycle or 0) == 1 or int(cycle or 0) % 12 == 0:
+                try:
+                    import candle_news_intelligence as candle_intel
+                    symbols = list(universe.index) if hasattr(universe, "index") else list(universe or [])
+                    candle_frames = {}
+                    for inst in symbols[:candle_intel.MAX_PATTERN_COINS]:
+                        try:
+                            frame = zq.get_candles(inst, "5m", 600)
+                            if frame is not None and len(frame) >= 40:
+                                candle_frames[str(inst)] = frame
+                        except Exception as candle_exc:
+                            zq.log.debug("sequence discovery candles unavailable for %s: %s",
+                                         inst, candle_exc)
+                    registry = os.path.join(zq.CFG["DIR"], "candle_pattern_registry.json")
+                    sequence_result = candle_intel.discover_sequence_patterns(
+                        candle_frames, registry_path=registry
+                    )
+                    zq.log.info("3-20 candle sequence discovery: symbols=%d %s",
+                                len(candle_frames), sequence_result)
+                except Exception as exc:
+                    zq.log.warning("3-20 candle sequence discovery skipped: %s", exc)
         return result
     zq.scan = scan_with_pattern_discovery
