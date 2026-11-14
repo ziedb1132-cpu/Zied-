@@ -178,6 +178,11 @@ def _install_features(zq):
     zq.CFG["MAX_OPEN"] = 10
     # Smaller notional per position lets up to 10 slots fit within the existing 75% exposure cap.
     zq.CFG["POS_FRAC"] = 0.075
+    zq.log.info(
+        "primary AI feature schema installed: total=%d timeframes=%d genetic_library=%d_per_timeframe "
+        "candlestick_patterns=%d_per_timeframe approved_derived=%d_per_timeframe",
+        zq.N_FEATURES, len(zq.TFS), len(research_names), len(PATTERN_FEATURE_NAMES), len(derived_names),
+    )
 
 
 def _install_30_layer_net(zq):
