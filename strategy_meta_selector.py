@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Regime-aware meta-selector with an isolated shadow paper portfolio.
 
-It learns from matured shadow trades only. It never changes live signals,
-positions, risk settings, or the production model.
+It learns from matured shadow trades only. Approved symbol/regime profiles may
+softly calibrate primary AI inference through the bounded bridge; it never
+changes model weights, positions, orders, or risk settings.
 """
 import json
 import os
