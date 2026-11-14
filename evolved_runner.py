@@ -19,6 +19,7 @@ import autonomous_strategy_engine
 import strategy_meta_selector
 import advanced_intelligence
 import evolution_governance
+import evolution_ai_bridge
 
 # Install the same guarded intelligence stack used by the scheduled scanner.
 deep_learning_evolution.install(zied_quant)
@@ -26,6 +27,22 @@ candle_news_intelligence.install(zied_quant)
 global_news_intelligence.install(zied_quant)
 event_calendar_intelligence.install(zied_quant)
 ai_trade_controller.install(zied_quant)
+
+# Feed independently matured evolutionary shadow evidence into the primary AI
+# probability path. Preserve the existing news/event fusion first; the new
+# overlay is bounded and can only softly calibrate, never bypass entry gates.
+_existing_primary_prediction_hook = zied_quant.PRIMARY_PREDICTION_HOOK
+
+def _primary_prediction_with_evolution_feedback(brain, frame, predictions):
+    base = predictions
+    if callable(_existing_primary_prediction_hook):
+        base = _existing_primary_prediction_hook(brain, frame, predictions)
+    return evolution_ai_bridge.apply_strategy_feedback(
+        zied_quant, frame, base,
+        os.path.join(zied_quant.CFG["DIR"], "strategy_meta_selector_report.json"),
+    )
+
+zied_quant.PRIMARY_PREDICTION_HOOK = _primary_prediction_with_evolution_feedback
 
 _original_hist_depth = zied_quant.hist_depth
 def _expanded_hist_depth():
