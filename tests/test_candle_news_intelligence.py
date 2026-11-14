@@ -94,11 +94,12 @@ def test_new_pattern_name_is_persisted_for_next_primary_schema(tmp_path, monkeyp
 def test_dynamic_sequence_feature_is_causal(monkeypatch):
     definition = {
         "feature_name": "candle_seq_test_3",
-        "sequence": ["201", "201", "201"],
+        "sequence": ["220", "220", "220"],
         "direction": "long",
         "status": "approved",
     }
     monkeypatch.setattr(cni, "_DISCOVERED_PATTERN_DEFS", [definition])
+    monkeypatch.setattr(cni, "PATTERN_FEATURE_NAMES", tuple(cni.PATTERN_FEATURE_NAMES) + ("candle_seq_test_3",))
     candles = pd.DataFrame([
         {"o": 10, "h": 11, "l": 9, "c": 11, "vol": 1},
         {"o": 10, "h": 11, "l": 9, "c": 11, "vol": 1},
