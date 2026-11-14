@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Candlestick-pattern and crypto-news intelligence overlay for Zied Quant.
+"""Candlestick-pattern and crypto-news intelligence for Zied Quant.
 
-Patterns/news are research signals, not guarantees. This module does not change the
-300-column model schema, does not bypass portfolio risk checks, and never places real orders.
+Patterns/news are research signals, not guarantees. The causal pattern feature
+matrix is consumed by deep_learning_evolution for primary-model training and
+inference; the optional rank overlay remains separate from portfolio risk checks.
+This module never places real orders.
 """
 import json
 import os
@@ -289,7 +291,7 @@ def _save_json(path, data):
 
 
 def install(zq):
-    """Install a conservative live-ranking overlay without altering the ML feature schema."""
+    """Install the separate conservative ranking overlay; model inputs are installed by deep_learning_evolution."""
     old_rank = zq.rank_universe
 
     def rank_with_candle_news(X, vol24, *args, **kwargs):
