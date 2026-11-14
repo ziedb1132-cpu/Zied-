@@ -324,5 +324,5 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
         telegram("🧠 Strategy Meta-Selector (shadow only)\n"
                  f"Cycle: {memory['cycle']} | Candidates: {len(candidates)}\n"
                  f"Open shadow: {len(memory['positions'])} | Closed: {len(memory['closed_trades'])}\n"
-                 f"Regime approvals: {approved} | Live integration: OFF")
+                 f"Regime approvals: {approved} | Primary AI overlay: symbol+regime approved shadow only")
     return memory["last_report"]
