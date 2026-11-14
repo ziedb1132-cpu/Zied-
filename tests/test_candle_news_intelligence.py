@@ -39,3 +39,24 @@ def test_empty_candles_are_neutral():
     assert cni.detect_candlestick_patterns(None) == []
     score, patterns = cni.pattern_score(pd.DataFrame())
     assert score == 0.0 and patterns == []
+
+
+def test_pattern_feature_matrix_is_causal_and_model_ready():
+    candles = pd.DataFrame([
+        {"o": 105, "h": 106, "l": 99, "c": 100, "vol": 10},
+        {"o": 100, "h": 103, "l": 98, "c": 102, "vol": 12},
+        {"o": 99, "h": 108, "l": 98, "c": 107, "vol": 18},
+        {"o": 107, "h": 109, "l": 106, "c": 108, "vol": 20},
+    ], index=pd.date_range("2026-01-01", periods=4, freq="h"))
+    matrix = cni.pattern_feature_matrix(candles)
+    column = "candle_pat_bullish_engulfing"
+    assert column in matrix.columns
+    assert matrix.loc[candles.index[0], column] != matrix.loc[candles.index[2], column]
+    assert matrix.loc[candles.index[0], column] != matrix.loc[candles.index[0], column]  # warm-up is NaN
+    assert matrix.loc[candles.index[2], column] == 0.86
+    assert matrix.loc[candles.index[2], "candle_pat_count"] >= 1
+    # Appending a future candle cannot rewrite already-computed historical rows.
+    extended = pd.concat([candles, pd.DataFrame([{"o": 108, "h": 110, "l": 107, "c": 109, "vol": 22}],
+                                                  index=[pd.Timestamp("2026-01-01 04:00:00")])])
+    extended_matrix = cni.pattern_feature_matrix(extended)
+    pd.testing.assert_series_equal(matrix.iloc[:4], extended_matrix.iloc[:4])
