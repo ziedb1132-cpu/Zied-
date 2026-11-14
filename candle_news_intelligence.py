@@ -248,6 +248,9 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
         validation = [event for event in events if event[0] >= cutoff]
         if len(discovery) < 18 or len(validation) < DISCOVERY_MIN_VALIDATION:
             continue
+        # Reject single-coin coincidences; require cross-market recurrence.
+        if len({e[1] for e in events}) < 3 or len({e[1] for e in validation}) < 2:
+            continue
         # Select orientation using discovery data only.
         long_mean = float(np.mean([e[2] - DISCOVERY_ROUND_TRIP_COST for e in discovery]))
         short_mean = float(np.mean([-e[2] - DISCOVERY_ROUND_TRIP_COST for e in discovery]))
