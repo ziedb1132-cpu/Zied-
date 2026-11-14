@@ -55,6 +55,35 @@ class EvolutionAIBridgeTests(unittest.TestCase):
         )
         np.testing.assert_allclose(result, [0.60])
 
+    def test_primary_features_map_to_shadow_regime(self):
+        row = pd.Series({
+            "1H_atr_pct": 0.01,
+            "1H_ema_dist21": 0.02,
+            "1H_ema_dist50": 0.03,
+            "1H_ema_slope21": 0.01,
+        })
+        self.assertEqual(
+            evolution_ai_bridge._matching_shadow_regime(_FakeZied, row), "BULL"
+        )
+
+    def test_stale_shadow_report_is_ignored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "stale.json"
+            path.write_text(json.dumps({
+                "updated_at": time.time() - 73 * 60 * 60,
+                "selected_by_symbol_regime": {
+                    "SOL-USDT|BULL": [{
+                        "paper_approved": True, "trades": 100, "win_rate": 0.90,
+                        "avg_net": 0.01, "profit_factor": 2.0, "max_drawdown": 0.05,
+                    }]
+                },
+            }), encoding="utf-8")
+            frame = pd.DataFrame({"regime": ["BULL"]}, index=["SOL-USDT"])
+            result = evolution_ai_bridge.apply_strategy_feedback(
+                _FakeZied, frame, np.asarray([0.60]), str(path)
+            )
+            np.testing.assert_allclose(result, [0.60])
+
     def test_invalid_primary_probabilities_are_rejected(self):
         frame = pd.DataFrame({"regime": ["BULL"]}, index=["SOL-USDT"])
         with self.assertRaises(ValueError):
