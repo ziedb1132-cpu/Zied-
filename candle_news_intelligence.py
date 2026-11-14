@@ -301,17 +301,17 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
             and now - float(p.get("last_validated_at") or 0) <= 7 * 86400
         }
         merged.update({p["feature_name"]: p for p in approved})
-        global _DISCOVERED_PATTERN_DEFS
+        global _DISCOVERED_PATTERN_DEFS, _PATTERN_REGISTRY_PATH
         _DISCOVERED_PATTERN_DEFS = sorted(
             merged.values(),
             key=lambda p: (float(p.get("last_validated_at") or 0),
                            float(p.get("validation_mean_net_return") or 0)),
             reverse=True
         )[:DISCOVERY_MAX_APPROVED]
-        if _PATTERN_REGISTRY_PATH != registry_path:
-            configure_pattern_registry(registry_path)
-        else:
-            _write_pattern_registry()
+        # This function already merged the definitions from this exact file;
+        # do not reload it here and accidentally overwrite the newly approved set.
+        _PATTERN_REGISTRY_PATH = registry_path
+        _write_pattern_registry()
     return {"candidate_sequences": len(occurrences), "approved": len(approved),
             "minimum_occurrences": DISCOVERY_MIN_OCCURRENCES,
             "horizon_bars": DISCOVERY_HORIZON, "cost_assumption": DISCOVERY_ROUND_TRIP_COST}
