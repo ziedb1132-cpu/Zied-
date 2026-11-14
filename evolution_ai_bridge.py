@@ -17,6 +17,7 @@ MIN_TRADES = 20
 MIN_PROFIT_FACTOR = 1.20
 MAX_DRAWDOWN = 0.20
 MAX_BLEND_WEIGHT = 0.10
+MAX_REPORT_AGE_SECONDS = 72 * 60 * 60
 
 
 def _load_report(path):
@@ -64,6 +65,13 @@ def apply_strategy_feedback(zied_quant, frame, predictions, report_path):
         return values
 
     report = _load_report(report_path)
+    try:
+        report_age = __import__("time").time() - float(report.get("updated_at"))
+    except (TypeError, ValueError):
+        return values
+    if not np.isfinite(report_age) or report_age < -300 or report_age > MAX_REPORT_AGE_SECONDS:
+        return values
+
     selected = report.get("selected_by_symbol_regime")
     if not isinstance(selected, dict) or not selected:
         return values
