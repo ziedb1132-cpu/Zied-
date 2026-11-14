@@ -1,5 +1,6 @@
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -20,6 +21,7 @@ class EvolutionAIBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "strategy_meta_selector_report.json"
             path.write_text(json.dumps({
+                "updated_at": time.time(),
                 "selected_by_symbol_regime": {"SOL-USDT|BULL": [profile]}
             }), encoding="utf-8")
             frame = pd.DataFrame(
