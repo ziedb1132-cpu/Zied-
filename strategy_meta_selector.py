@@ -292,7 +292,7 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
 
     memory["closed_trades"] = memory["closed_trades"][-10000:]
     memory["last_report"] = {
-        "status": "ok", "cycle": memory["cycle"], "market_regimes": {
+        "status": "ok", "cycle": memory["cycle"], "updated_at": time.time(), "market_regimes": {
             s: x["regime"] for s, x in market.items()},
         "candidates_monitored": len(candidates),
         "candidate_status_counts": dict(candidate_status_counts),
@@ -312,10 +312,10 @@ def run_meta_selector(universe, get_candles, state_dir, discovery_report=None,
                            "min_profit_factor": MIN_PROFIT_FACTOR,
                            "min_expectancy": MIN_EXPECTANCY,
                            "max_drawdown": MAX_DRAWDOWN},
-        "live_integration": False,
-        "ai_feedback_ready": bool(selected),
-        "ai_feedback_source": "matured_shadow_trades_only",
-        "note": "Only strategies with matured shadow evidence are exported as research feedback; this report does not directly change production signals or model weights."
+        "live_integration": "bounded_primary_ai_probability_overlay_only",
+        "ai_feedback_ready": bool(selected_by_symbol_regime),
+        "ai_feedback_source": "matured_symbol_and_regime_shadow_trades_only",
+        "note": "Approved symbol+regime shadow profiles may softly calibrate primary AI probabilities through the bounded evolution bridge; no model weights, labels, positions, orders, or risk controls are changed."
     }
     _save(memory_path, memory)
     _save(report_path, memory["last_report"])
