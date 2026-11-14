@@ -225,7 +225,7 @@ def discover_sequence_patterns(candles_by_symbol, registry_path=None):
             if not (np.isfinite(current) and current > 0 and np.isfinite(future)):
                 continue
             ret = future / current - 1.0
-            stamp = str(frame.index[end]) if len(frame.index) else str(end)
+            stamp = frame.index[end] if len(frame.index) else end
             for width in range(3, 21):
                 seq = tuple(tokens[end - width + 1:end + 1])
                 if seq not in occurrences and len(occurrences) >= DISCOVERY_MAX_CANDIDATES:
