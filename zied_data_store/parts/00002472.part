@@ -1,0 +1,281 @@
+{
+  "updated_at": 1795278825.67246,
+  "feeds": [
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",
+    "https://cointelegraph.com/rss",
+    "https://decrypt.co/feed",
+    "https://cryptoslate.com/feed/"
+  ],
+  "headline_count": 102,
+  "coins": {
+    "POR-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "VINE-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ARG-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "VVV-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "NES-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "OFC-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XSOXS-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "DOOD-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "YB-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ANIME-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "BARD-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ZAMA-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "NIGHT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "AGLD-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SENT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ETHFI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "TAO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "PARTI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "IRYS-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "FLR-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "TRX-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "WCT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SWFTC-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XGME-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XMSFT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "JITOSOL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "LSK-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "BCH-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "IOST-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "CARDS-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAUT-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "UNI-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "XAMZN-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "CRO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ETH-USDT": {
+      "score": 0.08333333333333333,
+      "headlines": [
+        {
+          "title": "Ledger Confirms Tampered Bitcoin Wallets in Berlin as Spy Implant Probe Spreads Beyond Asia",
+          "link": "https://decrypt.co/383586/ledger-confirms-tampered-bitcoin-wallets-berlin-spreads-beyond-asia",
+          "published": "Wed, 18 Nov 2026 22:16:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        },
+        {
+          "title": "Why CoinShares Just Sold All Its Ethereum and Half Its Solana",
+          "link": "https://decrypt.co/383570/why-coinshares-just-sold-all-ethereum-half-solana",
+          "published": "Wed, 18 Nov 2026 19:46:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Tanks Ahead of Anthropic’s IPO. Should We Really Blame AI?",
+          "link": "https://decrypt.co/383551/bitcoin-tanks-ahead-anthropics-ipo-should-we-really-blame-ai",
+          "published": "Wed, 18 Nov 2026 19:16:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Miners Are Selling Their Stacks to Fund the AI Boom",
+          "link": "https://decrypt.co/383568/bitcoin-miners-selling-fund-ai-boom",
+          "published": "Wed, 18 Nov 2026 18:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "MoonPay seeks US bank charter for stablecoin, custody services",
+          "link": "https://cointelegraph.com/news/moonpay-seeks-us-bank-charter-for-stablecoin-custody-services?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 19 Nov 2026 21:01:42 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "AI-USDT": {
+      "score": -0.27260301386068775,
+      "headlines": [
+        {
+          "title": "Google's Genie 4 Is Here, Letting Ultra Subscribers Build AI Worlds in Real Time",
+          "link": "https://decrypt.co/383572/google-genie-4-ultra-subscribers-build-ai-worlds-real-time",
+          "published": "Wed, 18 Nov 2026 20:16:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Tanks Ahead of Anthropic’s IPO. Should We Really Blame AI?",
+          "link": "https://decrypt.co/383551/bitcoin-tanks-ahead-anthropics-ipo-should-we-really-blame-ai",
+          "published": "Wed, 18 Nov 2026 19:16:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Miners Are Selling Their Stacks to Fund the AI Boom",
+          "link": "https://decrypt.co/383568/bitcoin-miners-selling-fund-ai-boom",
+          "published": "Wed, 18 Nov 2026 18:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Citi Says Customers Are Responsible When AI Banking Agents Go Rogue—Even After a Hack",
+          "link": "https://decrypt.co/383677/citi-customers-responsible-ai-banking-agents-rogue-hack",
+          "published": "Thu, 19 Nov 2026 22:36:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.9428090415820632
+        },
+        {
+          "title": "Protesters Arrested Outside Nasdaq as Activists Oppose Anthropic IPO Over AI Bubble Risks",
+          "link": "https://decrypt.co/383642/protesters-arrested-nasdaq-anthropic-ipo-ai-bubble-risks",
+          "published": "Thu, 19 Nov 2026 17:55:38 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.9428090415820632
+        }
+      ]
+    },
+    "PAXG-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "ALGO-USDT": {
+      "score": 0.0,
+      "headlines": []
+    },
+    "SOL-USDT": {
+      "score": 0.0,
+      "headlines": [
+        {
+          "title": "Ledger Confirms Tampered Bitcoin Wallets in Berlin as Spy Implant Probe Spreads Beyond Asia",
+          "link": "https://decrypt.co/383586/ledger-confirms-tampered-bitcoin-wallets-berlin-spreads-beyond-asia",
+          "published": "Wed, 18 Nov 2026 22:16:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": -0.5
+        },
+        {
+          "title": "Why CoinShares Just Sold All Its Ethereum and Half Its Solana",
+          "link": "https://decrypt.co/383570/why-coinshares-just-sold-all-ethereum-half-solana",
+          "published": "Wed, 18 Nov 2026 19:46:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Tanks Ahead of Anthropic’s IPO. Should We Really Blame AI?",
+          "link": "https://decrypt.co/383551/bitcoin-tanks-ahead-anthropics-ipo-should-we-really-blame-ai",
+          "published": "Wed, 18 Nov 2026 19:16:02 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "Bitcoin Miners Are Selling Their Stacks to Fund the AI Boom",
+          "link": "https://decrypt.co/383568/bitcoin-miners-selling-fund-ai-boom",
+          "published": "Wed, 18 Nov 2026 18:46:03 +0000",
+          "source": "decrypt.co",
+          "sentiment": 0.0
+        },
+        {
+          "title": "MoonPay seeks US bank charter for stablecoin, custody services",
+          "link": "https://cointelegraph.com/news/moonpay-seeks-us-bank-charter-for-stablecoin-custody-services?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound",
+          "published": "Thu, 19 Nov 2026 21:01:42 +0000",
+          "source": "cointelegraph.com",
+          "sentiment": -0.5
+        }
+      ]
+    },
+    "OKSOL-USDT": {
+      "score": 0.0,
+      "headlines": []
+    }
+  },
+  "note": "Headline sentiment is a lightweight keyword heuristic; missing news is neutral."
+}

@@ -1,0 +1,23 @@
+{
+  "updated_at": 1795269816.8036702,
+  "closed_signal_regimes": [
+    {
+      "regime": "BEAR",
+      "n": 630,
+      "avg_net_return": -0.0068009263269593135,
+      "profit_factor": 0.46830460461088186
+    },
+    {
+      "regime": "RANGE",
+      "n": 163,
+      "avg_net_return": -0.00884926788412644,
+      "profit_factor": 0.3199018034412845
+    },
+    {
+      "regime": "HIGH_VOL",
+      "n": 107,
+      "avg_net_return": -0.015521873895037808,
+      "profit_factor": 0.6130609914857057
+    }
+  ]
+}
